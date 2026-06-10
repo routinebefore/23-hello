@@ -521,6 +521,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             no_blindness = false,
             no_blur = false,
             no_sanity = false,
+            no_snow = false,
             better_leaderboard = true,
             fullbright = false,
             brightness_level = 80,
@@ -7921,6 +7922,131 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             end
 
             local group_overlays = Tabs.Visuals:AddRightGroupbox("Overlays")
+
+            do
+                local no_snow_connection = nil
+                local no_snow_waiting = false
+                local no_snow_restoring = false
+                local weather_effect_snapshot = nil
+
+                local function clone_weather_effect(effect)
+                    local clone = nil
+                    pcall(function()
+                        local archivable = effect.Archivable
+                        effect.Archivable = true
+                        clone = effect:Clone()
+                        effect.Archivable = archivable
+                        if clone then
+                            clone.Archivable = archivable
+                        end
+                    end)
+                    return clone
+                end
+
+                local function replace_weather_effect_snapshot(effect)
+                    local clone = clone_weather_effect(effect)
+                    if clone then
+                        if weather_effect_snapshot then
+                            pcall(function()
+                                weather_effect_snapshot:Destroy()
+                            end)
+                        end
+                        weather_effect_snapshot = clone
+                    end
+                end
+
+                local function remove_weather_effect(effect)
+                    if no_snow_restoring or not effect or effect.Name ~= "WeatherEffect" then
+                        return
+                    end
+
+                    replace_weather_effect_snapshot(effect)
+                    pcall(function()
+                        effect:Destroy()
+                    end)
+                end
+
+                local function stop_no_snow()
+                    if no_snow_connection then
+                        pcall(function()
+                            no_snow_connection:Disconnect()
+                        end)
+                        no_snow_connection = nil
+                    end
+
+                    local thrown = FindFirstChild(ws, "Thrown")
+                    if weather_effect_snapshot then
+                        if thrown and not FindFirstChild(thrown, "WeatherEffect") then
+                            local restore = weather_effect_snapshot
+                            weather_effect_snapshot = nil
+                            no_snow_restoring = true
+                            pcall(function()
+                                restore.Parent = thrown
+                            end)
+                            task.defer(function()
+                                no_snow_restoring = false
+                            end)
+                        else
+                            pcall(function()
+                                weather_effect_snapshot:Destroy()
+                            end)
+                            weather_effect_snapshot = nil
+                        end
+                    end
+                end
+
+                local function start_no_snow()
+                    if no_snow_connection then
+                        return
+                    end
+
+                    local thrown = FindFirstChild(ws, "Thrown")
+                    if not thrown then
+                        if no_snow_waiting then
+                            return
+                        end
+
+                        no_snow_waiting = true
+                        task.spawn(function()
+                            local found = WaitForChild(ws, "Thrown", 10)
+                            no_snow_waiting = false
+                            if found and Toggles and Toggles.no_snow and Toggles.no_snow.Value then
+                                start_no_snow()
+                            end
+                        end)
+                        return
+                    end
+
+                    for _, child in ipairs(thrown:GetChildren()) do
+                        if child.Name == "WeatherEffect" then
+                            remove_weather_effect(child)
+                        end
+                    end
+
+                    no_snow_connection = utility:Connection(thrown.ChildAdded, function(child)
+                        if child.Name == "WeatherEffect" and Toggles and Toggles.no_snow and Toggles.no_snow.Value then
+                            task.defer(remove_weather_effect, child)
+                        end
+                    end)
+                end
+
+                cheat_client.start_no_snow = start_no_snow
+                cheat_client.stop_no_snow = stop_no_snow
+
+                group_overlays:AddToggle("no_snow", {
+                    Text = "No Snow",
+                    Default = cheat_client.config.no_snow,
+                    Callback = function(state)
+                        cheat_client.config.no_snow = state
+
+                        if state then
+                            start_no_snow()
+                        else
+                            stop_no_snow()
+                        end
+                    end
+                })
+            end
 
             group_overlays:AddToggle("mana_overlay", {
                 Text = "Mana Overlay",
