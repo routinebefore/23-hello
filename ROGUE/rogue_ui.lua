@@ -13334,26 +13334,46 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             end
 
             local function PickupNearbyIngredients(duration)
+                local function get_ingredient_part(object, click_detector)
+                    if object:IsA("BasePart") then
+                        return object
+                    end
+
+                    local detector_parent = click_detector and click_detector.Parent
+                    if detector_parent and detector_parent:IsA("BasePart") then
+                        return detector_parent
+                    end
+
+                    if object:IsA("Model") and object.PrimaryPart then
+                        return object.PrimaryPart
+                    end
+
+                    return FindFirstChildWhichIsA(object, "BasePart", true)
+                end
+
                 local started = tick()
                 while tick() - started < duration and trinket_bot.path_running and not shared.is_unloading and not emergency_gate_requested and not trinket_bot.moderator_detected do
                     local character = plr.Character
                     local root = character and FindFirstChild(character, "HumanoidRootPart")
                     if root and ingredient_folder then
                         for _, object in next, ingredient_folder:GetChildren() do
-                            if object and object.Parent and object:IsA("BasePart") and not cheat_client.blacklisted_ingredients[object.Position] then
-                                local click_detector = FindFirstChild(object, "ClickDetector")
-                                if click_detector then
-                                    local max_distance = math.max((click_detector.MaxActivationDistance or 16) - 2, 3)
-                                    if (object.Position - root.Position).Magnitude <= max_distance then
+                            if object and object.Parent then
+                                local click_detector = FindFirstChild(object, "ClickDetector", true)
+                                local ingredient_part = click_detector and get_ingredient_part(object, click_detector)
+                                if click_detector and ingredient_part then
+                                    local max_distance = math.max((click_detector.MaxActivationDistance or 16) - 1, 35)
+                                    local distance = (ingredient_part.Position - root.Position).Magnitude
+                                    if distance <= max_distance then
+                                        pcall(fireclickdetector, click_detector)
                                         pcall(function()
-                                            fireclickdetector(click_detector)
+                                            fireclickdetector(click_detector, distance)
                                         end)
                                     end
                                 end
                             end
                         end
                     end
-                    task.wait(0.15)
+                    task.wait(0.08)
                 end
             end
 
