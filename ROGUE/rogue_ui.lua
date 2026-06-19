@@ -13711,19 +13711,35 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     return count
                 end
 
+                local function table_has_local_player(tbl)
+                    for _, entry in pairs(tbl) do
+                        if type(entry) == "table" then
+                            local entry_name = entry.Name or entry.name or entry.Username or entry.username
+                            local entry_id = tonumber(entry.UserId or entry.userId or entry.userid or entry.UserID or entry.id or entry.Id)
+                            if entry_name == plr.Name or entry_id == plr.UserId then
+                                return true
+                            end
+                        elseif entry == plr.Name or tostring(entry) == tostring(plr.UserId) then
+                            return true
+                        end
+                    end
+
+                    return false
+                end
+
                 if type(playerData.players) == "table" then
-                    return count_table_entries(playerData.players)
+                    return count_table_entries(playerData.players), table_has_local_player(playerData.players)
                 end
 
                 if type(playerData.Players) == "table" then
-                    return count_table_entries(playerData.Players)
+                    return count_table_entries(playerData.Players), table_has_local_player(playerData.Players)
                 end
 
                 if type(playerData.data) == "table" then
-                    return count_table_entries(playerData.data)
+                    return count_table_entries(playerData.data), table_has_local_player(playerData.data)
                 end
 
-                return count_table_entries(playerData)
+                return count_table_entries(playerData), table_has_local_player(playerData)
             end
 
             local function get_current_server_player_count()
@@ -13731,12 +13747,27 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 local serverInfo = FindFirstChild(rps, "ServerInfo")
 
                 if serverInfo then
-                    local currentServer = FindFirstChild(serverInfo, game.JobId)
-                    local playersValue = currentServer and FindFirstChild(currentServer, "Players")
-                    local server_list_count = parse_server_players_value(playersValue)
+                    local function read_server_folder_count(serverFolder)
+                        local playersValue = serverFolder and FindFirstChild(serverFolder, "Players")
+                        local server_list_count, has_local_player = parse_server_players_value(playersValue)
+                        if server_list_count and server_list_count > 0 then
+                            return server_list_count, has_local_player
+                        end
+                    end
 
+                    local currentServer = FindFirstChild(serverInfo, game.JobId)
+                    local server_list_count = read_server_folder_count(currentServer)
                     if server_list_count then
                         return live_count, server_list_count
+                    end
+
+                    for _, serverFolder in ipairs(serverInfo:GetChildren()) do
+                        if serverFolder ~= currentServer then
+                            local fallback_count, has_local_player = read_server_folder_count(serverFolder)
+                            if fallback_count and has_local_player then
+                                return live_count, fallback_count
+                            end
+                        end
                     end
                 end
 
@@ -13879,14 +13910,25 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                                 trinket_bot.path_running = true
 
                                 local gate_success = false
-                                local gate_ok, gate_result = pcall(function()
-                                    return Gate("Desert 1")
+                                local gate_finished = false
+                                task.spawn(function()
+                                    local gate_ok, gate_result = pcall(function()
+                                        return Gate("Desert 1")
+                                    end)
+                                    gate_success = gate_ok and gate_result == true
+                                    gate_finished = true
                                 end)
-                                gate_success = gate_ok and gate_result == true
+
+                                local gate_started = tick()
+                                while not gate_finished and tick() - gate_started < 35 and shared and not shared.is_unloading do
+                                    task.wait(0.1)
+                                end
 
                                 trinket_bot.path_running = previous_path_running
 
-                                if gate_success then
+                                if not gate_finished then
+                                    library:Notify("Desert 1 gate timed out - retrying ReturnToMenu")
+                                elseif gate_success then
                                     library:Notify("Desert 1 gate complete - retrying ReturnToMenu")
                                 else
                                     library:Notify("Desert 1 gate failed - retrying ReturnToMenu")
