@@ -7925,6 +7925,10 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
             do
                 local no_snow_connection = nil
+                local no_snow_workspace_connection = nil
+                local no_snow_monitor_connection = nil
+                local no_snow_thrown = nil
+                local no_snow_last_scan = 0
                 local no_snow_waiting = false
                 local no_snow_restoring = false
                 local weather_effect_snapshot = nil
@@ -7966,6 +7970,18 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     end)
                 end
 
+                local function scan_weather_effects(thrown)
+                    if not thrown then
+                        return
+                    end
+
+                    for _, child in ipairs(thrown:GetChildren()) do
+                        if child.Name == "WeatherEffect" then
+                            remove_weather_effect(child)
+                        end
+                    end
+                end
+
                 local function stop_no_snow()
                     if no_snow_connection then
                         pcall(function()
@@ -7973,6 +7989,22 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         end)
                         no_snow_connection = nil
                     end
+
+                    if no_snow_workspace_connection then
+                        pcall(function()
+                            no_snow_workspace_connection:Disconnect()
+                        end)
+                        no_snow_workspace_connection = nil
+                    end
+
+                    if no_snow_monitor_connection then
+                        pcall(function()
+                            no_snow_monitor_connection:Disconnect()
+                        end)
+                        no_snow_monitor_connection = nil
+                    end
+
+                    no_snow_thrown = nil
 
                     local thrown = FindFirstChild(ws, "Thrown")
                     if weather_effect_snapshot then
@@ -7996,38 +8028,72 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 end
 
                 local function start_no_snow()
-                    if no_snow_connection then
+                    if no_snow_monitor_connection then
                         return
                     end
 
-                    local thrown = FindFirstChild(ws, "Thrown")
-                    if not thrown then
-                        if no_snow_waiting then
+                    local function attach_thrown(thrown)
+                        if not thrown then
                             return
                         end
 
+                        if no_snow_thrown ~= thrown then
+                            if no_snow_connection then
+                                pcall(function()
+                                    no_snow_connection:Disconnect()
+                                end)
+                                no_snow_connection = nil
+                            end
+
+                            no_snow_thrown = thrown
+                            no_snow_connection = utility:Connection(thrown.ChildAdded, function(child)
+                                if child.Name == "WeatherEffect" and Toggles and Toggles.no_snow and Toggles.no_snow.Value then
+                                    task.defer(remove_weather_effect, child)
+                                end
+                            end)
+                        end
+
+                        scan_weather_effects(thrown)
+                    end
+
+                    local thrown = FindFirstChild(ws, "Thrown")
+                    if thrown then
+                        attach_thrown(thrown)
+                    elseif not no_snow_waiting then
                         no_snow_waiting = true
                         task.spawn(function()
                             local found = WaitForChild(ws, "Thrown", 10)
                             no_snow_waiting = false
                             if found and Toggles and Toggles.no_snow and Toggles.no_snow.Value then
-                                start_no_snow()
+                                attach_thrown(found)
                             end
                         end)
-                        return
                     end
 
-                    for _, child in ipairs(thrown:GetChildren()) do
-                        if child.Name == "WeatherEffect" then
-                            remove_weather_effect(child)
-                        end
-                    end
-
-                    no_snow_connection = utility:Connection(thrown.ChildAdded, function(child)
-                        if child.Name == "WeatherEffect" and Toggles and Toggles.no_snow and Toggles.no_snow.Value then
-                            task.defer(remove_weather_effect, child)
+                    no_snow_workspace_connection = utility:Connection(ws.ChildAdded, function(child)
+                        if child.Name == "Thrown" and Toggles and Toggles.no_snow and Toggles.no_snow.Value then
+                            task.defer(function()
+                                attach_thrown(child)
+                            end)
                         end
                     end)
+
+                    no_snow_monitor_connection = utility:Connection(rs.Heartbeat, LPH_NO_VIRTUALIZE(function()
+                        if not Toggles or not Toggles.no_snow or not Toggles.no_snow.Value then
+                            return
+                        end
+
+                        local now = tick()
+                        if now - no_snow_last_scan < 0.5 then
+                            return
+                        end
+                        no_snow_last_scan = now
+
+                        local current_thrown = FindFirstChild(ws, "Thrown")
+                        if current_thrown then
+                            attach_thrown(current_thrown)
+                        end
+                    end))
                 end
 
                 cheat_client.start_no_snow = start_no_snow
@@ -13333,7 +13399,9 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 return false
             end
 
-            local function PickupNearbyIngredients(duration)
+            local function PickupNearbyIngredients(radius)
+                radius = radius or 50
+
                 local function get_ingredient_part(object, click_detector)
                     if object:IsA("BasePart") then
                         return object
@@ -13351,29 +13419,61 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     return FindFirstChildWhichIsA(object, "BasePart", true)
                 end
 
-                local started = tick()
-                while tick() - started < duration and trinket_bot.path_running and not shared.is_unloading and not emergency_gate_requested and not trinket_bot.moderator_detected do
-                    local character = plr.Character
-                    local root = character and FindFirstChild(character, "HumanoidRootPart")
-                    if root and ingredient_folder then
-                        for _, object in next, ingredient_folder:GetChildren() do
-                            if object and object.Parent then
-                                local click_detector = FindFirstChild(object, "ClickDetector", true)
-                                local ingredient_part = click_detector and get_ingredient_part(object, click_detector)
-                                if click_detector and ingredient_part then
-                                    local max_distance = math.max((click_detector.MaxActivationDistance or 16) - 1, 35)
-                                    local distance = (ingredient_part.Position - root.Position).Magnitude
-                                    if distance <= max_distance then
-                                        pcall(fireclickdetector, click_detector)
-                                        pcall(function()
-                                            fireclickdetector(click_detector, distance)
-                                        end)
-                                    end
+                local character = plr.Character
+                local root = character and FindFirstChild(character, "HumanoidRootPart")
+                if not root or not ingredient_folder then
+                    return
+                end
+
+                local origin = root.Position
+                local picked = {}
+
+                while trinket_bot.path_running and not shared.is_unloading and not emergency_gate_requested and not trinket_bot.moderator_detected do
+                    character = plr.Character
+                    root = character and FindFirstChild(character, "HumanoidRootPart")
+                    if not root then
+                        return
+                    end
+
+                    local next_ingredient = nil
+                    local next_distance = math.huge
+
+                    for _, object in next, ingredient_folder:GetChildren() do
+                        if object and object.Parent and not picked[object] then
+                            local click_detector = FindFirstChild(object, "ClickDetector", true)
+                            local ingredient_part = click_detector and get_ingredient_part(object, click_detector)
+                            if click_detector and ingredient_part and (ingredient_part.Position - origin).Magnitude <= radius then
+                                local distance = (ingredient_part.Position - root.Position).Magnitude
+                                if distance < next_distance then
+                                    next_distance = distance
+                                    next_ingredient = {
+                                        object = object,
+                                        detector = click_detector,
+                                        part = ingredient_part
+                                    }
                                 end
                             end
                         end
                     end
-                    task.wait(0.08)
+
+                    if not next_ingredient then
+                        break
+                    end
+
+                    picked[next_ingredient.object] = true
+
+                    if next_ingredient.part and next_ingredient.part.Parent then
+                        SmoothTeleport(next_ingredient.part.Position, true)
+                        task.wait(0.08)
+
+                        if next_ingredient.detector and next_ingredient.detector.Parent then
+                            pcall(fireclickdetector, next_ingredient.detector)
+                            pcall(function()
+                                fireclickdetector(next_ingredient.detector, 50)
+                            end)
+                            task.wait(0.12)
+                        end
+                    end
                 end
             end
 
@@ -13457,7 +13557,12 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     utility:LeftClick()
                 end)
 
-                PickupNearbyIngredients(6.5)
+                local verdien_wait_started = tick()
+                while tick() - verdien_wait_started < 6.5 and trinket_bot.path_running and not shared.is_unloading and not emergency_gate_requested and not trinket_bot.moderator_detected do
+                    task.wait(0.1)
+                end
+
+                PickupNearbyIngredients(50)
                 return finish(true)
             end
 
