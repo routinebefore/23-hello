@@ -521,6 +521,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             no_blindness = false,
             no_blur = false,
             no_sanity = false,
+            no_snow = false,
             better_leaderboard = true,
             fullbright = false,
             brightness_level = 80,
@@ -7922,6 +7923,131 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
             local group_overlays = Tabs.Visuals:AddRightGroupbox("Overlays")
 
+            do
+                local no_snow_connection = nil
+                local no_snow_waiting = false
+                local no_snow_restoring = false
+                local weather_effect_snapshot = nil
+
+                local function clone_weather_effect(effect)
+                    local clone = nil
+                    pcall(function()
+                        local archivable = effect.Archivable
+                        effect.Archivable = true
+                        clone = effect:Clone()
+                        effect.Archivable = archivable
+                        if clone then
+                            clone.Archivable = archivable
+                        end
+                    end)
+                    return clone
+                end
+
+                local function replace_weather_effect_snapshot(effect)
+                    local clone = clone_weather_effect(effect)
+                    if clone then
+                        if weather_effect_snapshot then
+                            pcall(function()
+                                weather_effect_snapshot:Destroy()
+                            end)
+                        end
+                        weather_effect_snapshot = clone
+                    end
+                end
+
+                local function remove_weather_effect(effect)
+                    if no_snow_restoring or not effect or effect.Name ~= "WeatherEffect" then
+                        return
+                    end
+
+                    replace_weather_effect_snapshot(effect)
+                    pcall(function()
+                        effect:Destroy()
+                    end)
+                end
+
+                local function stop_no_snow()
+                    if no_snow_connection then
+                        pcall(function()
+                            no_snow_connection:Disconnect()
+                        end)
+                        no_snow_connection = nil
+                    end
+
+                    local thrown = FindFirstChild(ws, "Thrown")
+                    if weather_effect_snapshot then
+                        if thrown and not FindFirstChild(thrown, "WeatherEffect") then
+                            local restore = weather_effect_snapshot
+                            weather_effect_snapshot = nil
+                            no_snow_restoring = true
+                            pcall(function()
+                                restore.Parent = thrown
+                            end)
+                            task.defer(function()
+                                no_snow_restoring = false
+                            end)
+                        else
+                            pcall(function()
+                                weather_effect_snapshot:Destroy()
+                            end)
+                            weather_effect_snapshot = nil
+                        end
+                    end
+                end
+
+                local function start_no_snow()
+                    if no_snow_connection then
+                        return
+                    end
+
+                    local thrown = FindFirstChild(ws, "Thrown")
+                    if not thrown then
+                        if no_snow_waiting then
+                            return
+                        end
+
+                        no_snow_waiting = true
+                        task.spawn(function()
+                            local found = WaitForChild(ws, "Thrown", 10)
+                            no_snow_waiting = false
+                            if found and Toggles and Toggles.no_snow and Toggles.no_snow.Value then
+                                start_no_snow()
+                            end
+                        end)
+                        return
+                    end
+
+                    for _, child in ipairs(thrown:GetChildren()) do
+                        if child.Name == "WeatherEffect" then
+                            remove_weather_effect(child)
+                        end
+                    end
+
+                    no_snow_connection = utility:Connection(thrown.ChildAdded, function(child)
+                        if child.Name == "WeatherEffect" and Toggles and Toggles.no_snow and Toggles.no_snow.Value then
+                            task.defer(remove_weather_effect, child)
+                        end
+                    end)
+                end
+
+                cheat_client.start_no_snow = start_no_snow
+                cheat_client.stop_no_snow = stop_no_snow
+
+                group_overlays:AddToggle("no_snow", {
+                    Text = "No Snow",
+                    Default = cheat_client.config.no_snow,
+                    Callback = function(state)
+                        cheat_client.config.no_snow = state
+
+                        if state then
+                            start_no_snow()
+                        else
+                            stop_no_snow()
+                        end
+                    end
+                })
+            end
+
             group_overlays:AddToggle("mana_overlay", {
                 Text = "Mana Overlay",
                 Default = cheat_client.config.mana_overlay,
@@ -9939,7 +10065,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                                 end
 
                                 local start_time = tick()
-                                while tick() - start_time < 3.5 and auto_chest_running and Toggles.AutoChestOpen and Toggles.AutoChestOpen.Value and shared and not shared.is_unloading do
+                                while tick() - start_time < 3.1 and auto_chest_running and Toggles.AutoChestOpen and Toggles.AutoChestOpen.Value and shared and not shared.is_unloading do
                                     if not is_near_war_chest(chest, click_detector) then
                                         auto_chest_running = false
                                         break
@@ -12370,7 +12496,8 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 session_start_time = 0,
                 moderator_detected = false,
                 pending_artifact_logs = {},
-                pending_pickup_ids = {}
+                pending_pickup_ids = {},
+                suppress_gate_reequip = false
             }
 
             cheat_client.trinket_bot = trinket_bot
@@ -12481,7 +12608,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 end
             end
 
-            local function create_point_visualization(position, is_wait_point, is_gate_point)
+            local function create_point_visualization(position, is_wait_point, is_gate_point, is_verdien_point)
                 local sphere = Instance.new("Part")
                 sphere.Shape = Enum.PartType.Ball
                 sphere.Size = Vector3.new(2, 2, 2)
@@ -12492,6 +12619,8 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
                 if is_gate_point then
                     sphere.Color = Color3.fromRGB(255, 105, 180)
+                elseif is_verdien_point then
+                    sphere.Color = Color3.fromRGB(90, 255, 120)
                 elseif is_wait_point then
                     sphere.Color = Color3.fromRGB(0, 100, 255)
                 else
@@ -12517,11 +12646,12 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
                     for i, point in ipairs(trinket_bot.path_points) do
                         local is_gate = point.is_gate_point or false
-                        local sphere = create_point_visualization(point.position, point.wait_for_trinket, is_gate)
+                        local is_verdien = point.is_verdien_point or false
+                        local sphere = create_point_visualization(point.position, point.wait_for_trinket, is_gate, is_verdien)
                         table.insert(trinket_bot.point_visualizations, sphere)
 
                         local billboard = Instance.new("BillboardGui")
-                        billboard.Size = is_gate and UDim2.new(0, 100, 0, 50) or UDim2.new(0, 50, 0, 50)
+                        billboard.Size = (is_gate or is_verdien) and UDim2.new(0, 100, 0, 50) or UDim2.new(0, 50, 0, 50)
                         billboard.AlwaysOnTop = true
                         billboard.Adornee = sphere
                         billboard.Parent = hidden_folder
@@ -12534,6 +12664,9 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         if is_gate then
                             label.Text = "G: " .. (point.gate_location or "???")
                             label.TextColor3 = Color3.fromRGB(255, 105, 180)
+                        elseif is_verdien then
+                            label.Text = "Verdien"
+                            label.TextColor3 = Color3.fromRGB(90, 255, 120)
                         else
                             label.Text = tostring(i)
                             label.TextColor3 = point.wait_for_trinket and Color3.fromRGB(100, 150, 255) or Color3.new(1, 1, 1)
@@ -13200,6 +13333,114 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 return false
             end
 
+            local function PickupNearbyIngredients(duration)
+                local started = tick()
+                while tick() - started < duration and trinket_bot.path_running and not shared.is_unloading and not emergency_gate_requested and not trinket_bot.moderator_detected do
+                    local character = plr.Character
+                    local root = character and FindFirstChild(character, "HumanoidRootPart")
+                    if root and ingredient_folder then
+                        for _, object in next, ingredient_folder:GetChildren() do
+                            if object and object.Parent and object:IsA("BasePart") and not cheat_client.blacklisted_ingredients[object.Position] then
+                                local click_detector = FindFirstChild(object, "ClickDetector")
+                                if click_detector then
+                                    local max_distance = math.max((click_detector.MaxActivationDistance or 16) - 2, 3)
+                                    if (object.Position - root.Position).Magnitude <= max_distance then
+                                        pcall(function()
+                                            fireclickdetector(click_detector)
+                                        end)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                    task.wait(0.15)
+                end
+            end
+
+            local function ExecuteVerdienPoint()
+                local character = plr.Character
+                local humanoid = character and FindFirstChildOfClass(character, "Humanoid")
+                local mana = character and FindFirstChild(character, "Mana")
+                if not character or not humanoid or not mana then
+                    library:Notify("Verdien point failed: character or mana unavailable")
+                    return false
+                end
+
+                local verdien = FindFirstChild(character, "Verdien") or (plr.Backpack and FindFirstChild(plr.Backpack, "Verdien"))
+                if not verdien then
+                    library:Notify("Verdien point failed: Verdien not found")
+                    return false
+                end
+
+                local function finish(success)
+                    trinket_bot.suppress_gate_reequip = false
+                    return success
+                end
+
+                trinket_bot.suppress_gate_reequip = true
+
+                if verdien.Parent == plr.Backpack then
+                    pcall(function()
+                        humanoid:EquipTool(verdien)
+                    end)
+
+                    local equip_started = tick()
+                    repeat
+                        character = plr.Character
+                        verdien = character and FindFirstChild(character, "Verdien") or verdien
+                        if verdien and character and verdien.Parent == character then
+                            break
+                        end
+                        task.wait(0.05)
+                    until tick() - equip_started >= 2 or not trinket_bot.path_running
+                end
+
+                character = plr.Character
+                humanoid = character and FindFirstChildOfClass(character, "Humanoid")
+                mana = character and FindFirstChild(character, "Mana")
+                verdien = character and FindFirstChild(character, "Verdien") or verdien
+
+                if not character or not humanoid or not mana or not verdien or verdien.Parent ~= character then
+                    library:Notify("Verdien point failed: could not equip Verdien")
+                    return finish(false)
+                end
+
+                if mana.Value > 85 then
+                    utility:decharge_mana()
+                    local mana_wait_started = tick()
+                    while mana.Value > 85 and tick() - mana_wait_started < 8 and trinket_bot.path_running and not shared.is_unloading and not emergency_gate_requested and not trinket_bot.moderator_detected do
+                        task.wait(0.05)
+                    end
+                end
+
+                if mana.Value < 85 then
+                    utility:charge_mana_until(85)
+                end
+
+                if mana.Value > 85 then
+                    utility:decharge_mana()
+                    local mana_wait_started = tick()
+                    while mana.Value > 85 and tick() - mana_wait_started < 8 and trinket_bot.path_running and not shared.is_unloading and not emergency_gate_requested and not trinket_bot.moderator_detected do
+                        task.wait(0.05)
+                    end
+                end
+
+                if not trinket_bot.path_running or shared.is_unloading or emergency_gate_requested or trinket_bot.moderator_detected then
+                    return finish(false)
+                end
+
+                task.wait(0.05)
+                pcall(function()
+                    verdien:Activate()
+                end)
+                pcall(function()
+                    utility:LeftClick()
+                end)
+
+                PickupNearbyIngredients(6.5)
+                return finish(true)
+            end
+
             local function CheckForTrinkets()
                 local root = plr.Character and FindFirstChild(plr.Character, "HumanoidRootPart")
                 if not root then return end
@@ -13425,29 +13666,84 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 return false
             end
 
+            local function parse_server_players_value(playersValue)
+                if not playersValue then
+                    return nil
+                end
+
+                if playersValue:IsA("IntValue") or playersValue:IsA("NumberValue") then
+                    return playersValue.Value
+                end
+
+                if not playersValue:IsA("StringValue") then
+                    return nil
+                end
+
+                local raw_value = playersValue.Value
+                local plain_count = tonumber(raw_value)
+                if plain_count then
+                    return plain_count
+                end
+
+                local slash_count = raw_value:match("^(%d+)%s*/%s*%d+")
+                if slash_count then
+                    return tonumber(slash_count)
+                end
+
+                local success, playerData = pcall(function()
+                    return Services.HttpService:JSONDecode(raw_value)
+                end)
+
+                if not success or type(playerData) ~= "table" then
+                    return nil
+                end
+
+                local function count_table_entries(tbl)
+                    local count = #tbl
+                    if count > 0 then
+                        return count
+                    end
+
+                    for _ in pairs(tbl) do
+                        count = count + 1
+                    end
+
+                    return count
+                end
+
+                if type(playerData.players) == "table" then
+                    return count_table_entries(playerData.players)
+                end
+
+                if type(playerData.Players) == "table" then
+                    return count_table_entries(playerData.Players)
+                end
+
+                if type(playerData.data) == "table" then
+                    return count_table_entries(playerData.data)
+                end
+
+                return count_table_entries(playerData)
+            end
+
             local function get_current_server_player_count()
+                local live_count = #plrs:GetPlayers()
                 local serverInfo = FindFirstChild(rps, "ServerInfo")
-                local httpService = Services.HttpService
 
                 if serverInfo then
                     local currentServer = FindFirstChild(serverInfo, game.JobId)
                     local playersValue = currentServer and FindFirstChild(currentServer, "Players")
+                    local server_list_count = parse_server_players_value(playersValue)
 
-                    if playersValue and playersValue:IsA("StringValue") then
-                        local success, playerData = pcall(function()
-                            return httpService:JSONDecode(playersValue.Value)
-                        end)
-
-                        if success and playerData and type(playerData) == "table" then
-                            return #playerData
-                        end
+                    if server_list_count then
+                        return live_count, server_list_count
                     end
                 end
 
-                return #plrs:GetPlayers()
+                return live_count, nil
             end
 
-            local function menu_on_non_23(player_count)
+            local function menu_on_non_23(player_count, server_list_count, source)
                 trinket_bot.menu_only_stop = true
                 trinket_bot.path_running = false
                 mem:RemoveItem("botstarted")
@@ -13524,10 +13820,12 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 local embed = {
                     title = "Menu on NON-23",
                     description = string.format(
-                        "**Server:** `%s (%s)`\n**Player Count:** `%d/23`\n**Action:** Menu only, bot stopped",
+                        "**Server:** `%s (%s)`\n**Player Count:** `%d/23`\n**Server List:** `%s`\n**Source:** `%s`\n**Action:** Menu only, bot stopped",
                         serverName ~= "" and serverName or "Unknown",
                         serverRegion ~= "" and serverRegion or "Unknown",
-                        player_count
+                        player_count,
+                        server_list_count and tostring(server_list_count) .. "/23" or "N/A",
+                        source or "Players"
                     ),
                     color = 0xff0000,
                     footer = {
@@ -13548,11 +13846,71 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
                 library:Notify(string.format("Menu on NON-23 triggered (%d/23)", player_count))
 
-                if rps.Requests and FindFirstChild(rps.Requests, "ReturnToMenu") and plr.Character then
-                    pcall(function()
-                        rps.Requests.ReturnToMenu:InvokeServer()
-                    end)
-                end
+                task.spawn(function()
+                    local attempts = 0
+                    local started_at = tick()
+                    local desert_gate_attempted = false
+                    while shared and not shared.is_unloading do
+                        if plr.PlayerGui and FindFirstChild(plr.PlayerGui, "StartMenu") then
+                            break
+                        end
+
+                        local requests = rps and FindFirstChild(rps, "Requests")
+                        local return_to_menu = requests and FindFirstChild(requests, "ReturnToMenu")
+                        if return_to_menu then
+                            pcall(function()
+                                return_to_menu:InvokeServer()
+                            end)
+                        end
+
+                        attempts = attempts + 1
+                        if attempts % 10 == 0 then
+                            library:Notify(string.format("Still retrying ReturnToMenu (%d attempts)", attempts))
+                        end
+
+                        local character = plr.Character
+                        local in_combat = character and (cs:HasTag(character, "Danger") or FindFirstChild(character, "Danger"))
+                        if tick() - started_at >= 60 and not in_combat then
+                            if not desert_gate_attempted then
+                                desert_gate_attempted = true
+                                library:Notify("ReturnToMenu failing - gating Desert 1 before retrying menu")
+
+                                local previous_path_running = trinket_bot.path_running
+                                trinket_bot.path_running = true
+
+                                local gate_success = false
+                                local gate_ok, gate_result = pcall(function()
+                                    return Gate("Desert 1")
+                                end)
+                                gate_success = gate_ok and gate_result == true
+
+                                trinket_bot.path_running = previous_path_running
+
+                                if gate_success then
+                                    library:Notify("Desert 1 gate complete - retrying ReturnToMenu")
+                                else
+                                    library:Notify("Desert 1 gate failed - retrying ReturnToMenu")
+                                end
+
+                                requests = rps and FindFirstChild(rps, "Requests")
+                                return_to_menu = requests and FindFirstChild(requests, "ReturnToMenu")
+                                if return_to_menu then
+                                    pcall(function()
+                                        return_to_menu:InvokeServer()
+                                    end)
+                                end
+
+                                attempts = 0
+                                started_at = tick()
+                            else
+                                plr:Kick("ReturnToMenu failed after Desert 1 gate attempt")
+                                break
+                            end
+                        end
+
+                        task.wait(0.5)
+                    end
+                end)
             end
 
             local teleport_debounce = false
@@ -13710,7 +14068,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                                 if readfile and isfile and isfile("bazaar_loader.lua") then
                                     loader_script = [[local code=readfile("bazaar_loader.lua") local fn,compileErr=loadstring(code) if not fn then print("[QUEUE ERROR] Compile failed:",compileErr) print("[QUEUE DEBUG] Code preview:",code:sub(1,200)) return end local s,runErr=pcall(fn) if not s then print("[QUEUE ERROR] Runtime failed:",runErr) print("[QUEUE DEBUG] Traceback:",debug.traceback()) end]]
                                 else
-                                    loader_script = [[if not game:IsLoaded() then game.Loaded:Wait() end task.wait(1) local s,code=pcall(function() return game:HttpGet("https://raw.githubusercontent.com/heisenburgah/HYDROXIDE/refs/heads/main/loader.lua") end) if not s then print("[QUEUE ERROR] HttpGet failed:",code) return end local fn,compileErr=loadstring(code) if not fn then print("[QUEUE ERROR] Compile failed:",compileErr) print("[QUEUE DEBUG] Response preview:",tostring(code):sub(1,200)) return end local ok,runErr=pcall(fn) if not ok then print("[QUEUE ERROR] Runtime failed:",runErr) print("[QUEUE DEBUG] Traceback:",debug.traceback()) end]]
+                                    loader_script = [[if not game:IsLoaded() then game.Loaded:Wait() end task.wait(1) local s,code=pcall(function() return game:HttpGet("https://raw.githubusercontent.com/routinebefore/23-hello/refs/heads/main/loader.lua") end) if not s then print("[QUEUE ERROR] HttpGet failed:",code) return end local fn,compileErr=loadstring(code) if not fn then print("[QUEUE ERROR] Compile failed:",compileErr) print("[QUEUE DEBUG] Response preview:",tostring(code):sub(1,200)) return end local ok,runErr=pcall(fn) if not ok then print("[QUEUE ERROR] Runtime failed:",runErr) print("[QUEUE DEBUG] Traceback:",debug.traceback()) end]]
                                 end
                                 queue_func(loader_script)
                             end)
@@ -14437,6 +14795,86 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 local critical_serverhop_sent = false
                 local menu_on_non_23_triggered = false
                 local last_non_23_check = 0
+                local menu_on_non_23_seen_full = #plrs:GetPlayers() >= 23
+                local menu_on_non_23_started_at = tick()
+
+                local function menu_on_non_23_enabled()
+                    return not test_mode
+                        and Toggles.MenuOnNon23
+                        and Toggles.MenuOnNon23.Value
+                        and trinket_bot.path_running
+                        and mem:HasItem("botstarted")
+                        and mem:GetItem("botstarted") == "true"
+                        and not trinket_bot.menu_only_stop
+                        and shared
+                        and not shared.is_unloading
+                end
+
+                local function try_menu_on_non_23(source, predicted_count)
+                    if menu_on_non_23_triggered or not menu_on_non_23_enabled() then
+                        return false
+                    end
+
+                    local live_count, server_list_count = get_current_server_player_count()
+                    local detected_count = live_count
+                    local full_count = live_count
+
+                    if server_list_count then
+                        detected_count = math.min(detected_count, server_list_count)
+                        full_count = math.max(full_count, server_list_count)
+                    end
+
+                    if predicted_count and predicted_count < detected_count then
+                        detected_count = predicted_count
+                    end
+
+                    if full_count >= 23 then
+                        menu_on_non_23_seen_full = true
+                        if detected_count >= 23 then
+                            return false
+                        end
+                    end
+
+                    if not menu_on_non_23_seen_full and tick() - menu_on_non_23_started_at < 3 then
+                        return false
+                    end
+
+                    if detected_count < 23 then
+                        menu_on_non_23_triggered = true
+                        menu_on_non_23(detected_count, server_list_count, source)
+                        return true
+                    end
+
+                    return false
+                end
+
+                track_connection("menu_on_non_23_added", utility:Connection(plrs.PlayerAdded, function()
+                    task.defer(function()
+                        if #plrs:GetPlayers() >= 23 then
+                            menu_on_non_23_seen_full = true
+                        end
+                    end)
+                end))
+
+                track_connection("menu_on_non_23_removing", utility:Connection(plrs.PlayerRemoving, function(player)
+                    local players = plrs:GetPlayers()
+                    local predicted_count = #players
+                    if table.find(players, player) then
+                        predicted_count = predicted_count - 1
+                    end
+
+                    if #players >= 23 then
+                        menu_on_non_23_seen_full = true
+                    end
+
+                    if try_menu_on_non_23("PlayerRemoving", predicted_count) then
+                        return
+                    end
+
+                    task.defer(function()
+                        try_menu_on_non_23("PlayerRemoving")
+                    end)
+                end))
 
                 local emergency_serverhop_connection
                 local emergency_conditions = Options.EmergencyServerhopConditions and Options.EmergencyServerhopConditions.Value or {}
@@ -14639,14 +15077,11 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 end
 
                 proximity_connection = track_connection("proximity", utility:Connection(rs.Heartbeat, LPH_NO_VIRTUALIZE(function()
-                    if not test_mode and not menu_on_non_23_triggered and Toggles.MenuOnNon23 and Toggles.MenuOnNon23.Value and trinket_bot.path_running and mem:HasItem("botstarted") and mem:GetItem("botstarted") == "true" then
+                    if menu_on_non_23_enabled() then
                         local now = tick()
-                        if now - last_non_23_check >= 1 then
+                        if now - last_non_23_check >= 0.25 then
                             last_non_23_check = now
-                            local player_count = get_current_server_player_count()
-                            if player_count < 23 then
-                                menu_on_non_23_triggered = true
-                                menu_on_non_23(player_count)
+                            if try_menu_on_non_23("Heartbeat") then
                                 return
                             end
                         end
@@ -14844,7 +15279,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
                     if currently_dropping then return end
 
-                    if Toggles.ReequipGateInLoop and Toggles.ReequipGateInLoop.Value then
+                    if Toggles.ReequipGateInLoop and Toggles.ReequipGateInLoop.Value and not trinket_bot.suppress_gate_reequip then
                         local gate_in_backpack = FindFirstChild(plr.Backpack, "Gate")
                         local gate_equipped = FindFirstChild(plr.Character, "Gate")
                         if gate_in_backpack and not gate_equipped then
@@ -16277,6 +16712,11 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                             end
                         end
 
+                        if point.is_verdien_point then
+                            library:Notify(string.format("Using Verdien point %d", i))
+                            ExecuteVerdienPoint()
+                        end
+
                         if point.wait_for_trinket then
                             local stay_in_server = Toggles.StayInServer and Toggles.StayInServer.Value or false
                             if not stay_in_server then
@@ -16914,6 +17354,27 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             })
 
             group_trinket_bot:AddButton({
+                Text = "Add Verdien Point",
+                Func = function()
+                    if not plr.Character or not FindFirstChild(plr.Character, "HumanoidRootPart") then
+                        library:Notify("Character not found!")
+                        return
+                    end
+
+                    local position = plr.Character.HumanoidRootPart.Position
+                    table.insert(trinket_bot.path_points, {
+                        position = position,
+                        wait_for_trinket = false,
+                        wait_time = 0,
+                        is_verdien_point = true
+                    })
+
+                    library:Notify(string.format("Added Verdien point #%d", #trinket_bot.path_points))
+                    update_visualizations()
+                end
+            })
+
+            group_trinket_bot:AddButton({
                 Text = "Clear Points",
                 DoubleClick = true,
                 Func = function()
@@ -17327,6 +17788,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                             wait_for_trinket = point_data.wait_for_trinket or false,
                             wait_time = point_data.wait_time or 0,
                             is_gate_point = point_data.is_gate_point or false,
+                            is_verdien_point = point_data.is_verdien_point or false,
                             gate_location = point_data.gate_location
                         })
                     end
@@ -18169,6 +18631,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                             wait_for_trinket = point.wait_for_trinket,
                             wait_time = point.wait_time or 0,
                             is_gate_point = point.is_gate_point or false,
+                            is_verdien_point = point.is_verdien_point or false,
                             gate_location = point.gate_location
                         })
                     end
@@ -27507,7 +27970,8 @@ end
 
                             if cached_tool and cheat_client.spell_cost[cached_tool.Name] then
                                 local spell_data = cheat_client.spell_cost[cached_tool.Name][1]
-                                local min_cost, max_cost = spell_data[1], spell_data[2]
+                                local min_cost = spell_data[1]
+                                local max_cost = spell_data[2]
                                 local mid_cost = (min_cost + max_cost) / 2
                                 local range = max_cost - min_cost
                                 
@@ -27563,8 +28027,9 @@ end
 
                         if Toggles.AutoCharge and Toggles.AutoCharge.Value
                             and mana_remote
-                            and mana_val <= Options.AutoChargeThreshold.Value
+                            and mana_val < Options.AutoChargeThreshold.Value
                             and not cs:HasTag(char, "Casting")
+                            and not (trinket_bot and trinket_bot.path_running)
                         then
                             if Toggles.train_climb and Toggles.train_climb.Value then
                                 Toggles.train_climb:SetValue(false)
