@@ -14247,7 +14247,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         if tick() - started_at >= 60 and not in_combat then
                             if not desert_gate_attempted then
                                 desert_gate_attempted = true
-                                library:Notify("ReturnToMenu failing - gating Desert 1 before retrying menu")
+                                library:Notify("ReturnToMenu failing - gating Desert 1 before final menu attempt")
 
                                 local previous_path_running = trinket_bot.path_running
                                 trinket_bot.path_running = true
@@ -14270,23 +14270,42 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                                 trinket_bot.path_running = previous_path_running
 
                                 if not gate_finished then
-                                    library:Notify("Desert 1 gate timed out - retrying ReturnToMenu")
+                                    library:Notify("Desert 1 gate timed out - forcing menu then kicking if character remains")
                                 elseif gate_success then
-                                    library:Notify("Desert 1 gate complete - retrying ReturnToMenu")
+                                    library:Notify("Desert 1 gate complete - forcing menu")
                                 else
-                                    library:Notify("Desert 1 gate failed - retrying ReturnToMenu")
+                                    library:Notify("Desert 1 gate failed - forcing menu then kicking if character remains")
                                 end
 
-                                requests = rps and FindFirstChild(rps, "Requests")
-                                return_to_menu = requests and FindFirstChild(requests, "ReturnToMenu")
-                                if return_to_menu then
-                                    pcall(function()
-                                        return_to_menu:InvokeServer()
-                                    end)
+                                local menu_confirmed = false
+                                local menu_confirm_started = tick()
+                                while tick() - menu_confirm_started < 2 and shared and not shared.is_unloading do
+                                    if plr.PlayerGui and FindFirstChild(plr.PlayerGui, "StartMenu") then
+                                        menu_confirmed = true
+                                        break
+                                    end
+
+                                    local current_character = plr.Character
+                                    if not current_character or not current_character.Parent then
+                                        menu_confirmed = true
+                                        break
+                                    end
+
+                                    requests = rps and FindFirstChild(rps, "Requests")
+                                    return_to_menu = requests and FindFirstChild(requests, "ReturnToMenu")
+                                    if return_to_menu then
+                                        pcall(function()
+                                            return_to_menu:InvokeServer()
+                                        end)
+                                    end
+
+                                    task.wait(0.25)
                                 end
 
-                                attempts = 0
-                                started_at = tick()
+                                if not menu_confirmed then
+                                    plr:Kick("ReturnToMenu failed after Desert 1 gate attempt")
+                                end
+                                break
                             else
                                 plr:Kick("ReturnToMenu failed after Desert 1 gate attempt")
                                 break
