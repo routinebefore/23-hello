@@ -604,6 +604,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             auto_ingredient_pickup_keybind = "None",
             auto_weapon_keybind = "None",
             auto_craft_delay = 0.45,
+            pickup_bloodthorn = true,
             ps_heal_button_keybind = "None",
             instant_menu_keybind = "None",
             menu_keybind = "RightShift",
@@ -7460,6 +7461,20 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             DisableSearch = false
         })
 
+        task.defer(function()
+            if library and library.ScreenGui then
+                for _, object in ipairs(library.ScreenGui:GetDescendants()) do
+                    if object:IsA("TextLabel") and object.Text == "SGW Hub | Alpha 1.6.7" then
+                        object.TextSize = 16
+                        object.TextScaled = true
+                        object.TextWrapped = false
+                        object.Size = UDim2.new(1, -16, 1, 0)
+                        break
+                    end
+                end
+            end
+        end)
+
         local Tabs = {
             Combat = window:AddTab("Combat", "sword"),
             Visuals = window:AddTab("Visuals", "eye"),
@@ -13541,6 +13556,23 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 local origin = root.Position
                 local picked = {}
 
+                local function is_bloodthorn(object)
+                    local function normalize(name)
+                        return tostring(name or ""):lower():gsub("%s+", "")
+                    end
+
+                    local name = normalize(object and object.Name)
+                    if name == "bloodthorn" or name == "bloodthorns" then
+                        return true
+                    end
+
+                    local success, ingredient_name = pcall(function()
+                        return cheat_client:identify_ingredient(object)
+                    end)
+                    name = normalize(success and ingredient_name)
+                    return name == "bloodthorn" or name == "bloodthorns"
+                end
+
                 while trinket_bot.path_running and not shared.is_unloading and not emergency_gate_requested and not trinket_bot.moderator_detected do
                     character = plr.Character
                     root = character and FindFirstChild(character, "HumanoidRootPart")
@@ -13553,6 +13585,11 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
                     for _, object in next, ingredient_folder:GetChildren() do
                         if object and object.Parent and not picked[object] then
+                            if is_bloodthorn(object) and Toggles.PickupBloodthorn and not Toggles.PickupBloodthorn.Value then
+                                picked[object] = true
+                                continue
+                            end
+
                             local click_detector = FindFirstChild(object, "ClickDetector", true)
                             local ingredient_part = click_detector and get_ingredient_part(object, click_detector)
                             if click_detector and ingredient_part and (ingredient_part.Position - origin).Magnitude <= radius then
@@ -14364,6 +14401,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     pickup_mythics_artifacts = Options.PickupMythicsArtifacts and Options.PickupMythicsArtifacts.Value or {},
                     pickup_event_items = Toggles.PickupEventItems and Toggles.PickupEventItems.Value or false,
                     pickup_trinkets = Toggles.PickupTrinkets and Toggles.PickupTrinkets.Value or false,
+                    pickup_bloodthorn = Toggles.PickupBloodthorn == nil and true or Toggles.PickupBloodthorn.Value,
                     disable_gpu_rendering = Toggles.DisableGPURendering and Toggles.DisableGPURendering.Value or false,
                     emergency_serverhop_conditions = Options.EmergencyServerhopConditions and Options.EmergencyServerhopConditions.Value or {},
                     join_oldest_server = Toggles.JoinOldestServer and Toggles.JoinOldestServer.Value or false,
@@ -17949,6 +17987,11 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 Default = false
             })
 
+            group_trinket_bot:AddToggle("PickupBloodthorn", {
+                Text = "Pick up Bloodthorn",
+                Default = cheat_client.config.pickup_bloodthorn
+            })
+
             group_trinket_bot:AddToggle("PickupTrinkets", {
                 Text = "Pick up Common Trinkets",
                 Default = false
@@ -18169,6 +18212,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 end
                 if Toggles.PickupEventItems then Toggles.PickupEventItems:SetValue(settings.pickup_event_items or false) end
                 if Toggles.PickupTrinkets then Toggles.PickupTrinkets:SetValue(settings.pickup_trinkets or false) end
+                if Toggles.PickupBloodthorn then Toggles.PickupBloodthorn:SetValue(settings.pickup_bloodthorn == nil and true or settings.pickup_bloodthorn) end
                 if Toggles.DisableGPURendering then Toggles.DisableGPURendering:SetValue(settings.disable_gpu_rendering or false) end
                 if Options.EmergencyServerhopConditions then Options.EmergencyServerhopConditions:SetValue(settings.emergency_serverhop_conditions or {}) end
                 if Toggles.JoinOldestServer then Toggles.JoinOldestServer:SetValue(settings.join_oldest_server or false) end
@@ -19110,6 +19154,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                             pickup_mythics_artifacts = Options.PickupMythicsArtifacts and Options.PickupMythicsArtifacts.Value or {},
                             pickup_event_items = Toggles.PickupEventItems and Toggles.PickupEventItems.Value or false,
                             pickup_trinkets = Toggles.PickupTrinkets and Toggles.PickupTrinkets.Value or false,
+                            pickup_bloodthorn = Toggles.PickupBloodthorn == nil and true or Toggles.PickupBloodthorn.Value,
                             disable_gpu_rendering = Toggles.DisableGPURendering and Toggles.DisableGPURendering.Value or false,
                             emergency_serverhop_conditions = Options.EmergencyServerhopConditions and Options.EmergencyServerhopConditions.Value or {},
                             join_oldest_server = Toggles.JoinOldestServer and Toggles.JoinOldestServer.Value or false,
