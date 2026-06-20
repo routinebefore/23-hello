@@ -603,7 +603,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             auto_trinket_pickup_keybind = "None",
             auto_ingredient_pickup_keybind = "None",
             auto_weapon_keybind = "None",
-            auto_craft_delay = 0.25,
+            auto_craft_delay = 0.45,
             ps_heal_button_keybind = "None",
             instant_menu_keybind = "None",
             menu_keybind = "RightShift",
@@ -6500,6 +6500,29 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     ['Snowshroom'] = 2
                 },
             };
+
+            local potion_names = {
+                "Health Potion",
+                "Tespian Elixir",
+                "Feather Feet",
+                "Fire Protection",
+                "Kingsbane",
+                "Lordsbane",
+                "Silver Sun",
+                "Switch Witch",
+                "Bone Growth",
+                "Liquid Wisdom",
+                "Ice Protection",
+                "Slateskin",
+                "Mind Mend",
+                "Clot Control",
+                "Maidensbane",
+                "Sooth Sight",
+                "Crystal Extract",
+                "Soothing Frost"
+            }
+            cheat_client.potion_recipes = potions
+            cheat_client.potion_names = potion_names
             
             local swords = {
                 ['Bronze Sword'] = {
@@ -6600,32 +6623,45 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             end;
             
     
-            local function addItemsToStation(items, station, part, partToClick, partToClean)
+            local function addItemsToStation(items, station, part, partToClick, partToClean, should_continue)
+                local function can_continue()
+                    if should_continue then
+                        local ok, result = pcall(should_continue)
+                        return ok and result
+                    end
+
+                    return true
+                end
+
                 if(station.Contents.Value ~= '[]') then
                     repeat
+                        if not can_continue() then return false end
                         fireclickdetector(station[partToClean].ClickEmpty);
                         task.wait(utility:random_wait(true));
-                    until station.Contents.Value == '[]';
+                    until station.Contents.Value == '[]' or not can_continue();
+
+                    if not can_continue() then return false end
             
                     task.wait(utility:random_wait(true))
                 end;
 
                 for name, count in next, items do
                     for i = 1, count do
+                        if not can_continue() then return false end
                         if not plr.Backpack then
                             warn("[auto stuff] Backpack not found")
-                            return
+                            return false
                         end
                         local k = FindFirstChild(plr.Backpack, name);
             
                         if not k then 
                             warn(string.format("[auto stuff] missing ingredient: %s", name)) 
-                            return 
+                            return false
                         end 
             
                         if k.Parent == nil then 
                             warn(string.format("[auto stuff] cannot move %s, its parent is NULL", name))
-                            return
+                            return false
                         end
             
                         task.wait(utility:random_wait(true))
@@ -6633,7 +6669,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
                         if k.Parent ~= plr.Character then
                             warn("[auto stuff] Failed to move " .. name .. " to character")
-                            return
+                            return false
                         end
 
 
@@ -6642,9 +6678,12 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                             local content = station.Contents.Value;
 
                             repeat
+                                if not can_continue() then return false end
                                 remote:FireServer(station[part].CFrame, station[part]);
                                 task.wait(utility:random_wait(true))
-                            until station.Contents.Value ~= content;
+                            until station.Contents.Value ~= content or not can_continue();
+
+                            if not can_continue() then return false end
 
                             if k.Parent and plr.Backpack then
                                 k.Parent = plr.Backpack;
@@ -6655,33 +6694,74 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             
                             repeat
                                 task.wait(utility:random_wait(true))
-                            until not k.Parent;
+                            until not k.Parent or not can_continue();
+
+                            if not can_continue() then return false end
                         end;
                     end;
                 end;
             
                 repeat
+                    if not can_continue() then return false end
                     fireclickdetector(station[partToClick].ClickConcoct);
                     task.wait(utility:random_wait(true))
-                until station.Contents.Value == '[]';
+                until station.Contents.Value == '[]' or not can_continue();
+
+                return can_continue()
             end;
             
     
-            function utility:craft(stationType, itemToCraft)
+            function utility:craft(stationType, itemToCraft, craft_options)
+                craft_options = type(craft_options) == "table" and craft_options or {}
                 if not plr.Character then return false end
-                if not (auto_pot_active or auto_craft_active) then return false end
+                if not (auto_pot_active or auto_craft_active or craft_options.allow_inactive) then return false end
 
                 local station = GrabStation(stationType);
                 local items = hasMaterials(stationType == 'Alchemy' and potions or swords, itemToCraft);
+                local crafted_count = 0
+                local target_count = tonumber(craft_options.count)
+
+                local function can_continue(active)
+                    if shared and shared.is_unloading then
+                        return false
+                    end
+
+                    if craft_options.should_continue then
+                        local ok, result = pcall(craft_options.should_continue)
+                        if not ok or not result then
+                            return false
+                        end
+                    end
+
+                    if craft_options.allow_inactive then
+                        return true
+                    end
+
+                    return active == true
+                end
+
+                local function get_craft_delay()
+                    local delay = tonumber(craft_options.delay)
+                    if not delay then
+                        delay = cheat_client and cheat_client.config and tonumber(cheat_client.config.auto_craft_delay) or nil
+                    end
+                    delay = delay or utility:random_wait(true)
+
+                    if stationType == 'Alchemy' then
+                        delay = math.max(delay, 0.45)
+                    end
+
+                    return delay
+                end
 
                 if (library ~= nil and library.Notify) then
                     if(not station) then
                         library:Notify("You must be near a cauldron/furnace!", Color3.fromRGB(255,0,0))
-                        return false
+                        return false, 0, "no_station"
                     end
                     if(not items) then
                         library:Notify("Some ingredients are missing!", Color3.fromRGB(255,0,0))
-                        return false
+                        return false, 0, "no_materials"
                     end
                 end
     
@@ -6696,31 +6776,50 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         }
                     end;
                 end;
-    
+
                 if (stationType == 'Alchemy') then
                     repeat
-                        if not auto_pot_active then return false end
-                        addItemsToStation(items, station, 'Water', 'Ladle', 'Bucket');
+                        if not can_continue(auto_pot_active) then return crafted_count > 0, crafted_count, "stopped" end
+                        local craft_success = addItemsToStation(items, station, 'Water', 'Ladle', 'Bucket', function()
+                            return can_continue(auto_pot_active)
+                        end);
+                        if not craft_success then
+                            return crafted_count > 0, crafted_count, "failed"
+                        end
+
+                        crafted_count = crafted_count + 1
+                        if craft_options.on_brew then
+                            pcall(craft_options.on_brew, crafted_count)
+                        end
+
+                        if target_count and crafted_count >= target_count then
+                            break
+                        end
+
                         items = hasMaterials(stationType == 'Alchemy' and potions or swords, itemToCraft);
 
-                        if cheat_client and cheat_client.config and cheat_client.config.auto_craft_delay then
-                            task.wait(cheat_client.config.auto_craft_delay)
-                        else
-                            task.wait(utility:random_wait(true))
-                        end
-                    until not items or not auto_pot_active;
+                        task.wait(get_craft_delay())
+                    until not items or not can_continue(auto_pot_active);
                 elseif (stationType == 'Smithing') then
                     repeat
-                        if not auto_craft_active then return false end
-                        addItemsToStation(items, station, 'Material', 'Hammer', 'Trash');
+                        if not can_continue(auto_craft_active) then return crafted_count > 0, crafted_count, "stopped" end
+                        local craft_success = addItemsToStation(items, station, 'Material', 'Hammer', 'Trash', function()
+                            return can_continue(auto_craft_active)
+                        end);
+                        if not craft_success then
+                            return crafted_count > 0, crafted_count, "failed"
+                        end
+
+                        crafted_count = crafted_count + 1
+
+                        if target_count and crafted_count >= target_count then
+                            break
+                        end
+
                         items = hasMaterials(stationType == 'Alchemy' and potions or swords, itemToCraft);
 
-                        if cheat_client and cheat_client.config and cheat_client.config.auto_craft_delay then
-                            task.wait(cheat_client.config.auto_craft_delay)
-                        else
-                            task.wait(utility:random_wait(true))
-                        end
-                    until not items or not auto_craft_active;
+                        task.wait(get_craft_delay())
+                    until not items or not can_continue(auto_craft_active);
                 end;
 
                 rps.Requests.GetMouse.OnClientInvoke = function()
@@ -6733,7 +6832,15 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     }
                 end
 
-                return true
+                if target_count and crafted_count >= target_count then
+                    return true, crafted_count, "target"
+                end
+
+                if not items then
+                    return crafted_count > 0, crafted_count, "no_materials"
+                end
+
+                return crafted_count > 0, crafted_count, "stopped"
             end
         end
 
@@ -7344,7 +7451,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
         local Toggles = library.Toggles
 
         local window = library:CreateWindow({
-            Title = HXD_UserNote and string.format("Hydroxide | %s", HXD_UserNote:sub(1,1):upper() .. HXD_UserNote:sub(2)) or "Hydroxide",
+            Title = "SGW Hub | Alpha 1.6.7",
             NotifySide = "Left",
             Footer = "",
             Center = true,
@@ -9051,7 +9158,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             do
                 group_automation:AddDropdown("potions", {
                     Text = "Potions",
-                    Values = {"Health Potion", "Tespian Elixir", "Feather Feet", "Fire Protection", "Kingsbane", "Lordsbane", "Silver Sun", "Switch Witch"},
+                    Values = cheat_client.potion_names or {"Health Potion", "Tespian Elixir", "Feather Feet", "Fire Protection", "Kingsbane", "Lordsbane", "Silver Sun", "Switch Witch"},
                     Default = "Health Potion",
                     Callback = function(value)
                     end
@@ -9128,7 +9235,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 group_automation:AddSlider("auto_craft_delay", {
                     Text = "Auto Craft Delay",
                     Default = cheat_client.config.auto_craft_delay,
-                    Min = 0.1,
+                    Min = 0.45,
                     Max = 5,
                     Rounding = 2,
                     Compact = false,
@@ -12674,7 +12781,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 end
             end
 
-            local function create_point_visualization(position, is_wait_point, is_gate_point, is_verdien_point)
+            local function create_point_visualization(position, is_wait_point, is_gate_point, is_verdien_point, is_brew_point)
                 local sphere = Instance.new("Part")
                 sphere.Shape = Enum.PartType.Ball
                 sphere.Size = Vector3.new(2, 2, 2)
@@ -12687,6 +12794,8 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     sphere.Color = Color3.fromRGB(255, 105, 180)
                 elseif is_verdien_point then
                     sphere.Color = Color3.fromRGB(90, 255, 120)
+                elseif is_brew_point then
+                    sphere.Color = Color3.fromRGB(255, 170, 70)
                 elseif is_wait_point then
                     sphere.Color = Color3.fromRGB(0, 100, 255)
                 else
@@ -12713,11 +12822,12 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     for i, point in ipairs(trinket_bot.path_points) do
                         local is_gate = point.is_gate_point or false
                         local is_verdien = point.is_verdien_point or false
-                        local sphere = create_point_visualization(point.position, point.wait_for_trinket, is_gate, is_verdien)
+                        local is_brew = point.is_brew_potion_point or false
+                        local sphere = create_point_visualization(point.position, point.wait_for_trinket, is_gate, is_verdien, is_brew)
                         table.insert(trinket_bot.point_visualizations, sphere)
 
                         local billboard = Instance.new("BillboardGui")
-                        billboard.Size = (is_gate or is_verdien) and UDim2.new(0, 100, 0, 50) or UDim2.new(0, 50, 0, 50)
+                        billboard.Size = (is_gate or is_verdien or is_brew) and UDim2.new(0, 100, 0, 50) or UDim2.new(0, 50, 0, 50)
                         billboard.AlwaysOnTop = true
                         billboard.Adornee = sphere
                         billboard.Parent = hidden_folder
@@ -12733,6 +12843,9 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         elseif is_verdien then
                             label.Text = "Verdien"
                             label.TextColor3 = Color3.fromRGB(90, 255, 120)
+                        elseif is_brew then
+                            label.Text = "Brew"
+                            label.TextColor3 = Color3.fromRGB(255, 170, 70)
                         else
                             label.Text = tostring(i)
                             label.TextColor3 = point.wait_for_trinket and Color3.fromRGB(100, 150, 255) or Color3.new(1, 1, 1)
@@ -13564,6 +13677,111 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
                 PickupNearbyIngredients(50)
                 return finish(true)
+            end
+
+            local BREW_PROGRESS_KEY = "trinket_bot_brew_progress"
+
+            local function get_brew_progress()
+                if not mem or not mem:HasItem(BREW_PROGRESS_KEY) then
+                    return {}
+                end
+
+                local success, data = pcall(function()
+                    return Services.HttpService:JSONDecode(mem:GetItem(BREW_PROGRESS_KEY))
+                end)
+
+                return success and type(data) == "table" and data or {}
+            end
+
+            local function set_brew_progress(key, count)
+                if not mem or not key then
+                    return
+                end
+
+                local data = get_brew_progress()
+                if count and count > 0 then
+                    data[key] = count
+                else
+                    data[key] = nil
+                end
+
+                if next(data) then
+                    pcall(function()
+                        mem:SetItem(BREW_PROGRESS_KEY, Services.HttpService:JSONEncode(data))
+                    end)
+                else
+                    pcall(function()
+                        mem:RemoveItem(BREW_PROGRESS_KEY)
+                    end)
+                end
+            end
+
+            local function get_brew_point_key(point)
+                local position = point.position
+                local path_name = trinket_bot.current_path_name ~= "" and trinket_bot.current_path_name or "unsaved"
+                return string.format(
+                    "%s|%.1f|%.1f|%.1f|%s|%s",
+                    path_name,
+                    position.X,
+                    position.Y,
+                    position.Z,
+                    tostring(point.brew_potion or "Health Potion"),
+                    tostring(point.brew_until_gone and "until_gone" or point.brew_amount or 1)
+                )
+            end
+
+            local function ExecuteBrewPotionPoint(point)
+                local potion = point.brew_potion or "Health Potion"
+                local amount = tonumber(point.brew_amount) or 1
+                local until_gone = point.brew_until_gone or amount > 24
+                local key = get_brew_point_key(point)
+                local progress = tonumber(get_brew_progress()[key]) or 0
+                local remaining = until_gone and nil or math.max(amount - progress, 0)
+
+                if not until_gone and remaining <= 0 then
+                    set_brew_progress(key, nil)
+                    return true
+                end
+
+                library:Notify(string.format(
+                    "Brewing %s (%s)",
+                    potion,
+                    until_gone and "Until Gone" or string.format("%d/%d done", progress, amount)
+                ))
+
+                local success, brewed, reason = utility:craft("Alchemy", potion, {
+                    allow_inactive = true,
+                    count = remaining,
+                    delay = math.max(tonumber(cheat_client.config.auto_craft_delay) or 0.45, 0.45),
+                    should_continue = function()
+                        return trinket_bot.path_running
+                            and not shared.is_unloading
+                            and not emergency_gate_requested
+                            and not trinket_bot.moderator_detected
+                    end,
+                    on_brew = function(crafted_now)
+                        set_brew_progress(key, progress + crafted_now)
+                    end
+                })
+
+                brewed = tonumber(brewed) or 0
+
+                if not trinket_bot.path_running or shared.is_unloading or emergency_gate_requested or trinket_bot.moderator_detected then
+                    return false
+                end
+
+                local total_brewed = progress + brewed
+                if success then
+                    library:Notify(string.format("Brewed %d %s", brewed, potion))
+                end
+
+                if until_gone or reason == "no_materials" or reason == "target" or not success or total_brewed >= amount then
+                    set_brew_progress(key, nil)
+                else
+                    set_brew_progress(key, total_brewed)
+                end
+
+                return true
             end
 
             local function CheckForTrinkets()
@@ -16884,6 +17102,13 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                             ExecuteVerdienPoint()
                         end
 
+                        if point.is_brew_potion_point then
+                            library:Notify(string.format("Using Brew Potion point %d", i))
+                            if not ExecuteBrewPotionPoint(point) then
+                                return
+                            end
+                        end
+
                         if point.wait_for_trinket then
                             local stay_in_server = Toggles.StayInServer and Toggles.StayInServer.Value or false
                             if not stay_in_server then
@@ -17541,6 +17766,52 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 end
             })
 
+            group_trinket_bot:AddDropdown("BrewPotionPointType", {
+                Text = "Brew Potion Type",
+                Values = cheat_client.potion_names or {"Health Potion", "Tespian Elixir", "Feather Feet", "Fire Protection", "Kingsbane", "Lordsbane", "Silver Sun", "Switch Witch"},
+                Default = "Health Potion"
+            })
+
+            group_trinket_bot:AddSlider("BrewPotionPointAmount", {
+                Text = "Brew Potion Amount",
+                Default = 1,
+                Min = 1,
+                Max = 25,
+                Rounding = 0,
+                HideMax = true,
+                FormatDisplayValue = function(_, value)
+                    return value >= 25 and "Until Gone" or tostring(value)
+                end
+            })
+
+            group_trinket_bot:AddButton({
+                Text = "Add Brew Potion Point",
+                Func = function()
+                    if not plr.Character or not FindFirstChild(plr.Character, "HumanoidRootPart") then
+                        library:Notify("Character not found!")
+                        return
+                    end
+
+                    local potion = Options.BrewPotionPointType and Options.BrewPotionPointType.Value or "Health Potion"
+                    local amount_value = Options.BrewPotionPointAmount and Options.BrewPotionPointAmount.Value or 1
+                    local until_gone = amount_value >= 25
+                    local position = plr.Character.HumanoidRootPart.Position
+
+                    table.insert(trinket_bot.path_points, {
+                        position = position,
+                        wait_for_trinket = false,
+                        wait_time = 0,
+                        is_brew_potion_point = true,
+                        brew_potion = potion,
+                        brew_amount = until_gone and 25 or amount_value,
+                        brew_until_gone = until_gone
+                    })
+
+                    library:Notify(string.format("Added Brew Potion point #%d: %s (%s)", #trinket_bot.path_points, potion, until_gone and "Until Gone" or tostring(amount_value)))
+                    update_visualizations()
+                end
+            })
+
             group_trinket_bot:AddButton({
                 Text = "Clear Points",
                 DoubleClick = true,
@@ -17956,6 +18227,10 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                             wait_time = point_data.wait_time or 0,
                             is_gate_point = point_data.is_gate_point or false,
                             is_verdien_point = point_data.is_verdien_point or false,
+                            is_brew_potion_point = point_data.is_brew_potion_point or false,
+                            brew_potion = point_data.brew_potion,
+                            brew_amount = point_data.brew_amount,
+                            brew_until_gone = point_data.brew_until_gone or false,
                             gate_location = point_data.gate_location
                         })
                     end
@@ -18799,6 +19074,10 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                             wait_time = point.wait_time or 0,
                             is_gate_point = point.is_gate_point or false,
                             is_verdien_point = point.is_verdien_point or false,
+                            is_brew_potion_point = point.is_brew_potion_point or false,
+                            brew_potion = point.brew_potion,
+                            brew_amount = point.brew_amount,
+                            brew_until_gone = point.brew_until_gone or false,
                             gate_location = point.gate_location
                         })
                     end
