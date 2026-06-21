@@ -14122,39 +14122,34 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 return count_table_entries(playerData), table_has_local_player(playerData)
             end
 
-            local function get_current_server_player_count()
-                local live_count = #plrs:GetPlayers()
-                local serverInfo = FindFirstChild(rps, "ServerInfo")
+            local function get_leaderboard_scrolling_frame()
+                local playerGui = plr and plr.PlayerGui
+                local leaderboardGui = playerGui and FindFirstChild(playerGui, "LeaderboardGui")
+                local mainFrame = leaderboardGui and FindFirstChild(leaderboardGui, "MainFrame")
+                return mainFrame and FindFirstChild(mainFrame, "ScrollingFrame")
+            end
 
-                if serverInfo then
-                    local function read_server_folder_count(serverFolder)
-                        local playersValue = serverFolder and FindFirstChild(serverFolder, "Players")
-                        local server_list_count, has_local_player = parse_server_players_value(playersValue)
-                        if server_list_count and server_list_count > 0 then
-                            return server_list_count, has_local_player
-                        end
-                    end
+            local function count_leaderboard_player_labels(scrollingFrame)
+                scrollingFrame = scrollingFrame or get_leaderboard_scrolling_frame()
+                if not scrollingFrame then
+                    return nil
+                end
 
-                    local currentServer = FindFirstChild(serverInfo, game.JobId)
-                    local server_list_count = read_server_folder_count(currentServer)
-                    if server_list_count then
-                        return live_count, server_list_count
-                    end
-
-                    for _, serverFolder in ipairs(serverInfo:GetChildren()) do
-                        if serverFolder ~= currentServer then
-                            local fallback_count, has_local_player = read_server_folder_count(serverFolder)
-                            if fallback_count and has_local_player then
-                                return live_count, fallback_count
-                            end
-                        end
+                local count = 0
+                for _, child in ipairs(scrollingFrame:GetChildren()) do
+                    if child.Name == "PlayerLabel" and child:IsA("Frame") then
+                        count = count + 1
                     end
                 end
 
-                return live_count, nil
+                return count
             end
 
-            local function menu_on_non_23(player_count, server_list_count, source)
+            local function get_current_server_player_count()
+                return count_leaderboard_player_labels()
+            end
+
+            local function menu_on_non_23(player_count, leaderboard_count, source)
                 trinket_bot.menu_only_stop = true
                 trinket_bot.path_running = false
                 mem:RemoveItem("botstarted")
@@ -14231,11 +14226,11 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 local embed = {
                     title = "Menu on NON-23",
                     description = string.format(
-                        "**Server:** `%s (%s)`\n**Player Count:** `%d/23`\n**Server List:** `%s`\n**Source:** `%s`\n**Action:** Menu only, bot stopped",
+                        "**Server:** `%s (%s)`\n**Player Count:** `%d/23`\n**Leaderboard Count:** `%s`\n**Source:** `%s`\n**Action:** Menu only, bot stopped",
                         serverName ~= "" and serverName or "Unknown",
                         serverRegion ~= "" and serverRegion or "Unknown",
                         player_count,
-                        server_list_count and tostring(server_list_count) .. "/23" or "N/A",
+                        leaderboard_count and tostring(leaderboard_count) .. "/23" or "N/A",
                         source or "Players"
                     ),
                     color = 0xff0000,
@@ -15237,8 +15232,9 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 local critical_serverhop_sent = false
                 local menu_on_non_23_triggered = false
                 local last_non_23_check = 0
-                local menu_on_non_23_seen_full = #plrs:GetPlayers() >= 23
+                local menu_on_non_23_seen_full = (get_current_server_player_count() or 0) >= 23
                 local menu_on_non_23_started_at = tick()
+                local menu_on_non_23_leaderboard_connection
 
                 local function menu_on_non_23_enabled()
                     return not test_mode
@@ -15257,62 +15253,88 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         return false
                     end
 
-                    local live_count, server_list_count = get_current_server_player_count()
-                    local detected_count = live_count
-                    local full_count = live_count
+                    local leaderboard_count = get_current_server_player_count()
+                    local forced_leaderboard_removed = source == "LeaderboardGui.ChildRemoved"
+                    local detected_count = leaderboard_count or predicted_count
 
-                    if server_list_count then
-                        detected_count = math.min(detected_count, server_list_count)
-                        full_count = math.max(full_count, server_list_count)
+                    if forced_leaderboard_removed then
+                        detected_count = math.min(tonumber(predicted_count or leaderboard_count) or 22, 22)
+                        leaderboard_count = detected_count
                     end
 
                     if predicted_count and predicted_count < detected_count then
                         detected_count = predicted_count
                     end
 
-                    if full_count >= 23 then
-                        menu_on_non_23_seen_full = true
-                        if detected_count >= 23 then
-                            return false
-                        end
+                    if not detected_count then
+                        return false
                     end
 
-                    if not menu_on_non_23_seen_full and tick() - menu_on_non_23_started_at < 3 then
+                    if not forced_leaderboard_removed and leaderboard_count and leaderboard_count >= 23 then
+                        menu_on_non_23_seen_full = true
+                        return false
+                    end
+
+                    if not forced_leaderboard_removed and predicted_count and predicted_count >= 23 then
+                        menu_on_non_23_seen_full = true
+                        return false
+                    end
+
+                    if not forced_leaderboard_removed and not menu_on_non_23_seen_full and tick() - menu_on_non_23_started_at < 3 then
                         return false
                     end
 
                     if detected_count < 23 then
                         menu_on_non_23_triggered = true
-                        menu_on_non_23(detected_count, server_list_count, source)
+                        menu_on_non_23(detected_count, leaderboard_count, source)
                         return true
                     end
 
                     return false
                 end
 
+                local function attach_menu_on_non_23_leaderboard()
+                    if menu_on_non_23_leaderboard_connection then
+                        pcall(function()
+                            menu_on_non_23_leaderboard_connection:Disconnect()
+                        end)
+                        menu_on_non_23_leaderboard_connection = nil
+                    end
+
+                    local scrollingFrame = get_leaderboard_scrolling_frame()
+                    if not scrollingFrame then
+                        return
+                    end
+
+                    menu_on_non_23_leaderboard_connection = track_connection("menu_on_non_23_leaderboard_removed", utility:Connection(scrollingFrame.ChildRemoved, function(child)
+                        if child.Name == "PlayerLabel" then
+                            local count = count_leaderboard_player_labels(scrollingFrame)
+                            if not count or count >= 23 then
+                                count = 22
+                            end
+                            try_menu_on_non_23("LeaderboardGui.ChildRemoved", count)
+                        end
+                    end))
+                end
+
+                attach_menu_on_non_23_leaderboard()
+
+                track_connection("menu_on_non_23_leaderboard_gui", utility:Connection(plr.PlayerGui.ChildAdded, function(child)
+                    if child.Name == "LeaderboardGui" then
+                        task.defer(attach_menu_on_non_23_leaderboard)
+                    end
+                end))
+
                 track_connection("menu_on_non_23_added", utility:Connection(plrs.PlayerAdded, function()
                     task.defer(function()
-                        if #plrs:GetPlayers() >= 23 then
+                        local count = get_current_server_player_count()
+                        if count and count >= 23 then
                             menu_on_non_23_seen_full = true
                         end
                     end)
                 end))
 
                 track_connection("menu_on_non_23_removing", utility:Connection(plrs.PlayerRemoving, function(player)
-                    local players = plrs:GetPlayers()
-                    local predicted_count = #players
-                    if table.find(players, player) then
-                        predicted_count = predicted_count - 1
-                    end
-
-                    if #players >= 23 then
-                        menu_on_non_23_seen_full = true
-                    end
-
-                    if try_menu_on_non_23("PlayerRemoving", predicted_count) then
-                        return
-                    end
-
                     task.defer(function()
                         try_menu_on_non_23("PlayerRemoving")
                     end)
