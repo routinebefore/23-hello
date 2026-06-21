@@ -10253,7 +10253,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                                 end
 
                                 local start_time = tick()
-                                while tick() - start_time < 3.1 and auto_chest_running and Toggles.AutoChestOpen and Toggles.AutoChestOpen.Value and shared and not shared.is_unloading do
+                                while tick() - start_time < 4.0 and auto_chest_running and Toggles.AutoChestOpen and Toggles.AutoChestOpen.Value and shared and not shared.is_unloading do
                                     if not is_near_war_chest(chest, click_detector) then
                                         auto_chest_running = false
                                         break
