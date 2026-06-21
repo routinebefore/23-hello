@@ -14137,7 +14137,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
                 local count = 0
                 for _, child in ipairs(scrollingFrame:GetChildren()) do
-                    if child.Name == "PlayerLabel" and child:IsA("Frame") then
+                    if child.Name == "PlayerLabel" and child:IsA("GuiObject") then
                         count = count + 1
                     end
                 end
