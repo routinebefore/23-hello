@@ -604,6 +604,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             auto_ingredient_pickup_keybind = "None",
             auto_weapon_keybind = "None",
             auto_craft_delay = 0.45,
+            pickup_ingredients = false,
             pickup_bloodthorn = true,
             ps_heal_button_keybind = "None",
             instant_menu_keybind = "None",
@@ -13529,6 +13530,9 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
             local function PickupNearbyIngredients(radius)
                 radius = radius or 50
+                if not (Toggles.PickupIngredients and Toggles.PickupIngredients.Value) then
+                    return
+                end
 
                 local function get_ingredient_part(object, click_detector)
                     if object:IsA("BasePart") then
@@ -13712,7 +13716,6 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     task.wait(0.1)
                 end
 
-                PickupNearbyIngredients(50)
                 return finish(true)
             end
 
@@ -14396,6 +14399,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     pickup_mythics_artifacts = Options.PickupMythicsArtifacts and Options.PickupMythicsArtifacts.Value or {},
                     pickup_event_items = Toggles.PickupEventItems and Toggles.PickupEventItems.Value or false,
                     pickup_trinkets = Toggles.PickupTrinkets and Toggles.PickupTrinkets.Value or false,
+                    pickup_ingredients = Toggles.PickupIngredients and Toggles.PickupIngredients.Value or false,
                     pickup_bloodthorn = Toggles.PickupBloodthorn == nil and true or Toggles.PickupBloodthorn.Value,
                     disable_gpu_rendering = Toggles.DisableGPURendering and Toggles.DisableGPURendering.Value or false,
                     emergency_serverhop_conditions = Options.EmergencyServerhopConditions and Options.EmergencyServerhopConditions.Value or {},
@@ -17188,6 +17192,8 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                             end
                         end
 
+                        PickupNearbyIngredients(50)
+
                         if point.wait_for_trinket then
                             local stay_in_server = Toggles.StayInServer and Toggles.StayInServer.Value or false
                             if not stay_in_server then
@@ -18009,6 +18015,11 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 Default = false
             })
 
+            group_trinket_bot:AddToggle("PickupIngredients", {
+                Text = "Pick up Ingredients",
+                Default = cheat_client.config.pickup_ingredients
+            })
+
             group_trinket_bot:AddToggle("PickupBloodthorn", {
                 Text = "Pick up Bloodthorn",
                 Default = cheat_client.config.pickup_bloodthorn
@@ -18234,6 +18245,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 end
                 if Toggles.PickupEventItems then Toggles.PickupEventItems:SetValue(settings.pickup_event_items or false) end
                 if Toggles.PickupTrinkets then Toggles.PickupTrinkets:SetValue(settings.pickup_trinkets or false) end
+                if Toggles.PickupIngredients then Toggles.PickupIngredients:SetValue(settings.pickup_ingredients or false) end
                 if Toggles.PickupBloodthorn then Toggles.PickupBloodthorn:SetValue(settings.pickup_bloodthorn == nil and true or settings.pickup_bloodthorn) end
                 if Toggles.DisableGPURendering then Toggles.DisableGPURendering:SetValue(settings.disable_gpu_rendering or false) end
                 if Options.EmergencyServerhopConditions then Options.EmergencyServerhopConditions:SetValue(settings.emergency_serverhop_conditions or {}) end
@@ -19176,6 +19188,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                             pickup_mythics_artifacts = Options.PickupMythicsArtifacts and Options.PickupMythicsArtifacts.Value or {},
                             pickup_event_items = Toggles.PickupEventItems and Toggles.PickupEventItems.Value or false,
                             pickup_trinkets = Toggles.PickupTrinkets and Toggles.PickupTrinkets.Value or false,
+                            pickup_ingredients = Toggles.PickupIngredients and Toggles.PickupIngredients.Value or false,
                             pickup_bloodthorn = Toggles.PickupBloodthorn == nil and true or Toggles.PickupBloodthorn.Value,
                             disable_gpu_rendering = Toggles.DisableGPURendering and Toggles.DisableGPURendering.Value or false,
                             emergency_serverhop_conditions = Options.EmergencyServerhopConditions and Options.EmergencyServerhopConditions.Value or {},
@@ -21039,6 +21052,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 Default = cheat_client.config.blatant_mode,
                 Callback = function(state)
                     cheat_client.config.blatant_mode = state
+                    mem:SetItem("blatant", state)
 
                     local function updateBlatantFeature(featureName)
                         local toggle = Toggles[featureName]
@@ -21076,6 +21090,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             })
 
             if Toggles.blatant_mode then
+                mem:SetItem("blatant", cheat_client.config.blatant_mode and "true" or "false")
                 Toggles.blatant_mode:SetValue(cheat_client.config.blatant_mode)
             end
 
@@ -22062,6 +22077,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     end
 
                     if Toggles.blatant_mode then
+                        mem:SetItem("blatant", cheat_client.config.blatant_mode and "true" or "false")
                         Toggles.blatant_mode:SetValue(cheat_client.config.blatant_mode)
                     end
 
