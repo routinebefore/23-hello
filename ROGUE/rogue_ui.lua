@@ -1747,25 +1747,37 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             return connection
         end
 
-        local debug_packet_state = {
-            enabled = false,
-            logs = {},
-            remote_connections = {},
-            remote_function_wrappers = {},
-            descendant_connection = nil,
-            scan_thread = nil,
-            namecall_hooked = false,
-            old_namecall = nil,
-            raknet_connections = {},
-            raknet_started = {},
-            raknet_getpacket_threads = {},
-            raknet_send_hooks = {},
-            raknet_sources = {},
-            raknet_hooked = false,
-            log_text_updater = nil,
-            last_log_text_update = 0,
-            count = 0,
-        }
+        local function create_debug_packet_state()
+            return {
+                enabled = false,
+                logs = {},
+                remote_connections = {},
+                remote_function_wrappers = {},
+                descendant_connection = nil,
+                scan_thread = nil,
+                namecall_hooked = false,
+                old_namecall = nil,
+                raknet_connections = {},
+                raknet_started = {},
+                raknet_getpacket_threads = {},
+                raknet_send_hooks = {},
+                raknet_sources = {},
+                raknet_hooked = false,
+                log_text_updater = nil,
+                last_log_text_update = 0,
+                count = 0,
+            }
+        end
+
+        local debug_packet_state = create_debug_packet_state()
+
+        local function get_debug_packet_state()
+            if not debug_packet_state then
+                debug_packet_state = create_debug_packet_state()
+            end
+
+            return debug_packet_state
+        end
 
         local raknet_packet_names = {
             [0x00] = "ID_CONNECTED_PING",
@@ -2045,15 +2057,16 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
         local update_debug_packet_log_text
         local function log_debug_line(kind, direction, source, detail)
-            if not debug_packet_state.enabled then
+            local packet_state = get_debug_packet_state()
+            if not packet_state.enabled then
                 return
             end
 
-            debug_packet_state.count += 1
-            debug_packet_state.logs[#debug_packet_state.logs + 1] = string.format(
+            packet_state.count += 1
+            packet_state.logs[#packet_state.logs + 1] = string.format(
                 "[%0.3fs #%d] [%s] %s %s %s",
                 os.clock() - start,
-                debug_packet_state.count,
+                packet_state.count,
                 kind,
                 direction,
                 source,
@@ -2587,30 +2600,31 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
         end
 
         local function stop_debug_packet_logging()
-            debug_packet_state.enabled = false
+            local packet_state = get_debug_packet_state()
+            packet_state.enabled = false
             stop_debug_raknet_capture()
 
-            if debug_packet_state.descendant_connection then
+            if packet_state.descendant_connection then
                 pcall(function()
-                    debug_packet_state.descendant_connection:Disconnect()
+                    packet_state.descendant_connection:Disconnect()
                 end)
-                debug_packet_state.descendant_connection = nil
+                packet_state.descendant_connection = nil
             end
 
-            for remote, connection in pairs(debug_packet_state.remote_connections) do
+            for remote, connection in pairs(packet_state.remote_connections) do
                 pcall(function()
                     connection:Disconnect()
                 end)
-                debug_packet_state.remote_connections[remote] = nil
+                packet_state.remote_connections[remote] = nil
             end
 
-            for remote, data in pairs(debug_packet_state.remote_function_wrappers) do
+            for remote, data in pairs(packet_state.remote_function_wrappers) do
                 pcall(function()
                     if remote.OnClientInvoke == data.wrapper then
                         remote.OnClientInvoke = data.original
                     end
                 end)
-                debug_packet_state.remote_function_wrappers[remote] = nil
+                packet_state.remote_function_wrappers[remote] = nil
             end
 
             if update_debug_packet_log_text then
@@ -2619,20 +2633,21 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
         end
 
         local function start_debug_packet_logging()
-            if debug_packet_state.enabled then
+            local packet_state = get_debug_packet_state()
+            if packet_state.enabled then
                 return
             end
 
-            debug_packet_state.enabled = true
+            packet_state.enabled = true
             ensure_debug_namecall()
-            debug_packet_state.logs[#debug_packet_state.logs + 1] = string.format("[%0.3fs] Debug packet capture enabled", os.clock() - start)
+            packet_state.logs[#packet_state.logs + 1] = string.format("[%0.3fs] Debug packet capture enabled", os.clock() - start)
             start_debug_raknet_capture()
             scan_debug_remotes()
             if update_debug_packet_log_text then
                 update_debug_packet_log_text(true)
             end
 
-            debug_packet_state.descendant_connection = utility:Connection(game.DescendantAdded, function(descendant)
+            packet_state.descendant_connection = utility:Connection(game.DescendantAdded, function(descendant)
                 if descendant:IsA("RemoteEvent") then
                     connect_debug_remote(descendant)
                 elseif descendant:IsA("RemoteFunction") then
@@ -2640,14 +2655,15 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 end
             end, true)
 
-            if not debug_packet_state.scan_thread then
-                debug_packet_state.scan_thread = task.spawn(function()
+            if not packet_state.scan_thread then
+                packet_state.scan_thread = task.spawn(function()
                     while shared and not shared.is_unloading do
                         task.wait(1)
-                        if debug_packet_state.enabled then
+                        local current_state = get_debug_packet_state()
+                        if current_state.enabled then
                             scan_debug_remotes()
-                        elseif not debug_packet_state.enabled then
-                            debug_packet_state.scan_thread = nil
+                        elseif not current_state.enabled then
+                            current_state.scan_thread = nil
                             break
                         end
                     end
@@ -2656,8 +2672,9 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
         end
 
         local function get_debug_packet_log_lines()
+            local packet_state = get_debug_packet_state()
             local raknet_sources = {}
-            for source in pairs(debug_packet_state.raknet_sources) do
+            for source in pairs(packet_state.raknet_sources) do
                 raknet_sources[#raknet_sources + 1] = tostring(source)
             end
             table.sort(raknet_sources)
@@ -2666,14 +2683,14 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 "SGW Hub Packet Logs",
                 "PlaceId: " .. tostring(game.PlaceId),
                 "JobId: " .. tostring(game.JobId),
-                "Captured: " .. tostring(#debug_packet_state.logs),
+                "Captured: " .. tostring(#packet_state.logs),
                 "RakNet Sources: " .. (#raknet_sources > 0 and table.concat(raknet_sources, ", ") or "none"),
             }
 
-            if #debug_packet_state.logs == 0 then
+            if #packet_state.logs == 0 then
                 output[#output + 1] = "No packet logs captured."
             else
-                for _, line in ipairs(debug_packet_state.logs) do
+                for _, line in ipairs(packet_state.logs) do
                     output[#output + 1] = line
                 end
             end
@@ -2686,17 +2703,18 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
         end
 
         update_debug_packet_log_text = function(force)
-            if not debug_packet_state.log_text_updater then
+            local packet_state = get_debug_packet_state()
+            if not packet_state.log_text_updater then
                 return
             end
 
             local now = os.clock()
-            if not force and now - debug_packet_state.last_log_text_update < 0.15 then
+            if not force and now - packet_state.last_log_text_update < 0.15 then
                 return
             end
 
-            debug_packet_state.last_log_text_update = now
-            pcall(debug_packet_state.log_text_updater, build_debug_packet_log_text(true))
+            packet_state.last_log_text_update = now
+            pcall(packet_state.log_text_updater, build_debug_packet_log_text(true))
         end
 
         function utility:RemoveConnection(connection)
@@ -21984,7 +22002,8 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 end
                 local status = available and "Available" or "Unavailable"
 
-                if available and debug_packet_state.enabled and debug_packet_state.raknet_hooked then
+                local packet_state = get_debug_packet_state()
+                if available and packet_state.enabled and packet_state.raknet_hooked then
                     status = status .. " (Capturing)"
                 elseif available and source and source ~= "" then
                     status = status .. " (" .. tostring(source) .. ")"
@@ -22047,7 +22066,8 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 end)
             end
 
-            debug_packet_state.log_text_updater = set_packet_log_text
+            local packet_state = get_debug_packet_state()
+            packet_state.log_text_updater = set_packet_log_text
             set_packet_log_text(build_debug_packet_log_text(true))
 
             if Toggles.DebugEnabled and Toggles.DebugEnabled.Value then
