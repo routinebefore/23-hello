@@ -2624,11 +2624,12 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     local method = getnamecallmethod()
 
                     if debug_packet_state.enabled and typeof(self) == "Instance" then
+                        local args = {...}
                         pcall(function()
                             if method == "FireServer" and self:IsA("RemoteEvent") then
-                                log_debug_packet("C->S", self, "FireServer", {...})
+                                log_debug_packet("C->S", self, "FireServer", args)
                             elseif method == "InvokeServer" and self:IsA("RemoteFunction") then
-                                log_debug_packet("C->S", self, "InvokeServer", {...})
+                                log_debug_packet("C->S", self, "InvokeServer", args)
                             end
                         end)
                     end
