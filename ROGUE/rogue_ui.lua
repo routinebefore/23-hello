@@ -2566,15 +2566,17 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 return original(...)
             end
 
+            debug_packet_state.remote_function_wrappers[remote] = {
+                original = original,
+                wrapper = wrapper,
+            }
+
             local success_set = pcall(function()
                 remote.OnClientInvoke = wrapper
             end)
 
-            if success_set then
-                debug_packet_state.remote_function_wrappers[remote] = {
-                    original = original,
-                    wrapper = wrapper,
-                }
+            if not success_set then
+                debug_packet_state.remote_function_wrappers[remote] = nil
             end
         end
 
@@ -2622,7 +2624,12 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
             local success, old_newindex = pcall(function()
                 return hookmetamethod(game, "__newindex", newcclosure(function(self, key, value)
-                    if debug_packet_state.enabled and typeof(self) == "Instance" and self:IsA("RemoteFunction") and key == "OnClientInvoke" then
+                    if debug_packet_state.enabled and key == "OnClientInvoke" and typeof(self) == "Instance" and self:IsA("RemoteFunction") then
+                        local existing = debug_packet_state.remote_function_wrappers[self]
+                        if existing and existing.wrapper == value then
+                            return debug_packet_state.old_newindex(self, key, value)
+                        end
+
                         local original = value
                         if type(original) == "function" then
                             local wrapper = function(...)
