@@ -1759,6 +1759,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             raknet_connections = {},
             raknet_started = {},
             raknet_getpacket_threads = {},
+            raknet_send_hooks = {},
             raknet_sources = {},
             raknet_hooked = false,
             count = 0,
@@ -1841,6 +1842,10 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             "sendraw",
             "SendRaw",
             "send_raw",
+            "send",
+            "Send",
+            "add_send_hook",
+            "remove_send_hook",
             "setfilter",
             "SetFilter",
             "set_filter",
@@ -1977,20 +1982,35 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             return fallback or "RAKNET"
         end
 
+        local function debug_packet_field(packet, ...)
+            local keys = {...}
+            for _, key in ipairs(keys) do
+                local success, value = pcall(function()
+                    return packet[key]
+                end)
+                if success and value ~= nil then
+                    return value
+                end
+            end
+            return nil
+        end
+
         local function debug_raknet_packet_data(packet)
             local packet_type = typeof(packet)
+            local data = debug_packet_field(packet, "data", "Data", "bytes", "Bytes", "buffer", "Buffer", "payload", "Payload", "AsArray", "AsString", "AsBuffer")
+            if data ~= nil then
+                return data
+            end
             if packet_type == "table" then
-                return packet.data or packet.Data or packet.bytes or packet.Bytes or packet.buffer or packet.Buffer or packet.payload or packet.Payload or packet
+                return packet
             end
             return packet
         end
 
         local function debug_raknet_packet_id(packet, data)
-            if typeof(packet) == "table" then
-                local packet_id = packet.id or packet.Id or packet.ID or packet.opcode or packet.Opcode or packet.packetId or packet.PacketId
-                if packet_id ~= nil then
-                    return debug_raknet_byte(packet_id)
-                end
+            local packet_id = debug_packet_field(packet, "id", "Id", "ID", "opcode", "Opcode", "packetId", "PacketId")
+            if packet_id ~= nil then
+                return debug_raknet_byte(packet_id)
             end
 
             local value_type = typeof(data)
@@ -2004,6 +2024,21 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             end
 
             return nil
+        end
+
+        local function debug_raknet_packet_meta(packet)
+            local parts = {}
+            local size = debug_packet_field(packet, "Size", "size")
+            local priority = debug_packet_field(packet, "Priority", "priority")
+            local reliability = debug_packet_field(packet, "Reliability", "reliability")
+            local channel = debug_packet_field(packet, "OrderingChannel", "orderingChannel", "ordering_channel")
+
+            if size ~= nil then parts[#parts + 1] = "size=" .. tostring(size) end
+            if priority ~= nil then parts[#parts + 1] = "priority=" .. tostring(priority) end
+            if reliability ~= nil then parts[#parts + 1] = "reliability=" .. tostring(reliability) end
+            if channel ~= nil then parts[#parts + 1] = "channel=" .. tostring(channel) end
+
+            return table.concat(parts, " ")
         end
 
         local function log_debug_line(kind, direction, source, detail)
@@ -2040,7 +2075,12 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 hex = debug_packet_string(packet, 0, {})
             end
 
-            log_debug_line("RAKNET", direction, source, string.format("%s%s bytes=%d data=%s", id_text, name_text, total or 0, hex))
+            local meta = debug_raknet_packet_meta(packet)
+            if meta ~= "" then
+                meta = meta .. " "
+            end
+
+            log_debug_line("RAKNET", direction, source, string.format("%s%s %sbytes=%d data=%s", id_text, name_text, meta, total or 0, hex))
         end
 
         local function debug_disconnect(connection)
@@ -2087,6 +2127,9 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 if name == "stopcapture" then return stopcapture end
                 if name == "getpacket" then return getpacket end
                 if name == "sendraw" then return sendraw end
+                if name == "send" then return send end
+                if name == "add_send_hook" then return add_send_hook end
+                if name == "remove_send_hook" then return remove_send_hook end
                 if name == "setfilter" then return setfilter end
                 if name == "setclipboard" then return setclipboard end
                 if name == "toclipboard" then return toclipboard end
@@ -2343,6 +2386,41 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             return true
         end
 
+        local function start_debug_raknet_send_hook(api, source_name)
+            if not debug_packet_state.enabled or debug_packet_state.raknet_send_hooks[source_name] then
+                return false
+            end
+
+            local success, add_hook = pcall(function()
+                return api.add_send_hook or api.AddSendHook or api.addSendHook
+            end)
+            if not success or type(add_hook) ~= "function" then
+                return false
+            end
+
+            local hook = function(packet)
+                if debug_packet_state.enabled then
+                    log_debug_raknet_packet(source_name .. ".add_send_hook", "C->S", packet)
+                end
+            end
+
+            local added = pcall(add_hook, hook)
+            if not added then
+                added = pcall(add_hook, api, hook)
+            end
+
+            if not added then
+                return false
+            end
+
+            debug_packet_state.raknet_send_hooks[source_name] = {
+                api = api,
+                hook = hook,
+            }
+            debug_packet_state.raknet_sources[source_name .. ".add_send_hook"] = true
+            return true
+        end
+
         local function start_debug_raknet_capture()
             if not debug_packet_state.enabled then
                 return false
@@ -2361,6 +2439,10 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 end
 
                 if start_debug_raknet_getpacket(api, source_name) then
+                    hooked = true
+                end
+
+                if start_debug_raknet_send_hook(api, source_name) then
                     hooked = true
                 end
 
@@ -2389,6 +2471,19 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
             for source_name in pairs(debug_packet_state.raknet_getpacket_threads) do
                 debug_packet_state.raknet_getpacket_threads[source_name] = nil
+            end
+
+            for source_name, data in pairs(debug_packet_state.raknet_send_hooks) do
+                local api = data.api
+                local hook = data.hook
+                local success, remove_hook = pcall(function()
+                    return api.remove_send_hook or api.RemoveSendHook or api.removeSendHook
+                end)
+                if success and type(remove_hook) == "function" then
+                    pcall(remove_hook, hook)
+                    pcall(remove_hook, api, hook)
+                end
+                debug_packet_state.raknet_send_hooks[source_name] = nil
             end
 
             for source_name, api in pairs(debug_packet_state.raknet_started) do
