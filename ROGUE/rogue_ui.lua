@@ -1758,6 +1758,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             old_namecall = nil,
             raknet_connections = {},
             raknet_started = {},
+            raknet_getpacket_threads = {},
             raknet_sources = {},
             raknet_hooked = false,
             count = 0,
@@ -1825,6 +1826,26 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             {"Receive", "S->C"},
             {"OnReceive", "S->C"},
             {"OnReceived", "S->C"},
+        }
+
+        local debug_raknet_method_specs = {
+            "startcapture",
+            "StartCapture",
+            "start_capture",
+            "stopcapture",
+            "StopCapture",
+            "stop_capture",
+            "getpacket",
+            "GetPacket",
+            "get_packet",
+            "sendraw",
+            "SendRaw",
+            "send_raw",
+            "setfilter",
+            "SetFilter",
+            "set_filter",
+            "sendphysics",
+            "sendposition",
         }
 
         local function debug_packet_path(instance)
@@ -2056,29 +2077,60 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             end
         end
 
+        local function get_debug_global(name)
+            local success, value = pcall(function()
+                if name == "rnet" then return rnet end
+                if name == "RNet" then return RNet end
+                if name == "raknet" then return raknet end
+                if name == "RakNet" then return RakNet end
+                if name == "startcapture" then return startcapture end
+                if name == "stopcapture" then return stopcapture end
+                if name == "getpacket" then return getpacket end
+                if name == "sendraw" then return sendraw end
+                if name == "setfilter" then return setfilter end
+                if name == "setclipboard" then return setclipboard end
+                if name == "toclipboard" then return toclipboard end
+                if name == "writeclipboard" then return writeclipboard end
+                if name == "getclipboard" then return getclipboard end
+            end)
+
+            if success and value then
+                return value
+            end
+
+            if loadstring then
+                local compiled, chunk = pcall(loadstring, "return " .. name)
+                if compiled and type(chunk) == "function" then
+                    local ok, result = pcall(chunk)
+                    if ok and result then
+                        return result
+                    end
+                end
+            end
+
+            return nil
+        end
+
         local function get_debug_raknet_apis()
             local candidates = {}
             local seen = {}
             local names = {"rnet", "RNet", "raknet", "RakNet"}
 
-            local ok_rnet, global_rnet = pcall(function() return rnet end)
-            if ok_rnet then
-                add_debug_raknet_candidate(candidates, seen, "rnet", global_rnet)
+            for _, name in ipairs(names) do
+                add_debug_raknet_candidate(candidates, seen, name, get_debug_global(name))
             end
 
-            local ok_RNet, global_RNet = pcall(function() return RNet end)
-            if ok_RNet then
-                add_debug_raknet_candidate(candidates, seen, "RNet", global_RNet)
+            local global_api = {}
+            local has_global_api = false
+            for _, name in ipairs(debug_raknet_method_specs) do
+                local value = get_debug_global(name)
+                if type(value) == "function" then
+                    global_api[name] = value
+                    has_global_api = true
+                end
             end
-
-            local ok_raknet, global_raknet = pcall(function() return raknet end)
-            if ok_raknet then
-                add_debug_raknet_candidate(candidates, seen, "raknet", global_raknet)
-            end
-
-            local ok_RakNet, global_RakNet = pcall(function() return RakNet end)
-            if ok_RakNet then
-                add_debug_raknet_candidate(candidates, seen, "RakNet", global_RakNet)
+            if has_global_api then
+                add_debug_raknet_candidate(candidates, seen, "global.rnet", global_api)
             end
 
             local envs = {}
@@ -2154,6 +2206,12 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
                 if has_debug_raknet_member(api, "startcapture", "function") or has_debug_raknet_member(api, "StartCapture", "function") or has_debug_raknet_member(api, "start_capture", "function") then
                     return true, source_name
+                end
+
+                for _, method_name in ipairs(debug_raknet_method_specs) do
+                    if has_debug_raknet_member(api, method_name, "function") then
+                        return true, source_name .. "." .. method_name
+                    end
                 end
 
                 for _, spec in ipairs(debug_raknet_signal_specs) do
@@ -2247,6 +2305,44 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             return false
         end
 
+        local function start_debug_raknet_getpacket(api, source_name)
+            if not debug_packet_state.enabled or debug_packet_state.raknet_getpacket_threads[source_name] then
+                return false
+            end
+
+            local success, getpacket_method = pcall(function()
+                return api.getpacket or api.GetPacket or api.get_packet
+            end)
+            if not success or type(getpacket_method) ~= "function" then
+                return false
+            end
+
+            local token = {}
+            debug_packet_state.raknet_getpacket_threads[source_name] = token
+            debug_packet_state.raknet_sources[source_name .. ".getpacket"] = true
+
+            task.spawn(function()
+                while shared and not shared.is_unloading and debug_packet_state.enabled and debug_packet_state.raknet_getpacket_threads[source_name] == token do
+                    local ok, packet = pcall(getpacket_method)
+                    if not ok then
+                        ok, packet = pcall(getpacket_method, api)
+                    end
+
+                    if ok and packet ~= nil and debug_packet_state.enabled and debug_packet_state.raknet_getpacket_threads[source_name] == token then
+                        log_debug_raknet_packet(source_name .. ".getpacket", "C->S", packet)
+                    elseif not ok then
+                        task.wait(0.25)
+                    end
+                end
+
+                if debug_packet_state.raknet_getpacket_threads[source_name] == token then
+                    debug_packet_state.raknet_getpacket_threads[source_name] = nil
+                end
+            end)
+
+            return true
+        end
+
         local function start_debug_raknet_capture()
             if not debug_packet_state.enabled then
                 return false
@@ -2261,6 +2357,10 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 if call_debug_raknet_method(api, "startcapture") or call_debug_raknet_method(api, "StartCapture") or call_debug_raknet_method(api, "start_capture") then
                     debug_packet_state.raknet_started[source_name] = api
                     debug_packet_state.raknet_sources[source_name .. ".startcapture"] = true
+                    hooked = true
+                end
+
+                if start_debug_raknet_getpacket(api, source_name) then
                     hooked = true
                 end
 
@@ -2285,6 +2385,10 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             for key, connection in pairs(debug_packet_state.raknet_connections) do
                 debug_disconnect(connection)
                 debug_packet_state.raknet_connections[key] = nil
+            end
+
+            for source_name in pairs(debug_packet_state.raknet_getpacket_threads) do
+                debug_packet_state.raknet_getpacket_threads[source_name] = nil
             end
 
             for source_name, api in pairs(debug_packet_state.raknet_started) do
@@ -2442,13 +2546,53 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             end
         end
 
-        local function copy_debug_packet_logs()
-            local clipboard = setclipboard or toclipboard or writeclipboard
-            if not clipboard then
-                notify_debug_packet_status("Clipboard is not supported by this executor.")
-                return
+        local function get_debug_clipboard_functions()
+            local candidates = {}
+            local seen = {}
+
+            local function add_clipboard(name, fn)
+                if type(fn) == "function" and not seen[fn] then
+                    seen[fn] = true
+                    candidates[#candidates + 1] = {name = name, fn = fn}
+                end
             end
 
+            for _, name in ipairs({"setclipboard", "toclipboard", "writeclipboard"}) do
+                add_clipboard(name, get_debug_global(name))
+            end
+
+            local envs = {}
+            if getgenv then
+                local success, env = pcall(getgenv)
+                if success and env then
+                    envs[#envs + 1] = {name = "getgenv", env = env}
+                end
+            end
+            if getfenv then
+                local success, env = pcall(getfenv)
+                if success and env then
+                    envs[#envs + 1] = {name = "getfenv", env = env}
+                end
+            end
+            if _G then
+                envs[#envs + 1] = {name = "_G", env = _G}
+            end
+
+            for _, env_data in ipairs(envs) do
+                for _, name in ipairs({"setclipboard", "toclipboard", "writeclipboard"}) do
+                    local ok, fn = pcall(function()
+                        return env_data.env[name]
+                    end)
+                    if ok then
+                        add_clipboard(env_data.name .. "." .. name, fn)
+                    end
+                end
+            end
+
+            return candidates
+        end
+
+        local function copy_debug_packet_logs()
             local raknet_sources = {}
             for source in pairs(debug_packet_state.raknet_sources) do
                 raknet_sources[#raknet_sources + 1] = tostring(source)
@@ -2472,13 +2616,39 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 end
             end
 
-            local copied, err = pcall(clipboard, table.concat(output, "\n"))
-            if not copied then
-                notify_debug_packet_status("Failed to copy packet logs: " .. tostring(err))
+            local text = table.concat(output, "\n")
+            local clipboard_functions = get_debug_clipboard_functions()
+            if #clipboard_functions == 0 then
+                notify_debug_packet_status("Clipboard is not supported by this executor.")
                 return
             end
 
-            notify_debug_packet_status("Packet logs copied.")
+            local copied_names = {}
+            local last_error = nil
+            for _, clipboard in ipairs(clipboard_functions) do
+                local copied, err = pcall(clipboard.fn, text)
+                if copied then
+                    copied_names[#copied_names + 1] = clipboard.name
+                else
+                    last_error = err
+                end
+            end
+
+            if #copied_names == 0 then
+                notify_debug_packet_status("Failed to copy packet logs: " .. tostring(last_error))
+                return
+            end
+
+            local get_clipboard = get_debug_global("getclipboard")
+            if type(get_clipboard) == "function" then
+                local ok, current = pcall(get_clipboard)
+                if ok and current ~= text then
+                    notify_debug_packet_status("Clipboard write returned, but verification failed.")
+                    return
+                end
+            end
+
+            notify_debug_packet_status("Packet logs copied via " .. table.concat(copied_names, ", ") .. ".")
         end
     
         function utility:RemoveConnection(connection)
