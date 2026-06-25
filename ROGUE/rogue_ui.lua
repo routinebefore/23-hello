@@ -318,6 +318,13 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
     local ragoozer_frame = nil
     local disabled_connections = {}
 
+    local get_debug_packet_state
+    local get_debug_raknet_availability
+    local start_debug_packet_logging
+    local stop_debug_packet_logging
+    local update_debug_packet_log_text
+    local build_debug_packet_log_text
+
     local done = false
     local busy = false
 
@@ -1771,7 +1778,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
         local debug_packet_state = create_debug_packet_state()
 
-        local function get_debug_packet_state()
+        get_debug_packet_state = function()
             if not debug_packet_state then
                 debug_packet_state = create_debug_packet_state()
             end
@@ -2055,7 +2062,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             return table.concat(parts, " ")
         end
 
-        local update_debug_packet_log_text
+        -- update_debug_packet_log_text declared in outer scope
         local debug_packet_log_text_updater = nil
         local debug_packet_last_log_text_update = 0
         local function log_debug_line(kind, direction, source, detail)
@@ -2264,7 +2271,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             return success and member and (not expected_type or type(member) == expected_type), member
         end
 
-        local function get_debug_raknet_availability()
+        get_debug_raknet_availability = function()
             for _, candidate in ipairs(get_debug_raknet_apis()) do
                 local api = candidate.api
                 local source_name = candidate.name
@@ -2601,7 +2608,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             end
         end
 
-        local function stop_debug_packet_logging()
+        stop_debug_packet_logging = function()
             local packet_state = get_debug_packet_state()
             packet_state.enabled = false
             stop_debug_raknet_capture()
@@ -2634,7 +2641,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             end
         end
 
-        local function start_debug_packet_logging()
+        start_debug_packet_logging = function()
             local packet_state = get_debug_packet_state()
             if packet_state.enabled then
                 return
@@ -2700,7 +2707,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             return output
         end
 
-        local function build_debug_packet_log_text(horizontal)
+        build_debug_packet_log_text = function(horizontal)
             return table.concat(get_debug_packet_log_lines(), horizontal and "    |    " or "\n")
         end
 
