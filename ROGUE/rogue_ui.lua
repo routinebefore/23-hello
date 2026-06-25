@@ -2581,11 +2581,35 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
         end
 
         local function scan_debug_remotes()
-            for _, descendant in ipairs(game:GetDescendants()) do
-                if descendant:IsA("RemoteEvent") then
-                    connect_debug_remote(descendant)
-                elseif descendant:IsA("RemoteFunction") then
-                    wrap_debug_remote_function(descendant)
+            local success, err = pcall(function()
+                for _, descendant in ipairs(game:GetDescendants()) do
+                    if descendant:IsA("RemoteEvent") then
+                        connect_debug_remote(descendant)
+                    elseif descendant:IsA("RemoteFunction") then
+                        wrap_debug_remote_function(descendant)
+                    end
+                end
+            end)
+            if not success then
+                -- Fallback to scanning common services safely if game:GetDescendants() throws
+                local services = {
+                    game:GetService("Workspace"),
+                    game:GetService("ReplicatedStorage"),
+                    game:GetService("Players"),
+                    game:GetService("ReplicatedFirst"),
+                    game:GetService("StarterGui"),
+                    game:GetService("StarterPack")
+                }
+                for _, service in ipairs(services) do
+                    pcall(function()
+                        for _, descendant in ipairs(service:GetDescendants()) do
+                            if descendant:IsA("RemoteEvent") then
+                                connect_debug_remote(descendant)
+                            elseif descendant:IsA("RemoteFunction") then
+                                wrap_debug_remote_function(descendant)
+                            end
+                        end
+                    end)
                 end
             end
         end
@@ -2600,11 +2624,13 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     local method = getnamecallmethod()
 
                     if debug_packet_state.enabled and typeof(self) == "Instance" then
-                        if method == "FireServer" and self:IsA("RemoteEvent") then
-                            log_debug_packet("C->S", self, "FireServer", {...})
-                        elseif method == "InvokeServer" and self:IsA("RemoteFunction") then
-                            log_debug_packet("C->S", self, "InvokeServer", {...})
-                        end
+                        pcall(function()
+                            if method == "FireServer" and self:IsA("RemoteEvent") then
+                                log_debug_packet("C->S", self, "FireServer", {...})
+                            elseif method == "InvokeServer" and self:IsA("RemoteFunction") then
+                                log_debug_packet("C->S", self, "InvokeServer", {...})
+                            end
+                        end)
                     end
 
                     return debug_packet_state.old_namecall(self, ...)
@@ -2693,30 +2719,32 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             end
 
             packet_state.enabled = true
-            ensure_debug_namecall()
-            ensure_debug_newindex()
+            pcall(ensure_debug_namecall)
+            pcall(ensure_debug_newindex)
             packet_state.logs[#packet_state.logs + 1] = string.format("[%0.3fs] Debug packet capture enabled", os.clock() - start)
-            start_debug_raknet_capture()
-            scan_debug_remotes()
+            pcall(start_debug_raknet_capture)
+            pcall(scan_debug_remotes)
             if update_debug_packet_log_text then
-                update_debug_packet_log_text(true)
+                pcall(update_debug_packet_log_text, true)
             end
 
-            packet_state.descendant_connection = utility:Connection(game.DescendantAdded, function(descendant)
-                if descendant:IsA("RemoteEvent") then
-                    connect_debug_remote(descendant)
-                elseif descendant:IsA("RemoteFunction") then
-                    wrap_debug_remote_function(descendant)
-                end
-            end, true)
+            pcall(function()
+                packet_state.descendant_connection = utility:Connection(game.DescendantAdded, function(descendant)
+                    if descendant:IsA("RemoteEvent") then
+                        connect_debug_remote(descendant)
+                    elseif descendant:IsA("RemoteFunction") then
+                        wrap_debug_remote_function(descendant)
+                    end
+                end, true)
+            end)
 
             if not packet_state.scan_thread then
                 packet_state.scan_thread = task.spawn(function()
                     while shared and not shared.is_unloading do
-                        task.wait(1)
+                        task.wait(10)
                         local current_state = get_debug_packet_state()
                         if current_state.enabled then
-                            scan_debug_remotes()
+                            pcall(scan_debug_remotes)
                         elseif not current_state.enabled then
                             current_state.scan_thread = nil
                             break
