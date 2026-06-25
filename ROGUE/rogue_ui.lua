@@ -2056,6 +2056,8 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
         end
 
         local update_debug_packet_log_text
+        local debug_packet_log_text_updater = nil
+        local debug_packet_last_log_text_update = 0
         local function log_debug_line(kind, direction, source, detail)
             local packet_state = get_debug_packet_state()
             if not packet_state.enabled then
@@ -2703,18 +2705,17 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
         end
 
         update_debug_packet_log_text = function(force)
-            local packet_state = get_debug_packet_state()
-            if not packet_state.log_text_updater then
+            if not debug_packet_log_text_updater then
                 return
             end
 
             local now = os.clock()
-            if not force and now - packet_state.last_log_text_update < 0.15 then
+            if not force and now - debug_packet_last_log_text_update < 0.15 then
                 return
             end
 
-            packet_state.last_log_text_update = now
-            pcall(packet_state.log_text_updater, build_debug_packet_log_text(true))
+            debug_packet_last_log_text_update = now
+            pcall(debug_packet_log_text_updater, build_debug_packet_log_text(true))
         end
 
         function utility:RemoveConnection(connection)
@@ -22066,8 +22067,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 end)
             end
 
-            local packet_state = get_debug_packet_state()
-            packet_state.log_text_updater = set_packet_log_text
+            debug_packet_log_text_updater = set_packet_log_text
             set_packet_log_text(build_debug_packet_log_text(true))
 
             if Toggles.DebugEnabled and Toggles.DebugEnabled.Value then
