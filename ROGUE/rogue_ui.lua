@@ -1764,6 +1764,8 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 scan_thread = nil,
                 namecall_hooked = false,
                 old_namecall = nil,
+                newindex_hooked = false,
+                old_newindex = nil,
                 raknet_connections = {},
                 raknet_started = {},
                 raknet_getpacket_threads = {},
@@ -2548,22 +2550,27 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 return
             end
 
-            local original = remote.OnClientInvoke
-            if type(original) ~= "function" then
+            local success_get, original = pcall(function()
+                return remote.OnClientInvoke
+            end)
+
+            if not success_get or type(original) ~= "function" then
                 return
             end
 
             local wrapper
             wrapper = function(...)
-                log_debug_packet("S->C", remote, "OnClientInvoke", {...})
+                if debug_packet_state.enabled then
+                    log_debug_packet("S->C", remote, "OnClientInvoke", {...})
+                end
                 return original(...)
             end
 
-            local success = pcall(function()
+            local success_set = pcall(function()
                 remote.OnClientInvoke = wrapper
             end)
 
-            if success then
+            if success_set then
                 debug_packet_state.remote_function_wrappers[remote] = {
                     original = original,
                     wrapper = wrapper,
@@ -2608,6 +2615,39 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             end
         end
 
+        local function ensure_debug_newindex()
+            if debug_packet_state.newindex_hooked or not hookmetamethod then
+                return
+            end
+
+            local success, old_newindex = pcall(function()
+                return hookmetamethod(game, "__newindex", newcclosure(function(self, key, value)
+                    if debug_packet_state.enabled and typeof(self) == "Instance" and self:IsA("RemoteFunction") and key == "OnClientInvoke" then
+                        local original = value
+                        if type(original) == "function" then
+                            local wrapper = function(...)
+                                if debug_packet_state.enabled then
+                                    log_debug_packet("S->C", self, "OnClientInvoke", {...})
+                                end
+                                return original(...)
+                            end
+                            debug_packet_state.remote_function_wrappers[self] = {
+                                original = original,
+                                wrapper = wrapper,
+                            }
+                            return debug_packet_state.old_newindex(self, key, wrapper)
+                        end
+                    end
+                    return debug_packet_state.old_newindex(self, key, value)
+                end))
+            end)
+
+            if success and old_newindex then
+                debug_packet_state.old_newindex = old_newindex
+                debug_packet_state.newindex_hooked = true
+            end
+        end
+
         stop_debug_packet_logging = function()
             local packet_state = get_debug_packet_state()
             packet_state.enabled = false
@@ -2629,9 +2669,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
             for remote, data in pairs(packet_state.remote_function_wrappers) do
                 pcall(function()
-                    if remote.OnClientInvoke == data.wrapper then
-                        remote.OnClientInvoke = data.original
-                    end
+                    remote.OnClientInvoke = data.original
                 end)
                 packet_state.remote_function_wrappers[remote] = nil
             end
@@ -2649,6 +2687,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
             packet_state.enabled = true
             ensure_debug_namecall()
+            ensure_debug_newindex()
             packet_state.logs[#packet_state.logs + 1] = string.format("[%0.3fs] Debug packet capture enabled", os.clock() - start)
             start_debug_raknet_capture()
             scan_debug_remotes()
@@ -22145,7 +22184,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 Default = cheat_client.config.blatant_mode,
                 Callback = function(state)
                     cheat_client.config.blatant_mode = state
-                    mem:SetItem("blatant", state)
+                    mem:SetItem("blatant", state and "true" or "false")
 
                     local function updateBlatantFeature(featureName)
                         local toggle = Toggles[featureName]
