@@ -1762,6 +1762,8 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             raknet_send_hooks = {},
             raknet_sources = {},
             raknet_hooked = false,
+            log_text_updater = nil,
+            last_log_text_update = 0,
             count = 0,
         }
 
@@ -2041,6 +2043,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             return table.concat(parts, " ")
         end
 
+        local update_debug_packet_log_text
         local function log_debug_line(kind, direction, source, detail)
             if not debug_packet_state.enabled then
                 return
@@ -2056,6 +2059,10 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 source,
                 detail
             )
+
+            if update_debug_packet_log_text then
+                update_debug_packet_log_text(false)
+            end
         end
 
         local function log_debug_packet(direction, remote, method, args)
@@ -2605,6 +2612,10 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 end)
                 debug_packet_state.remote_function_wrappers[remote] = nil
             end
+
+            if update_debug_packet_log_text then
+                update_debug_packet_log_text(true)
+            end
         end
 
         local function start_debug_packet_logging()
@@ -2617,6 +2628,9 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             debug_packet_state.logs[#debug_packet_state.logs + 1] = string.format("[%0.3fs] Debug packet capture enabled", os.clock() - start)
             start_debug_raknet_capture()
             scan_debug_remotes()
+            if update_debug_packet_log_text then
+                update_debug_packet_log_text(true)
+            end
 
             debug_packet_state.descendant_connection = utility:Connection(game.DescendantAdded, function(descendant)
                 if descendant:IsA("RemoteEvent") then
@@ -2641,53 +2655,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             end
         end
 
-        local function get_debug_clipboard_functions()
-            local candidates = {}
-            local seen = {}
-
-            local function add_clipboard(name, fn)
-                if type(fn) == "function" and not seen[fn] then
-                    seen[fn] = true
-                    candidates[#candidates + 1] = {name = name, fn = fn}
-                end
-            end
-
-            for _, name in ipairs({"setclipboard", "toclipboard", "writeclipboard"}) do
-                add_clipboard(name, get_debug_global(name))
-            end
-
-            local envs = {}
-            if getgenv then
-                local success, env = pcall(getgenv)
-                if success and env then
-                    envs[#envs + 1] = {name = "getgenv", env = env}
-                end
-            end
-            if getfenv then
-                local success, env = pcall(getfenv)
-                if success and env then
-                    envs[#envs + 1] = {name = "getfenv", env = env}
-                end
-            end
-            if _G then
-                envs[#envs + 1] = {name = "_G", env = _G}
-            end
-
-            for _, env_data in ipairs(envs) do
-                for _, name in ipairs({"setclipboard", "toclipboard", "writeclipboard"}) do
-                    local ok, fn = pcall(function()
-                        return env_data.env[name]
-                    end)
-                    if ok then
-                        add_clipboard(env_data.name .. "." .. name, fn)
-                    end
-                end
-            end
-
-            return candidates
-        end
-
-        local function copy_debug_packet_logs()
+        local function get_debug_packet_log_lines()
             local raknet_sources = {}
             for source in pairs(debug_packet_state.raknet_sources) do
                 raknet_sources[#raknet_sources + 1] = tostring(source)
@@ -2700,7 +2668,6 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 "JobId: " .. tostring(game.JobId),
                 "Captured: " .. tostring(#debug_packet_state.logs),
                 "RakNet Sources: " .. (#raknet_sources > 0 and table.concat(raknet_sources, ", ") or "none"),
-                "",
             }
 
             if #debug_packet_state.logs == 0 then
@@ -2711,41 +2678,27 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 end
             end
 
-            local text = table.concat(output, "\n")
-            local clipboard_functions = get_debug_clipboard_functions()
-            if #clipboard_functions == 0 then
-                notify_debug_packet_status("Clipboard is not supported by this executor.")
-                return
-            end
-
-            local copied_names = {}
-            local last_error = nil
-            for _, clipboard in ipairs(clipboard_functions) do
-                local copied, err = pcall(clipboard.fn, text)
-                if copied then
-                    copied_names[#copied_names + 1] = clipboard.name
-                else
-                    last_error = err
-                end
-            end
-
-            if #copied_names == 0 then
-                notify_debug_packet_status("Failed to copy packet logs: " .. tostring(last_error))
-                return
-            end
-
-            local get_clipboard = get_debug_global("getclipboard")
-            if type(get_clipboard) == "function" then
-                local ok, current = pcall(get_clipboard)
-                if ok and current ~= text then
-                    notify_debug_packet_status("Clipboard write returned, but verification failed.")
-                    return
-                end
-            end
-
-            notify_debug_packet_status("Packet logs copied via " .. table.concat(copied_names, ", ") .. ".")
+            return output
         end
-    
+
+        local function build_debug_packet_log_text(horizontal)
+            return table.concat(get_debug_packet_log_lines(), horizontal and "    |    " or "\n")
+        end
+
+        update_debug_packet_log_text = function(force)
+            if not debug_packet_state.log_text_updater then
+                return
+            end
+
+            local now = os.clock()
+            if not force and now - debug_packet_state.last_log_text_update < 0.15 then
+                return
+            end
+
+            debug_packet_state.last_log_text_update = now
+            pcall(debug_packet_state.log_text_updater, build_debug_packet_log_text(true))
+        end
+
         function utility:RemoveConnection(connection)
             if not shared then return end
 
@@ -22002,8 +21955,20 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             })
 
             local group_debug = Tabs.Debug:AddLeftGroupbox("Packet Debug", "bug")
-            local copy_packet_logs_button
             local raknet_status_label
+            local packet_log_box
+            local packet_log_text = ""
+            local packet_log_updating = false
+
+            local function set_packet_log_text(text)
+                packet_log_text = text or ""
+                if packet_log_box then
+                    packet_log_updating = true
+                    packet_log_box.Text = packet_log_text
+                    packet_log_updating = false
+                end
+            end
+
             local function update_raknet_status_label()
                 if not raknet_status_label then
                     return
@@ -22035,10 +22000,6 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 Callback = function(state)
                     cheat_client.config.debug_enabled = state
 
-                    if copy_packet_logs_button then
-                        copy_packet_logs_button:SetDisabled(not state)
-                    end
-
                     if state then
                         start_debug_packet_logging()
                     else
@@ -22046,24 +22007,55 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     end
 
                     update_raknet_status_label()
+                    if update_debug_packet_log_text then
+                        update_debug_packet_log_text(true)
+                    end
                 end
             })
 
             raknet_status_label = group_debug:AddLabel("RakNet: Checking...")
             update_raknet_status_label()
 
-            copy_packet_logs_button = group_debug:AddButton({
-                Text = "Copy Packet Logs",
-                Disabled = not cheat_client.config.debug_enabled,
-                Func = function()
-                    copy_debug_packet_logs()
-                end
+            local packet_log_input = group_debug:AddInput("DebugPacketLogs", {
+                Text = "Packet Logs",
+                Default = "",
+                ClearTextOnFocus = false,
+                AllowEmpty = true,
+                Finished = true,
             })
+
+            packet_log_box = packet_log_input and packet_log_input.Holder and packet_log_input.Holder:FindFirstChildWhichIsA("TextBox", true)
+            if packet_log_box then
+                packet_log_box.TextEditable = true
+                packet_log_box.ClearTextOnFocus = false
+                packet_log_box.TextScaled = false
+                packet_log_box.TextSize = 12
+                packet_log_box.TextWrapped = false
+                packet_log_box.MultiLine = false
+                packet_log_box.TextXAlignment = Enum.TextXAlignment.Left
+                packet_log_box.PlaceholderText = "Packet logs will appear here."
+                packet_log_box:GetPropertyChangedSignal("Text"):Connect(function()
+                    if packet_log_updating then
+                        return
+                    end
+
+                    if packet_log_box.Text ~= packet_log_text then
+                        packet_log_updating = true
+                        packet_log_box.Text = packet_log_text
+                        packet_log_updating = false
+                    end
+                end)
+            end
+
+            debug_packet_state.log_text_updater = set_packet_log_text
+            set_packet_log_text(build_debug_packet_log_text(true))
 
             if Toggles.DebugEnabled and Toggles.DebugEnabled.Value then
                 start_debug_packet_logging()
-                copy_packet_logs_button:SetDisabled(false)
                 update_raknet_status_label()
+                if update_debug_packet_log_text then
+                    update_debug_packet_log_text(true)
+                end
             end
         end
 
@@ -23143,7 +23135,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 shared.SaveManager:SetFolder(config_folder)
                 shared.ThemeManager:SetFolder("HYDROXIDE")
 
-                shared.SaveManager:SetIgnoreIndexes({ "SavedPaths" })
+                shared.SaveManager:SetIgnoreIndexes({ "SavedPaths", "DebugPacketLogs" })
 
                 shared.SaveManager.OnConfigLoaded = function(configName)
                     if cheat_client.config.persistent_configs and mem and configName then
