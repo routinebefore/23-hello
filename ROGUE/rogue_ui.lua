@@ -2035,18 +2035,90 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             end)
         end
 
+        local function notify_debug_packet_status(message)
+            if library and type(library.Notify) == "function" then
+                library:Notify(message, 3)
+            elseif StarterGui then
+                pcall(function()
+                    StarterGui:SetCore("SendNotification", {
+                        Title = "SGW Hub",
+                        Text = message,
+                        Duration = 3,
+                    })
+                end)
+            end
+        end
+
+        local function add_debug_raknet_candidate(candidates, seen, name, api)
+            if api and not seen[api] then
+                seen[api] = true
+                candidates[#candidates + 1] = {name = name, api = api}
+            end
+        end
+
         local function get_debug_raknet_apis()
             local candidates = {}
             local seen = {}
-            local env = getgenv and getgenv() or _G
+            local names = {"rnet", "RNet", "raknet", "RakNet"}
 
-            for _, name in ipairs({"rnet", "RNet", "raknet", "RakNet"}) do
-                local ok, api = pcall(function()
-                    return env and rawget(env, name)
-                end)
-                if ok and api and not seen[api] then
-                    seen[api] = name
-                    candidates[#candidates + 1] = {name = name, api = api}
+            local ok_rnet, global_rnet = pcall(function() return rnet end)
+            if ok_rnet then
+                add_debug_raknet_candidate(candidates, seen, "rnet", global_rnet)
+            end
+
+            local ok_RNet, global_RNet = pcall(function() return RNet end)
+            if ok_RNet then
+                add_debug_raknet_candidate(candidates, seen, "RNet", global_RNet)
+            end
+
+            local ok_raknet, global_raknet = pcall(function() return raknet end)
+            if ok_raknet then
+                add_debug_raknet_candidate(candidates, seen, "raknet", global_raknet)
+            end
+
+            local ok_RakNet, global_RakNet = pcall(function() return RakNet end)
+            if ok_RakNet then
+                add_debug_raknet_candidate(candidates, seen, "RakNet", global_RakNet)
+            end
+
+            local envs = {}
+            if getgenv then
+                local success, env = pcall(getgenv)
+                if success and env then
+                    envs[#envs + 1] = {name = "getgenv", env = env}
+                end
+            end
+            if getfenv then
+                local success, env = pcall(getfenv)
+                if success and env then
+                    envs[#envs + 1] = {name = "getfenv", env = env}
+                end
+            end
+            if getrenv then
+                local success, env = pcall(getrenv)
+                if success and env then
+                    envs[#envs + 1] = {name = "getrenv", env = env}
+                end
+            end
+            if _G then
+                envs[#envs + 1] = {name = "_G", env = _G}
+            end
+
+            for _, env_data in ipairs(envs) do
+                for _, name in ipairs(names) do
+                    local ok_index, indexed_api = pcall(function()
+                        return env_data.env[name]
+                    end)
+                    if ok_index then
+                        add_debug_raknet_candidate(candidates, seen, env_data.name .. "." .. name, indexed_api)
+                    end
+
+                    local ok_raw, raw_api = pcall(function()
+                        return rawget(env_data.env, name)
+                    end)
+                    if ok_raw then
+                        add_debug_raknet_candidate(candidates, seen, env_data.name .. "." .. name, raw_api)
+                    end
                 end
             end
 
@@ -2371,11 +2443,9 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
         end
 
         local function copy_debug_packet_logs()
-            local clipboard = setclipboard or toclipboard
+            local clipboard = setclipboard or toclipboard or writeclipboard
             if not clipboard then
-                if library and library.Notify then
-                    library:Notify("Clipboard is not supported by this executor.", 3)
-                end
+                notify_debug_packet_status("Clipboard is not supported by this executor.")
                 return
             end
 
@@ -2402,11 +2472,13 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 end
             end
 
-            clipboard(table.concat(output, "\n"))
-
-            if library and library.Notify then
-                library:Notify("Packet logs copied.", 3)
+            local copied, err = pcall(clipboard, table.concat(output, "\n"))
+            if not copied then
+                notify_debug_packet_status("Failed to copy packet logs: " .. tostring(err))
+                return
             end
+
+            notify_debug_packet_status("Packet logs copied.")
         end
     
         function utility:RemoveConnection(connection)
