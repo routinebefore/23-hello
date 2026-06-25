@@ -615,6 +615,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             auto_friend_ally = false,
             notifications = true,
             notification_volume = 5,
+            debug_enabled = false,
             ignore_friendly = false,
             blatant_mode = false,
             status_effects = false,
@@ -1744,6 +1745,668 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 shared.connections[#shared.connections + 1] = connection
             end
             return connection
+        end
+
+        local debug_packet_state = {
+            enabled = false,
+            logs = {},
+            remote_connections = {},
+            remote_function_wrappers = {},
+            descendant_connection = nil,
+            scan_thread = nil,
+            namecall_hooked = false,
+            old_namecall = nil,
+            raknet_connections = {},
+            raknet_started = {},
+            raknet_sources = {},
+            raknet_hooked = false,
+            count = 0,
+        }
+
+        local raknet_packet_names = {
+            [0x00] = "ID_CONNECTED_PING",
+            [0x01] = "ID_UNCONNECTED_PING",
+            [0x03] = "ID_CONNECTED_PONG",
+            [0x04] = "ID_DETECT_LOST_CONNECTIONS",
+            [0x05] = "ID_OPEN_CONNECTION_REQUEST_1",
+            [0x06] = "ID_OPEN_CONNECTION_REPLY_1",
+            [0x07] = "ID_OPEN_CONNECTION_REQUEST_2",
+            [0x08] = "ID_OPEN_CONNECTION_REPLY_2",
+            [0x09] = "ID_CONNECTION_REQUEST",
+            [0x10] = "ID_CONNECTION_REQUEST_ACCEPTED",
+            [0x11] = "ID_CONNECTION_ATTEMPT_FAILED",
+            [0x13] = "ID_NEW_INCOMING_CONNECTION",
+            [0x15] = "ID_DISCONNECTION_NOTIFICATION",
+            [0x18] = "ID_INVALID_PASSWORD",
+            [0x1B] = "ID_TIMESTAMP",
+            [0x1C] = "ID_UNCONNECTED_PONG",
+            [0x81] = "ID_SET_GLOBALS",
+            [0x82] = "ID_TEACH_DESCRIPTOR_DICTIONARIES",
+            [0x83] = "ID_DATA",
+            [0x84] = "ID_MARKER",
+            [0x85] = "ID_PHYSICS",
+            [0x86] = "ID_TOUCHES",
+            [0x87] = "ID_CHAT_ALL",
+            [0x88] = "ID_CHAT_TEAM",
+            [0x89] = "ID_REPORT_ABUSE",
+            [0x8A] = "ID_SUBMIT_TICKET",
+            [0x8B] = "ID_CHAT_GAME",
+            [0x8C] = "ID_CHAT_PLAYER",
+            [0x8D] = "ID_CLUSTER",
+            [0x8E] = "ID_PROTOCOL_MISMATCH",
+            [0x8F] = "ID_PREFERRED_SPAWN_NAME",
+            [0x90] = "ID_PROTOCOL_SYNC",
+            [0x91] = "ID_SCHEMA_SYNC",
+            [0x92] = "ID_PLACEID_VERIFICATION",
+            [0x93] = "ID_DICTIONARY_FORMAT",
+            [0x94] = "ID_HASH_MISMATCH",
+            [0x95] = "ID_SECURITYKEY_MISMATCH",
+            [0x96] = "ID_REQUEST_STATS",
+            [0x97] = "ID_NEW_SCHEMA",
+        }
+
+        local debug_raknet_signal_specs = {
+            {"Capture", "C->S"},
+            {"Packet", "RAKNET"},
+            {"Packets", "RAKNET"},
+            {"PacketCapture", "RAKNET"},
+            {"PacketCaptured", "RAKNET"},
+            {"OnPacket", "RAKNET"},
+            {"OnPacketCaptured", "RAKNET"},
+            {"Outgoing", "C->S"},
+            {"OutgoingPacket", "C->S"},
+            {"OnOutgoingPacket", "C->S"},
+            {"Sent", "C->S"},
+            {"Send", "C->S"},
+            {"Incoming", "S->C"},
+            {"IncomingPacket", "S->C"},
+            {"OnIncomingPacket", "S->C"},
+            {"Received", "S->C"},
+            {"Receive", "S->C"},
+            {"OnReceive", "S->C"},
+            {"OnReceived", "S->C"},
+        }
+
+        local function debug_packet_path(instance)
+            local success, result = pcall(function()
+                return instance:GetFullName()
+            end)
+            return success and result or tostring(instance)
+        end
+
+        local function debug_packet_string(value, depth, seen)
+            depth = depth or 0
+            seen = seen or {}
+
+            local value_type = typeof(value)
+            if value_type == "nil" then
+                return "nil"
+            elseif value_type == "string" then
+                local text = value
+                if #text > 800 then
+                    text = text:sub(1, 800) .. "...(" .. tostring(#value) .. " chars)"
+                end
+                return string.format("%q", text)
+            elseif value_type == "number" or value_type == "boolean" then
+                return tostring(value)
+            elseif value_type == "Instance" then
+                return "<" .. value.ClassName .. " " .. debug_packet_path(value) .. ">"
+            elseif value_type == "table" then
+                if seen[value] then
+                    return "<cycle>"
+                end
+
+                if depth >= 4 then
+                    return "{...}"
+                end
+
+                seen[value] = true
+                local parts = {}
+                local count = 0
+
+                for key, entry in pairs(value) do
+                    count += 1
+                    if count > 30 then
+                        parts[#parts + 1] = "... +" .. tostring(count - 30)
+                        break
+                    end
+
+                    parts[#parts + 1] = "[" .. debug_packet_string(key, depth + 1, seen) .. "]=" .. debug_packet_string(entry, depth + 1, seen)
+                end
+
+                seen[value] = nil
+                return "{" .. table.concat(parts, ", ") .. "}"
+            end
+
+            return "<" .. value_type .. " " .. tostring(value) .. ">"
+        end
+
+        local function debug_packet_args(args)
+            local parts = {}
+            for index = 1, #args do
+                parts[#parts + 1] = debug_packet_string(args[index], 0, {})
+            end
+            return table.concat(parts, ", ")
+        end
+
+        local function debug_raknet_byte(value)
+            local number = tonumber(value)
+            if not number then
+                return nil
+            end
+            return math.clamp(math.floor(number), 0, 255)
+        end
+
+        local function debug_raknet_bytes(value)
+            local bytes = {}
+            local total = 0
+            local value_type = typeof(value)
+
+            if value_type == "string" then
+                total = #value
+                for index = 1, math.min(total, 512) do
+                    bytes[#bytes + 1] = string.format("%02X", string.byte(value, index))
+                end
+            elseif value_type == "table" then
+                total = #value
+                for index = 1, math.min(total, 512) do
+                    local byte = debug_raknet_byte(value[index])
+                    if not byte then
+                        break
+                    end
+                    bytes[#bytes + 1] = string.format("%02X", byte)
+                end
+            elseif value_type == "buffer" and buffer then
+                local success, length = pcall(buffer.len, value)
+                if success and length then
+                    total = length
+                    for index = 0, math.min(length - 1, 511) do
+                        local ok, byte = pcall(buffer.readu8, value, index)
+                        if not ok then
+                            break
+                        end
+                        bytes[#bytes + 1] = string.format("%02X", byte)
+                    end
+                end
+            end
+
+            local suffix = total > 512 and " ... +" .. tostring(total - 512) .. " bytes" or ""
+            return table.concat(bytes, " ") .. suffix, total
+        end
+
+        local function debug_raknet_direction(packet, fallback)
+            if typeof(packet) == "table" then
+                local raw_direction = packet.direction or packet.Direction or packet.type or packet.Type or packet.kind or packet.Kind
+                if raw_direction ~= nil then
+                    local direction_text = tostring(raw_direction):lower()
+                    if direction_text:find("in") or direction_text:find("recv") or direction_text:find("receive") or direction_text:find("server") then
+                        return "S->C"
+                    elseif direction_text:find("out") or direction_text:find("send") or direction_text:find("sent") or direction_text:find("client") then
+                        return "C->S"
+                    end
+                end
+
+                if packet.incoming == true or packet.received == true or packet.recv == true then
+                    return "S->C"
+                elseif packet.outgoing == true or packet.sending == true or packet.sent == true then
+                    return "C->S"
+                end
+            end
+
+            return fallback or "RAKNET"
+        end
+
+        local function debug_raknet_packet_data(packet)
+            local packet_type = typeof(packet)
+            if packet_type == "table" then
+                return packet.data or packet.Data or packet.bytes or packet.Bytes or packet.buffer or packet.Buffer or packet.payload or packet.Payload or packet
+            end
+            return packet
+        end
+
+        local function debug_raknet_packet_id(packet, data)
+            if typeof(packet) == "table" then
+                local packet_id = packet.id or packet.Id or packet.ID or packet.opcode or packet.Opcode or packet.packetId or packet.PacketId
+                if packet_id ~= nil then
+                    return debug_raknet_byte(packet_id)
+                end
+            end
+
+            local value_type = typeof(data)
+            if value_type == "string" and #data > 0 then
+                return string.byte(data, 1)
+            elseif value_type == "table" then
+                return debug_raknet_byte(data[1])
+            elseif value_type == "buffer" and buffer then
+                local success, byte = pcall(buffer.readu8, data, 0)
+                return success and byte or nil
+            end
+
+            return nil
+        end
+
+        local function log_debug_line(kind, direction, source, detail)
+            if not debug_packet_state.enabled then
+                return
+            end
+
+            debug_packet_state.count += 1
+            debug_packet_state.logs[#debug_packet_state.logs + 1] = string.format(
+                "[%0.3fs #%d] [%s] %s %s %s",
+                os.clock() - start,
+                debug_packet_state.count,
+                kind,
+                direction,
+                source,
+                detail
+            )
+        end
+
+        local function log_debug_packet(direction, remote, method, args)
+            log_debug_line("REMOTE", direction, method, debug_packet_path(remote) .. "(" .. debug_packet_args(args) .. ")")
+        end
+
+        local function log_debug_raknet_packet(source, fallback_direction, packet)
+            local data = debug_raknet_packet_data(packet)
+            local packet_id = debug_raknet_packet_id(packet, data)
+            local direction = debug_raknet_direction(packet, fallback_direction)
+            local hex, total = debug_raknet_bytes(data)
+            local packet_name = packet_id and raknet_packet_names[packet_id] or nil
+            local id_text = packet_id and string.format("id=0x%02X", packet_id) or "id=?"
+            local name_text = packet_name and " " .. packet_name or ""
+
+            if hex == "" then
+                hex = debug_packet_string(packet, 0, {})
+            end
+
+            log_debug_line("RAKNET", direction, source, string.format("%s%s bytes=%d data=%s", id_text, name_text, total or 0, hex))
+        end
+
+        local function debug_disconnect(connection)
+            if not connection then
+                return
+            end
+
+            pcall(function()
+                connection:Disconnect()
+            end)
+            pcall(function()
+                connection:disconnect()
+            end)
+        end
+
+        local function get_debug_raknet_apis()
+            local candidates = {}
+            local seen = {}
+            local env = getgenv and getgenv() or _G
+
+            for _, name in ipairs({"rnet", "RNet", "raknet", "RakNet"}) do
+                local ok, api = pcall(function()
+                    return env and rawget(env, name)
+                end)
+                if ok and api and not seen[api] then
+                    seen[api] = name
+                    candidates[#candidates + 1] = {name = name, api = api}
+                end
+            end
+
+            return candidates
+        end
+
+        local function call_debug_raknet_method(api, method_name)
+            local success, method = pcall(function()
+                return api[method_name]
+            end)
+            if not success or type(method) ~= "function" then
+                return false
+            end
+
+            if pcall(method) then
+                return true
+            end
+
+            return pcall(method, api)
+        end
+
+        local function has_debug_raknet_member(api, member_name, expected_type)
+            local success, member = pcall(function()
+                return api[member_name]
+            end)
+            return success and member and (not expected_type or type(member) == expected_type), member
+        end
+
+        local function get_debug_raknet_availability()
+            for _, candidate in ipairs(get_debug_raknet_apis()) do
+                local api = candidate.api
+                local source_name = candidate.name
+
+                if has_debug_raknet_member(api, "startcapture", "function") or has_debug_raknet_member(api, "StartCapture", "function") or has_debug_raknet_member(api, "start_capture", "function") then
+                    return true, source_name
+                end
+
+                for _, spec in ipairs(debug_raknet_signal_specs) do
+                    local found = has_debug_raknet_member(api, spec[1])
+                    if found then
+                        return true, source_name .. "." .. spec[1]
+                    end
+                end
+            end
+
+            return false, "none"
+        end
+
+        local function handle_debug_raknet_signal(source, fallback_direction, ...)
+            if not debug_packet_state.enabled then
+                return
+            end
+
+            local args = {...}
+            if #args == 1 then
+                log_debug_raknet_packet(source, fallback_direction, args[1])
+                return
+            end
+
+            local first_type = typeof(args[1])
+            if first_type == "string" then
+                local direction_text = args[1]:lower()
+                if direction_text:find("in") or direction_text:find("recv") or direction_text:find("out") or direction_text:find("send") or direction_text:find("sent") then
+                    log_debug_raknet_packet(source, fallback_direction, {
+                        direction = args[1],
+                        data = args[2],
+                        raw = args,
+                    })
+                    return
+                end
+            end
+
+            if #args == 2 and typeof(args[2]) == "string" then
+                local direction_text = args[2]:lower()
+                if direction_text:find("in") or direction_text:find("recv") or direction_text:find("out") or direction_text:find("send") or direction_text:find("sent") then
+                    log_debug_raknet_packet(source, args[2], args[1])
+                    return
+                end
+            end
+
+            log_debug_raknet_packet(source, fallback_direction, {
+                id = args[1],
+                data = args[2],
+                direction = args[3],
+                raw = args,
+            })
+        end
+
+        local function connect_debug_raknet_signal(api, source_name, signal_name, fallback_direction)
+            if not debug_packet_state.enabled then
+                return false
+            end
+
+            local success, signal = pcall(function()
+                return api[signal_name]
+            end)
+            if not success or not signal then
+                return false
+            end
+
+            local key = tostring(source_name) .. "." .. tostring(signal_name)
+            if debug_packet_state.raknet_connections[key] then
+                return true
+            end
+
+            local connected, connection = pcall(function()
+                return signal:Connect(function(...)
+                    handle_debug_raknet_signal(key, fallback_direction, ...)
+                end)
+            end)
+
+            if not connected or not connection then
+                connected, connection = pcall(function()
+                    return signal:connect(function(...)
+                        handle_debug_raknet_signal(key, fallback_direction, ...)
+                    end)
+                end)
+            end
+
+            if connected and connection then
+                debug_packet_state.raknet_connections[key] = connection
+                debug_packet_state.raknet_sources[key] = true
+                return true
+            end
+
+            return false
+        end
+
+        local function start_debug_raknet_capture()
+            if not debug_packet_state.enabled then
+                return false
+            end
+
+            local hooked = false
+
+            for _, candidate in ipairs(get_debug_raknet_apis()) do
+                local api = candidate.api
+                local source_name = candidate.name
+
+                if call_debug_raknet_method(api, "startcapture") or call_debug_raknet_method(api, "StartCapture") or call_debug_raknet_method(api, "start_capture") then
+                    debug_packet_state.raknet_started[source_name] = api
+                    debug_packet_state.raknet_sources[source_name .. ".startcapture"] = true
+                    hooked = true
+                end
+
+                for _, spec in ipairs(debug_raknet_signal_specs) do
+                    if connect_debug_raknet_signal(api, source_name, spec[1], spec[2]) then
+                        hooked = true
+                    end
+                end
+            end
+
+            if hooked and not debug_packet_state.raknet_hooked then
+                debug_packet_state.raknet_hooked = true
+                log_debug_line("RAKNET", "SYSTEM", "capture", "RakNet capture source hooked")
+            elseif not hooked then
+                log_debug_line("RAKNET", "SYSTEM", "capture", "No RakNet capture API found")
+            end
+
+            return hooked
+        end
+
+        local function stop_debug_raknet_capture()
+            for key, connection in pairs(debug_packet_state.raknet_connections) do
+                debug_disconnect(connection)
+                debug_packet_state.raknet_connections[key] = nil
+            end
+
+            for source_name, api in pairs(debug_packet_state.raknet_started) do
+                call_debug_raknet_method(api, "stopcapture")
+                call_debug_raknet_method(api, "StopCapture")
+                call_debug_raknet_method(api, "stop_capture")
+                debug_packet_state.raknet_started[source_name] = nil
+            end
+
+            debug_packet_state.raknet_hooked = false
+        end
+
+        local function connect_debug_remote(remote)
+            if not debug_packet_state.enabled or not remote or debug_packet_state.remote_connections[remote] then
+                return
+            end
+
+            if remote:IsA("RemoteEvent") then
+                local success, connection = pcall(function()
+                    return utility:Connection(remote.OnClientEvent, function(...)
+                        log_debug_packet("S->C", remote, "OnClientEvent", {...})
+                    end, true)
+                end)
+
+                if success and connection then
+                    debug_packet_state.remote_connections[remote] = connection
+                end
+            end
+        end
+
+        local function wrap_debug_remote_function(remote)
+            if not debug_packet_state.enabled or not remote or not remote:IsA("RemoteFunction") or debug_packet_state.remote_function_wrappers[remote] then
+                return
+            end
+
+            local original = remote.OnClientInvoke
+            if type(original) ~= "function" then
+                return
+            end
+
+            local wrapper
+            wrapper = function(...)
+                log_debug_packet("S->C", remote, "OnClientInvoke", {...})
+                return original(...)
+            end
+
+            local success = pcall(function()
+                remote.OnClientInvoke = wrapper
+            end)
+
+            if success then
+                debug_packet_state.remote_function_wrappers[remote] = {
+                    original = original,
+                    wrapper = wrapper,
+                }
+            end
+        end
+
+        local function scan_debug_remotes()
+            for _, descendant in ipairs(game:GetDescendants()) do
+                if descendant:IsA("RemoteEvent") then
+                    connect_debug_remote(descendant)
+                elseif descendant:IsA("RemoteFunction") then
+                    wrap_debug_remote_function(descendant)
+                end
+            end
+        end
+
+        local function ensure_debug_namecall()
+            if debug_packet_state.namecall_hooked or not hookmetamethod or not getnamecallmethod then
+                return
+            end
+
+            local success, old_namecall = pcall(function()
+                return hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+                    local method = getnamecallmethod()
+
+                    if debug_packet_state.enabled and typeof(self) == "Instance" then
+                        if method == "FireServer" and self:IsA("RemoteEvent") then
+                            log_debug_packet("C->S", self, "FireServer", {...})
+                        elseif method == "InvokeServer" and self:IsA("RemoteFunction") then
+                            log_debug_packet("C->S", self, "InvokeServer", {...})
+                        end
+                    end
+
+                    return debug_packet_state.old_namecall(self, ...)
+                end))
+            end)
+
+            if success and old_namecall then
+                debug_packet_state.old_namecall = old_namecall
+                debug_packet_state.namecall_hooked = true
+            end
+        end
+
+        local function stop_debug_packet_logging()
+            debug_packet_state.enabled = false
+            stop_debug_raknet_capture()
+
+            if debug_packet_state.descendant_connection then
+                pcall(function()
+                    debug_packet_state.descendant_connection:Disconnect()
+                end)
+                debug_packet_state.descendant_connection = nil
+            end
+
+            for remote, connection in pairs(debug_packet_state.remote_connections) do
+                pcall(function()
+                    connection:Disconnect()
+                end)
+                debug_packet_state.remote_connections[remote] = nil
+            end
+
+            for remote, data in pairs(debug_packet_state.remote_function_wrappers) do
+                pcall(function()
+                    if remote.OnClientInvoke == data.wrapper then
+                        remote.OnClientInvoke = data.original
+                    end
+                end)
+                debug_packet_state.remote_function_wrappers[remote] = nil
+            end
+        end
+
+        local function start_debug_packet_logging()
+            if debug_packet_state.enabled then
+                return
+            end
+
+            debug_packet_state.enabled = true
+            ensure_debug_namecall()
+            debug_packet_state.logs[#debug_packet_state.logs + 1] = string.format("[%0.3fs] Debug packet capture enabled", os.clock() - start)
+            start_debug_raknet_capture()
+            scan_debug_remotes()
+
+            debug_packet_state.descendant_connection = utility:Connection(game.DescendantAdded, function(descendant)
+                if descendant:IsA("RemoteEvent") then
+                    connect_debug_remote(descendant)
+                elseif descendant:IsA("RemoteFunction") then
+                    wrap_debug_remote_function(descendant)
+                end
+            end, true)
+
+            if not debug_packet_state.scan_thread then
+                debug_packet_state.scan_thread = task.spawn(function()
+                    while shared and not shared.is_unloading do
+                        task.wait(1)
+                        if debug_packet_state.enabled then
+                            scan_debug_remotes()
+                        elseif not debug_packet_state.enabled then
+                            debug_packet_state.scan_thread = nil
+                            break
+                        end
+                    end
+                end)
+            end
+        end
+
+        local function copy_debug_packet_logs()
+            local clipboard = setclipboard or toclipboard
+            if not clipboard then
+                if library and library.Notify then
+                    library:Notify("Clipboard is not supported by this executor.", 3)
+                end
+                return
+            end
+
+            local raknet_sources = {}
+            for source in pairs(debug_packet_state.raknet_sources) do
+                raknet_sources[#raknet_sources + 1] = tostring(source)
+            end
+            table.sort(raknet_sources)
+
+            local output = {
+                "SGW Hub Packet Logs",
+                "PlaceId: " .. tostring(game.PlaceId),
+                "JobId: " .. tostring(game.JobId),
+                "Captured: " .. tostring(#debug_packet_state.logs),
+                "RakNet Sources: " .. (#raknet_sources > 0 and table.concat(raknet_sources, ", ") or "none"),
+                "",
+            }
+
+            if #debug_packet_state.logs == 0 then
+                output[#output + 1] = "No packet logs captured."
+            else
+                for _, line in ipairs(debug_packet_state.logs) do
+                    output[#output + 1] = line
+                end
+            end
+
+            clipboard(table.concat(output, "\n"))
+
+            if library and library.Notify then
+                library:Notify("Packet logs copied.", 3)
+            end
         end
     
         function utility:RemoveConnection(connection)
@@ -7486,6 +8149,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             Misc = window:AddTab("Misc", "settings"),
             Botting = window:AddTab("Botting", "bot"),
             Macros = window:AddTab("Macros", "play"),
+            Debug = window:AddTab("Debug", "bug"),
             Interface = window:AddTab("Interface", "monitor"),
             Config = window:AddTab("Config", "save")
         }
@@ -20991,6 +21655,72 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     end
                 end
             end)
+        end
+
+        do
+            Tabs.Debug:UpdateWarningBox({
+                Visible = true,
+                Title = "RAKNET WARNING",
+                Text = "Everything in this tab is risky and needs RakNet."
+            })
+
+            local group_debug = Tabs.Debug:AddLeftGroupbox("Packet Debug", "bug")
+            local copy_packet_logs_button
+            local raknet_status_label
+            local function update_raknet_status_label()
+                if not raknet_status_label then
+                    return
+                end
+
+                local available, source = get_debug_raknet_availability()
+                local status = available and "Available" or "Unavailable"
+
+                if available and debug_packet_state.enabled and debug_packet_state.raknet_hooked then
+                    status = status .. " (Capturing)"
+                elseif available and source and source ~= "" then
+                    status = status .. " (" .. tostring(source) .. ")"
+                end
+
+                raknet_status_label:SetText("RakNet: " .. status)
+            end
+
+            group_debug:AddToggle("DebugEnabled", {
+                Text = "Enable Debug",
+                Default = cheat_client.config.debug_enabled,
+                Risky = true,
+                Callback = function(state)
+                    cheat_client.config.debug_enabled = state
+
+                    if copy_packet_logs_button then
+                        copy_packet_logs_button:SetDisabled(not state)
+                    end
+
+                    if state then
+                        start_debug_packet_logging()
+                    else
+                        stop_debug_packet_logging()
+                    end
+
+                    update_raknet_status_label()
+                end
+            })
+
+            raknet_status_label = group_debug:AddLabel("RakNet: Checking...")
+            update_raknet_status_label()
+
+            copy_packet_logs_button = group_debug:AddButton({
+                Text = "Copy Packet Logs",
+                Disabled = not cheat_client.config.debug_enabled,
+                Func = function()
+                    copy_debug_packet_logs()
+                end
+            })
+
+            if Toggles.DebugEnabled and Toggles.DebugEnabled.Value then
+                start_debug_packet_logging()
+                copy_packet_logs_button:SetDisabled(false)
+                update_raknet_status_label()
+            end
         end
 
         do
