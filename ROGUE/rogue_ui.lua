@@ -21672,7 +21672,14 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     return
                 end
 
-                local available, source = get_debug_raknet_availability()
+                local available, source = false, "none"
+                if type(get_debug_raknet_availability) == "function" then
+                    local success, result, result_source = pcall(get_debug_raknet_availability)
+                    if success then
+                        available = result == true
+                        source = result_source or "none"
+                    end
+                end
                 local status = available and "Available" or "Unavailable"
 
                 if available and debug_packet_state.enabled and debug_packet_state.raknet_hooked then
