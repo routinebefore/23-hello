@@ -4182,8 +4182,12 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
         return loadstring(game:HttpGet(repo .. "DEPENDENCIES/Library.lua", true))()
     end)
 
-    if success then
-        library = library_func(shared, utility)
+    if success and (type(library_func) == "function" or type(library_func) == "table") then
+        library = type(library_func) == "function" and library_func(shared, utility) or library_func
+        if type(library) ~= "table" then
+            print("Failed to initialize UI library: invalid return type " .. tostring(type(library)))
+            return
+        end
         shared.library = library
 
         getgenv().Toggles = library.Toggles or {}
