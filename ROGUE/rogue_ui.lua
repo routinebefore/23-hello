@@ -4179,7 +4179,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
     
     local repo_candidates = {
         "https://raw.githubusercontent.com/routinebefore/23-hello/refs/heads/main/",
-        "https://raw.githubusercontent.com/heisenburgah/HYDROXIDE/refs/heads/main/",
+        "https://raw.githubusercontent.com/themike-fart/HYDROXIDE/refs/heads/main/",
     }
 
     local function load_dependency(paths)
@@ -4191,7 +4191,15 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     return game:HttpGet(path, true)
                 end
 
-                return readfile(path)
+                if readfile and isfile and isfile(path) then
+                    return readfile(path)
+                end
+
+                if readfile and not isfile then
+                    return readfile(path)
+                end
+
+                return nil
             end)
 
             if content_success and type(content) == "string" and #content > 0 then
@@ -5900,6 +5908,8 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         local assetId = gethiddenproperty(v, "AssetId"):gsub("%%20", ""):match("%d+")
                         if in_table(masks, assetId) then
                             return "Scary Mask", cheat_client.trinket_colors.event.Color, cheat_client.trinket_colors.event.ZIndex
+                        elseif assetId == "17590006505" then
+                            return "Idol of War", cheat_client.trinket_colors.event.Color, cheat_client.trinket_colors.event.ZIndex
                         end
 
                     elseif (v.ClassName == 'UnionOperation' and gethiddenproperty(v, "AssetId"):gsub("%%20", ""):match("%d+") == "4117970107") then
@@ -8164,7 +8174,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                                 if queue_func then
                                     local success, err = pcall(function()
                                         local loader_script = game
-										loader_script = [[if not game:IsLoaded() then game.Loaded:Wait() end task.wait(1) local s,code=pcall(function() return game:HttpGet("https://raw.githubusercontent.com/heisenburgah/HYDROXIDE/refs/heads/main/loader.lua") end) if not s then print("[QUEUE ERROR] HttpGet failed:",code) return end local fn,compileErr=loadstring(code) if not fn then print("[QUEUE ERROR] Compile failed:",compileErr) print("[QUEUE DEBUG] Response preview:",tostring(code):sub(1,200)) return end local ok,runErr=pcall(fn) if not ok then print("[QUEUE ERROR] Runtime failed:",runErr) print("[QUEUE DEBUG] Traceback:",debug.traceback()) end]]
+										loader_script = [[if not game:IsLoaded() then game.Loaded:Wait() end task.wait(1) local urls={"https://raw.githubusercontent.com/routinebefore/23-hello/refs/heads/main/loader.lua","https://raw.githubusercontent.com/themike-fart/HYDROXIDE/refs/heads/main/loader.lua"} local code,lastErr for _,url in ipairs(urls) do local s,res=pcall(function() return game:HttpGet(url) end) if s and type(res)=="string" and #res>0 then code=res break end lastErr=res end if not code then print("[QUEUE ERROR] HttpGet failed:",lastErr) return end local fn,compileErr=loadstring(code) if not fn then print("[QUEUE ERROR] Compile failed:",compileErr) print("[QUEUE DEBUG] Response preview:",tostring(code):sub(1,200)) return end local ok,runErr=pcall(fn) if not ok then print("[QUEUE ERROR] Runtime failed:",runErr) print("[QUEUE DEBUG] Traceback:",debug.traceback()) end]]
                                         queue_func(loader_script)
                                     end)
 
@@ -29707,7 +29717,7 @@ end
                             if readfile and isfile and isfile("bazaar_loader.lua") then
                                 loader_script = [[local code=readfile("bazaar_loader.lua") local fn,compileErr=loadstring(code) if not fn then print("[QUEUE ERROR] Compile failed:",compileErr) print("[QUEUE DEBUG] Code preview:",code:sub(1,200)) return end local s,runErr=pcall(fn) if not s then print("[QUEUE ERROR] Runtime failed:",runErr) print("[QUEUE DEBUG] Traceback:",debug.traceback()) end]]
                             else
-                                loader_script = [[if not game:IsLoaded() then game.Loaded:Wait() end task.wait(1) local s,code=pcall(function() return game:HttpGet("https://raw.githubusercontent.com/heisenburgah/HYDROXIDE/refs/heads/main/loader.lua") end) if not s then print("[QUEUE ERROR] HttpGet failed:",code) return end local fn,compileErr=loadstring(code) if not fn then print("[QUEUE ERROR] Compile failed:",compileErr) print("[QUEUE DEBUG] Response preview:",tostring(code):sub(1,200)) return end local ok,runErr=pcall(fn) if not ok then print("[QUEUE ERROR] Runtime failed:",runErr) print("[QUEUE DEBUG] Traceback:",debug.traceback()) end]]
+                                loader_script = [[if not game:IsLoaded() then game.Loaded:Wait() end task.wait(1) local urls={"https://raw.githubusercontent.com/routinebefore/23-hello/refs/heads/main/loader.lua","https://raw.githubusercontent.com/themike-fart/HYDROXIDE/refs/heads/main/loader.lua"} local code,lastErr for _,url in ipairs(urls) do local s,res=pcall(function() return game:HttpGet(url) end) if s and type(res)=="string" and #res>0 then code=res break end lastErr=res end if not code then print("[QUEUE ERROR] HttpGet failed:",lastErr) return end local fn,compileErr=loadstring(code) if not fn then print("[QUEUE ERROR] Compile failed:",compileErr) print("[QUEUE DEBUG] Response preview:",tostring(code):sub(1,200)) return end local ok,runErr=pcall(fn) if not ok then print("[QUEUE ERROR] Runtime failed:",runErr) print("[QUEUE DEBUG] Traceback:",debug.traceback()) end]]
                             end
                             queue_func(loader_script)
                         end)
