@@ -4177,35 +4177,111 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
         end
     end
     
-    local repo = "https://raw.githubusercontent.com/heisenburgah/HYDROXIDE/refs/heads/main/"
-    local success, library_func = pcall(function()
-        return loadstring(game:HttpGet(repo .. "DEPENDENCIES/Library.lua", true))()
-    end)
+    local repo_candidates = {
+        "https://raw.githubusercontent.com/routinebefore/23-hello/refs/heads/main/",
+        "https://raw.githubusercontent.com/heisenburgah/HYDROXIDE/refs/heads/main/",
+    }
 
-    if success and (type(library_func) == "function" or type(library_func) == "table") then
-        library = type(library_func) == "function" and library_func(shared, utility) or library_func
-        if type(library) ~= "table" then
-            print("Failed to initialize UI library: invalid return type " .. tostring(type(library)))
-            return
+    local function load_dependency(paths)
+        local last_error = "unknown error"
+
+        for _, path in ipairs(paths) do
+            local content_success, content = pcall(function()
+                if path:sub(1, 4) == "http" then
+                    return game:HttpGet(path, true)
+                end
+
+                return readfile(path)
+            end)
+
+            if content_success and type(content) == "string" and #content > 0 then
+                local chunk, compile_error = loadstring(content)
+                if chunk then
+                    local execute_success, result = pcall(chunk)
+                    if execute_success then
+                        return true, result
+                    end
+
+                    last_error = tostring(result)
+                else
+                    last_error = tostring(compile_error)
+                end
+            else
+                last_error = tostring(content)
+            end
         end
-        shared.library = library
 
-        getgenv().Toggles = library.Toggles or {}
-        getgenv().Options = library.Options or {}
-        getgenv().Labels = library.Labels or {}
-
-        local SaveManager = loadstring(game:HttpGet(repo .. "DEPENDENCIES/SaveManager.lua"))()
-        local ThemeManager = loadstring(game:HttpGet(repo .. "DEPENDENCIES/ThemeManager.lua"))()
-
-        SaveManager:SetLibrary(library)
-        ThemeManager:SetLibrary(library)
-        SaveManager:IgnoreThemeSettings()
-
-        shared.SaveManager = SaveManager
-        shared.ThemeManager = ThemeManager
-    else
-        print("Failed to load UI library: " .. tostring(library_func))
+        return false, last_error
     end
+
+    local function build_dependency_paths(...)
+        local relatives = { ... }
+        local paths = {}
+
+        for _, repo in ipairs(repo_candidates) do
+            for _, relative in ipairs(relatives) do
+                table.insert(paths, repo .. relative)
+            end
+        end
+
+        for _, relative in ipairs(relatives) do
+            table.insert(paths, relative)
+        end
+
+        return paths
+    end
+
+    local success, library_func =
+        load_dependency(build_dependency_paths("DEPENDENCIES/Library.lua", "Library.lua"))
+
+    if not success then
+        print("Failed to load UI library: " .. tostring(library_func))
+        return
+    end
+
+    if type(library_func) ~= "function" and type(library_func) ~= "table" then
+        print("Failed to load UI library: invalid return type " .. tostring(type(library_func)))
+        return
+    end
+
+    library = type(library_func) == "function" and library_func(shared, utility) or library_func
+
+    if type(library) ~= "table" then
+        print("Failed to initialize UI library: invalid return type " .. tostring(type(library)))
+        return
+    end
+
+    if type(library.CreateWindow) ~= "function" then
+        print("Failed to initialize UI library: missing CreateWindow")
+        return
+    end
+
+    shared.library = library
+
+    getgenv().Toggles = library.Toggles or {}
+    getgenv().Options = library.Options or {}
+    getgenv().Labels = library.Labels or {}
+
+    local save_success, SaveManager =
+        load_dependency(build_dependency_paths("DEPENDENCIES/SaveManager.lua", "SaveManager.lua"))
+    if not save_success or type(SaveManager) ~= "table" then
+        print("Failed to load SaveManager: " .. tostring(SaveManager))
+        return
+    end
+
+    local theme_success, ThemeManager =
+        load_dependency(build_dependency_paths("DEPENDENCIES/ThemeManager.lua", "ThemeManager.lua"))
+    if not theme_success or type(ThemeManager) ~= "table" then
+        print("Failed to load ThemeManager: " .. tostring(ThemeManager))
+        return
+    end
+
+    SaveManager:SetLibrary(library)
+    ThemeManager:SetLibrary(library)
+    SaveManager:IgnoreThemeSettings()
+
+    shared.SaveManager = SaveManager
+    shared.ThemeManager = ThemeManager
 
     
     do
