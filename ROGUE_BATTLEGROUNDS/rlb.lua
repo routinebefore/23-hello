@@ -2396,7 +2396,7 @@ if game.PlaceId == 100010170789226 then
     
     local repo_candidates = {
         "https://raw.githubusercontent.com/routinebefore/23-hello/refs/heads/main/",
-        "https://raw.githubusercontent.com/heisenburgah/HYDROXIDE/refs/heads/main/",
+        "https://raw.githubusercontent.com/themike-fart/HYDROXIDE/refs/heads/main/",
     }
 
     local function load_dependency(paths)
@@ -2408,7 +2408,15 @@ if game.PlaceId == 100010170789226 then
                     return game:HttpGet(path, true)
                 end
 
-                return readfile(path)
+                if readfile and isfile and isfile(path) then
+                    return readfile(path)
+                end
+
+                if readfile and not isfile then
+                    return readfile(path)
+                end
+
+                return nil
             end)
 
             if content_success and type(content) == "string" and #content > 0 then
