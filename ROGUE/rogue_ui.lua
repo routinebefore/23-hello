@@ -617,6 +617,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             pickup_bloodthorn = true,
             ps_heal_button_keybind = "None",
             instant_menu_keybind = "None",
+			bane_teleport_keybind = "None",
             menu_keybind = "RightShift",
             unload_keybind = "End",
 
@@ -8715,14 +8716,23 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
             group_combat_utils:AddDivider()
 
-            group_combat_utils:AddToggle("BaneTeleport", {
+           group_combat_utils:AddToggle("BaneTeleport", {
                 Text = "Bane Teleport",
                 Default = false,
                 Tooltip = "Teleports to nearest target when attacking while BaneEff is active",
                 Callback = function(value)
                     cheat_client.config.bane_teleport = value
                 end
+            }):AddKeyPicker("BaneTeleportKeybind", {
+                Default = cheat_client.config.bane_teleport_keybind,
+                Text = "Bane Teleport Toggle",
+                Mode = "Toggle",
+                SyncToggleState = true,
             })
+
+            Options.BaneTeleportKeybind:OnChanged(function()
+                cheat_client.config.bane_teleport_keybind = Options.BaneTeleportKeybind.Value
+            end)
 
             group_combat_utils:AddSlider("BaneTeleportRadius", {
                 Text = "Bane TP Radius",
