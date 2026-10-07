@@ -561,6 +561,8 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             auto_ingredient = false,
             auto_weapon = false,
             auto_resurrection = false,
+			bane_teleport = false,
+            bane_teleport_radius = 15,
             auto_charge = false,
             auto_charge_threshold = 100,
             auto_bag = false,
@@ -8710,6 +8712,29 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     Rounding = 0,
                     Compact = true
                 })
+
+            group_combat_utils:AddDivider()
+
+            group_combat_utils:AddToggle("BaneTeleport", {
+                Text = "Bane Teleport",
+                Default = false,
+                Tooltip = "Teleports to nearest target when attacking while BaneEff is active",
+                Callback = function(value)
+                    cheat_client.config.bane_teleport = value
+                end
+            })
+
+            group_combat_utils:AddSlider("BaneTeleportRadius", {
+                Text = "Bane TP Radius",
+                Default = 15,
+                Min = 1,
+                Max = 30,
+                Rounding = 0,
+                Compact = true,
+                Callback = function(value)
+                    cheat_client.config.bane_teleport_radius = value
+                end
+            })
 
             local group_auto_parry = Tabs.Combat:AddRightGroupbox("Auto Parry")
 
@@ -28306,6 +28331,191 @@ end
                     end
                 end))
             end
+
+        -- ── Bane Teleport ─────────────────────────────────────────────
+        do
+            local STAND_OFFSET = 2
+            local LERP_SPEED   = 14
+            local DONE_DIST    = 0.8
+
+            local interpActive  = false
+            local interpGoal    = nil
+            local interpTimer   = 0
+            local wasAttacking  = false
+
+            local function safeRead(fn)
+                local ok, v = pcall(fn) return ok and v or nil
+            end
+
+            local function hasBaneEff()
+                local char = plr.Character
+                if not char then return false end
+                for _, v in next, char:GetChildren() do
+                    if v.ClassName == "Accessory" and v.Name == "BaneEff" then return true end
+                end
+                return false
+            end
+
+            local function isAttacking()
+                local char = plr.Character
+                if not char then return false end
+                return cs:HasTag(char, "LightAttack") or FindFirstChild(char, "LightAttack") ~= nil
+            end
+
+            local function getLocalRoot()
+                local char = plr.Character
+                return char and FindFirstChild(char, "HumanoidRootPart")
+            end
+
+            local function buildGoalCFrame(targetHRP, myRoot)
+                local myPos     = myRoot.Position
+                local targetPos = targetHRP.Position
+                local toMe      = myPos - targetPos
+                local mag       = toMe.Magnitude
+                local dir       = mag > 0.01 and toMe.Unit or Vector3.new(0, 0, 1)
+                local landPos   = targetPos + dir * STAND_OFFSET
+                local fwd       = (targetPos - landPos)
+                local fwdM      = fwd.Magnitude
+                fwd = fwdM > 0.01 and fwd.Unit or Vector3.new(0, 0, -1)
+                local worldUp = Vector3.new(0, 1, 0)
+                local right   = fwd:Cross(worldUp)
+                local rightM  = right.Magnitude
+                right = rightM > 0.01 and right.Unit or Vector3.new(1, 0, 0)
+                local up = right:Cross(fwd)
+                return CFrame.new(
+                    landPos.X, landPos.Y, landPos.Z,
+                    right.X, right.Y, right.Z,
+                    up.X,    up.Y,    up.Z,
+                    -fwd.X,  -fwd.Y,  -fwd.Z
+                )
+            end
+
+            local function findNearestHRP(myRoot)
+                local myPos    = myRoot.Position
+                local radius   = cheat_client.config.bane_teleport_radius or 15
+                local bestDist = radius
+                local bestHRP  = nil
+
+                for _, p in next, plrs:GetPlayers() do
+                    if p == plr then continue end
+                    local char = safeRead(function() return p.Character end)
+                    if not char then continue end
+                    local hrp = FindFirstChild(char, "HumanoidRootPart")
+                    if not hrp then continue end
+                    local d = (hrp.Position - myPos).Magnitude
+                    if d < bestDist then bestDist = d; bestHRP = hrp end
+                end
+
+                for _, obj in next, ws:GetChildren() do
+                    if obj == plr.Character then continue end
+                    local ok, children = pcall(function() return obj:GetChildren() end)
+                    if not ok then continue end
+                    local hrp, hasHum = nil, false
+                    for _, child in next, children do
+                        local cn = safeRead(function() return child.ClassName end)
+                        if cn == "Humanoid"         then hasHum = true end
+                        if cn == "HumanoidRootPart" then hrp = child end
+                    end
+                    if hasHum and hrp then
+                        local d = (hrp.Position - myPos).Magnitude
+                        if d < bestDist then bestDist = d; bestHRP = hrp end
+                    end
+                end
+
+                return bestHRP
+            end
+
+            utility:Connection(rs.RenderStepped, function(dt)
+                if not shared or shared.is_unloading then return end
+                if not (Toggles and Toggles.BaneTeleport and Toggles.BaneTeleport.Value) then
+                    if interpActive then
+                        interpActive = false
+                        interpGoal   = nil
+                        interpTimer  = 0
+                        local r = getLocalRoot()
+                        if r then
+                            pcall(function()
+                                r.AssemblyLinearVelocity  = Vector3.zero
+                                r.AssemblyAngularVelocity = Vector3.zero
+                            end)
+                        end
+                    end
+                    wasAttacking = false
+                    return
+                end
+
+                -- trigger on attack + bane rising edge
+                local attackNow = isAttacking()
+                if attackNow and not wasAttacking and not interpActive and hasBaneEff() then
+                    local myRoot = getLocalRoot()
+                    if myRoot then
+                        local target = findNearestHRP(myRoot)
+                        if target then
+                            local ok, cf = pcall(buildGoalCFrame, target, myRoot)
+                            if ok and cf then
+                                interpGoal   = cf
+                                interpActive = true
+                                interpTimer  = 0
+                            end
+                        end
+                    end
+                end
+                wasAttacking = attackNow
+
+                -- interpolate
+                if interpActive and interpGoal then
+                    interpTimer = interpTimer + dt
+
+                    if interpTimer > 0.2 then
+                        interpActive = false
+                        interpGoal   = nil
+                        interpTimer  = 0
+                        local r = getLocalRoot()
+                        if r then pcall(function()
+                            r.AssemblyLinearVelocity  = Vector3.zero
+                            r.AssemblyAngularVelocity = Vector3.zero
+                        end) end
+                        return
+                    end
+
+                    if cs:HasTag(plr.Character or {}, "Stun") then
+                        interpActive = false
+                        interpGoal   = nil
+                        interpTimer  = 0
+                        return
+                    end
+
+                    local myRoot = getLocalRoot()
+                    if not myRoot then
+                        interpActive = false
+                        interpGoal   = nil
+                        interpTimer  = 0
+                        return
+                    end
+
+                    local current = myRoot.CFrame
+                    local dist    = (current.Position - interpGoal.Position).Magnitude
+
+                    if dist < DONE_DIST then
+                        pcall(function()
+                            myRoot.CFrame = interpGoal
+                            myRoot.AssemblyLinearVelocity  = Vector3.zero
+                            myRoot.AssemblyAngularVelocity = Vector3.zero
+                        end)
+                        interpActive = false
+                        interpGoal   = nil
+                        interpTimer  = 0
+                    else
+                        local speedScale = math.clamp(dist / 5, 0.4, 1)
+                        local alpha      = math.clamp(LERP_SPEED * speedScale * dt, 0, 1)
+                        pcall(function()
+                            myRoot.CFrame = current:Lerp(interpGoal, alpha)
+                            myRoot.AssemblyLinearVelocity = myRoot.AssemblyLinearVelocity * 0.3
+                        end)
+                    end
+                end
+            end)
+        end
 
             local function stop_perflora_teleport()
                 if cheat_client.feature_connections.perflora_teleport then
