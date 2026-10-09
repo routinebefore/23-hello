@@ -30684,6 +30684,7 @@ end
         do
             local grapple_char_conns = {}
             local last_shadowrush_time = 0
+            local grapple_cancelled = false
 
             local function is_grapple_vel_enabled()
                 if Toggles and Toggles.GrappleVelocity and type(Toggles.GrappleVelocity.Value) == "boolean" then
@@ -30705,24 +30706,34 @@ end
                 return math.clamp(mult or 1.5, 1.1, 3.0)
             end
 
-            local function is_shadowrush_active(character)
-                if (os.clock() - last_shadowrush_time) < 2.5 then
+            local function is_shadowrush_active(char)
+                if not char then return false end
+                if (os.clock() - last_shadowrush_time) < 1.5 then
                     return true
                 end
-                local hum = character:FindFirstChildOfClass("Humanoid")
+                if FindFirstChild(char, "Shadowrush") or FindFirstChild(char, "ShadowrushCharge") or FindFirstChild(char, "AerialShadowrush") or FindFirstChild(char, "Shadow") then
+                    return true
+                end
+                if cs and (cs:HasTag(char, "Shadowrush") or cs:HasTag(char, "AerialShadowrush") or cs:HasTag(char, "Shadow")) then
+                    return true
+                end
+                local hum = char:FindFirstChildOfClass("Humanoid")
                 if hum then
                     local animator = hum:FindFirstChildOfClass("Animator") or hum
                     for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
                         local n1 = (track.Name or ""):lower()
                         local n2 = (track.Animation and track.Animation.Name or ""):lower()
-                        if n1:find("shadow") or n1:find("rush") or n2:find("shadow") or n2:find("rush") then
+                        if n1:find("shadow") or n1:find("rush") or n1:find("aerial") or n2:find("shadow") or n2:find("rush") or n2:find("aerial") then
                             return true
                         end
                     end
                 end
-                for _, obj in ipairs(character:GetDescendants()) do
-                    if obj:IsA("Sound") and obj.IsPlaying and obj.Name:lower():find("shadowrush") then
-                        return true
+                for _, obj in ipairs(char:GetDescendants()) do
+                    if obj:IsA("Sound") and (obj.IsPlaying or (obj.TimeLength > 0 and obj.TimePosition > 0 and obj.TimePosition < obj.TimeLength)) then
+                        local sname = obj.Name:lower()
+                        if sname:find("shadowrush") or sname:find("shadow") or sname:find("rush") then
+                            return true
+                        end
                     end
                 end
                 return false
@@ -30818,35 +30829,117 @@ end
                 if not character then return end
                 local rootPart = character:WaitForChild("HumanoidRootPart", 5)
                 if not rootPart then return end
+                local current_grapple_target = nil
 
                 for _, obj in ipairs(character:GetDescendants()) do
                     if obj:IsA("Sound") and obj.Name:lower():find("shadowrush") then
                         local sc = utility:Connection(obj.Played, function()
                             last_shadowrush_time = os.clock()
+                            grapple_cancelled = true
                         end)
                         table.insert(grapple_char_conns, sc)
                     end
                 end
 
                 local desc_conn = utility:Connection(character.DescendantAdded, function(desc)
-                    if desc:IsA("Sound") and desc.Name:lower():find("shadowrush") then
+                    local dname = (desc.Name or ""):lower()
+                    if desc:IsA("Sound") and (dname:find("shadowrush") or dname:find("shadow")) then
                         last_shadowrush_time = os.clock()
+                        grapple_cancelled = true
                         local sc = utility:Connection(desc.Played, function()
                             last_shadowrush_time = os.clock()
+                            grapple_cancelled = true
                         end)
                         table.insert(grapple_char_conns, sc)
+                    elseif dname:find("shadowrush") or dname:find("aerialshadowrush") then
+                        last_shadowrush_time = os.clock()
+                        grapple_cancelled = true
                     end
                 end)
                 table.insert(grapple_char_conns, desc_conn)
 
+                if ws.Live then
+                    local live_conn = utility:Connection(ws.Live.DescendantAdded, function(desc)
+                        local dname = (desc.Name or ""):lower()
+                        if dname:find("shadowrush") or dname:find("shadow") or dname:find("aerial") then
+                            local is_rel = false
+                            if character and desc:IsDescendantOf(character) then
+                                is_rel = true
+                            elseif current_grapple_target and desc:IsDescendantOf(current_grapple_target) then
+                                is_rel = true
+                            else
+                                local _, g_targ = get_grapple_target(character)
+                                if g_targ and desc:IsDescendantOf(g_targ) then
+                                    is_rel = true
+                                else
+                                    local p = desc.Parent
+                                    local p_pos = nil
+                                    if p and p:IsA("BasePart") then
+                                        p_pos = p.Position
+                                    elseif p and p:IsA("Model") then
+                                        local phrp = p:FindFirstChild("HumanoidRootPart") or p:FindFirstChild("Torso")
+                                        if phrp then p_pos = phrp.Position end
+                                    end
+                                    if p_pos and rootPart and (p_pos - rootPart.Position).Magnitude <= 45 then
+                                        is_rel = true
+                                    end
+                                end
+                            end
+
+                            if is_rel then
+                                last_shadowrush_time = os.clock()
+                                grapple_cancelled = true
+                                if desc:IsA("Sound") then
+                                    local sc = utility:Connection(desc.Played, function()
+                                        last_shadowrush_time = os.clock()
+                                        grapple_cancelled = true
+                                    end)
+                                    table.insert(grapple_char_conns, sc)
+                                end
+                            end
+                        end
+                    end)
+                    table.insert(grapple_char_conns, live_conn)
+                end
+
                 local heartbeat_conn = utility:Connection(rs.Heartbeat, LPH_NO_VIRTUALIZE(function(dt)
                     if not is_grapple_vel_enabled() then return end
                     if not character or not rootPart or not rootPart:IsDescendantOf(ws) then return end
-                    if is_shadowrush_active(character) then return end
-                    if not is_grappling(character) then return end
+
+                    if not is_grappling(character) then
+                        grapple_cancelled = false
+                        current_grapple_target = nil
+                        return
+                    end
+
+                    if grapple_cancelled then return end
+                    if is_shadowrush_active(character) then
+                        grapple_cancelled = true
+                        return
+                    end
+
+                    if current_grapple_target and is_shadowrush_active(current_grapple_target) then
+                        grapple_cancelled = true
+                        return
+                    end
 
                     local target_pos, target_model = get_grapple_target(character)
+                    if target_model then
+                        current_grapple_target = target_model
+                    end
+                    if not target_pos and current_grapple_target then
+                        local thrp = current_grapple_target:FindFirstChild("HumanoidRootPart") or current_grapple_target:FindFirstChild("Torso")
+                        if thrp then
+                            target_pos = thrp.Position
+                            target_model = current_grapple_target
+                        end
+                    end
                     if not target_pos then return end
+
+                    if target_model and is_shadowrush_active(target_model) then
+                        grapple_cancelled = true
+                        return
+                    end
 
                     local cur_vel = rootPart.AssemblyLinearVelocity
                     local cur_speed = cur_vel.Magnitude
