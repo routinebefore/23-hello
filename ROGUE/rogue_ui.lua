@@ -5374,6 +5374,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     do
                         local temp_base = Instance.new("ImageLabel")
                         temp_base.Name = "Temperature"
+                        temp_base.AnchorPoint = Vector2.new(0.5, 0)
                         temp_base.Size = UDim2.new(0, 54, 0, 10)
                         temp_base.BackgroundTransparency = 1
                         temp_base.BackgroundColor3 = Color3.new(1, 1, 1)
@@ -5389,6 +5390,11 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         temp_base.ZIndex = 4
                         temp_base.Visible = false
                         temp_base.Parent = get_esp_screen_gui()
+
+                        local temp_scale = Instance.new("UIScale")
+                        temp_scale.Name = "Scale"
+                        temp_scale.Scale = 1
+                        temp_scale.Parent = temp_base
 
                         local temp_gradient = Instance.new("ImageLabel")
                         temp_gradient.Name = "Gradient"
@@ -5422,6 +5428,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
                         esp.temperature_widget = temp_base
                         esp.temperature_pointer = temp_pointer
+                        esp.temperature_scale = temp_scale
                     end
             
                     function esp:destruct()
@@ -5434,6 +5441,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                             esp.temperature_widget:Destroy()
                             esp.temperature_widget = nil
                             esp.temperature_pointer = nil
+                            esp.temperature_scale = nil
                         end
 
                         esp.highlight:Destroy()
@@ -6031,6 +6039,24 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                                             if esp.temperature_widget then
                                                 local box_pos = esp.drawings.box.Position or screen_position
                                                 local box_size = esp.drawings.box.Size or screen_size
+                                                local box_w = (box_size and box_size.X) or 100
+                                                local scale = math.clamp(box_w / 100, 0.15, 1.25)
+
+                                                local scale_obj = esp.temperature_scale or esp.temperature_widget:FindFirstChildOfClass("UIScale")
+                                                if not scale_obj then
+                                                    scale_obj = Instance.new("UIScale")
+                                                    scale_obj.Name = "Scale"
+                                                    scale_obj.Parent = esp.temperature_widget
+                                                    esp.temperature_scale = scale_obj
+                                                end
+                                                if scale_obj then
+                                                    scale_obj.Scale = scale
+                                                end
+
+                                                if esp.temperature_widget.AnchorPoint.X ~= 0.5 or esp.temperature_widget.AnchorPoint.Y ~= 0 then
+                                                    esp.temperature_widget.AnchorPoint = Vector2.new(0.5, 0)
+                                                end
+
                                                 local left_inset = 0
                                                 local top_inset = 0
                                                 if gui and gui.GetGuiInset then
@@ -6064,12 +6090,13 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                                                 if top_inset <= 0 then
                                                     top_inset = 58
                                                 end
-                                                local target_x = math.floor(box_pos.X + (box_size.X - 54) / 2 - left_inset)
+                                                local target_x = math.floor(box_pos.X + box_size.X / 2 - left_inset)
                                                 local target_y = math.floor(box_pos.Y + box_size.Y - top_inset)
                                                 esp.temperature_widget.Position = UDim2.new(0, target_x, 0, target_y)
                                                 esp.temperature_widget.Visible = true
+
+                                                temp_offset = math.floor(10 * scale) + 2
                                             end
-                                            temp_offset = 12
                                         else
                                             if esp.temperature_widget then
                                                 esp.temperature_widget.Visible = false
