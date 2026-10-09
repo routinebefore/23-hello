@@ -546,6 +546,8 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             anti_globus = false,
             fling = false,
             fling_flight_speed = 50,
+            grapple_velocity = false,
+            grapple_velocity_multiplier = 1,
 
             flight = false,
             noclip = false,
@@ -9734,8 +9736,29 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
         do
             local group_character = Tabs.Exploits:AddLeftGroupbox("Character")
-            local group_camera = Tabs.Exploits:AddRightGroupbox("Camera")
+            local tabbox_grappling = Tabs.Exploits:AddRightTabbox("Grappling")
+            local tab_grappling = tabbox_grappling:AddTab("Grappling")
             local group_exploits = Tabs.Exploits:AddRightGroupbox("Exploits")
+
+            tab_grappling:AddToggle("GrappleVelocity", {
+                Text = "Grapple Velocity",
+                Default = cheat_client.config.grapple_velocity,
+                Callback = function(value)
+                    cheat_client.config.grapple_velocity = value
+                end
+            })
+
+            tab_grappling:AddSlider("GrappleVelocityMultiplier", {
+                Text = "Multiplier",
+                Default = cheat_client.config.grapple_velocity_multiplier,
+                Min = 1,
+                Max = 5,
+                Rounding = 1,
+                Compact = false,
+                Callback = function(value)
+                    cheat_client.config.grapple_velocity_multiplier = value
+                end
+            })
     
             do
                 group_character:AddToggle("instant_mine", {
@@ -30084,6 +30107,113 @@ end
             local character = plr.Character or plr.CharacterAdded:Wait()
             apply_auto_charge(character)
             utility:Connection(plr.CharacterAdded, apply_auto_charge)
+        end
+
+        do
+            local grapple_char_conns = {}
+            local last_root_vel = Vector3.new(0, 0, 0)
+            local wall_grapple_cooldown = 0
+            local player_grapple_active = false
+            local player_grapple_boosted = false
+
+            local function boost_velocity(rootPart, current_vel)
+                local mult = (Options and Options.GrappleVelocityMultiplier and Options.GrappleVelocityMultiplier.Value) or cheat_client.config.grapple_velocity_multiplier or 1
+                if mult <= 1 then return current_vel end
+                local new_vel = current_vel * mult
+                rootPart.AssemblyLinearVelocity = new_vel
+                pcall(function()
+                    rootPart.Velocity = new_vel
+                end)
+                return new_vel
+            end
+
+            local function is_grapple_vel_enabled()
+                return (Toggles and Toggles.GrappleVelocity and Toggles.GrappleVelocity.Value) or cheat_client.config.grapple_velocity
+            end
+
+            local function setup_grapple_char(character)
+                for _, conn in ipairs(grapple_char_conns) do
+                    pcall(function()
+                        conn:Disconnect()
+                    end)
+                end
+                table.clear(grapple_char_conns)
+
+                player_grapple_active = false
+                player_grapple_boosted = false
+                wall_grapple_cooldown = 0
+
+                if not character then return end
+                local rootPart = character:WaitForChild("HumanoidRootPart", 5)
+                if not rootPart then return end
+
+                last_root_vel = rootPart.AssemblyLinearVelocity
+
+                if character:FindFirstChild("Grappled") then
+                    player_grapple_active = true
+                end
+
+                local function check_player_boost()
+                    if not is_grapple_vel_enabled() then return end
+                    if player_grapple_boosted then return end
+                    local cur = rootPart.AssemblyLinearVelocity
+                    if cur.Magnitude >= 35 then
+                        player_grapple_boosted = true
+                        last_root_vel = boost_velocity(rootPart, cur)
+                    end
+                end
+
+                local added_conn = utility:Connection(character.ChildAdded, function(child)
+                    if child.Name == "Grappled" then
+                        player_grapple_active = true
+                        player_grapple_boosted = false
+                        task.defer(check_player_boost)
+                    end
+                end)
+                table.insert(grapple_char_conns, added_conn)
+
+                local removed_conn = utility:Connection(character.ChildRemoved, function(child)
+                    if child.Name == "Grappled" then
+                        player_grapple_active = false
+                        player_grapple_boosted = false
+                    end
+                end)
+                table.insert(grapple_char_conns, removed_conn)
+
+                local heartbeat_conn = utility:Connection(rs.Heartbeat, LPH_NO_VIRTUALIZE(function()
+                    if not rootPart:IsDescendantOf(ws) then return end
+
+                    local cur_vel = rootPart.AssemblyLinearVelocity
+                    local delta = cur_vel - last_root_vel
+                    local mag = delta.Magnitude
+
+                    if player_grapple_active and not player_grapple_boosted then
+                        if is_grapple_vel_enabled() and cur_vel.Magnitude >= 35 then
+                            player_grapple_boosted = true
+                            cur_vel = boost_velocity(rootPart, cur_vel)
+                        end
+                    end
+
+                    local now = os.clock()
+                    local delta_h = math.sqrt(delta.X * delta.X + delta.Z * delta.Z)
+                    if mag >= 75.0 and delta.Y >= 50.0 and cur_vel.Y >= 65.0 and delta_h >= 25.0 then
+                        if now >= wall_grapple_cooldown then
+                            wall_grapple_cooldown = now + 0.8
+                            if is_grapple_vel_enabled() then
+                                cur_vel = boost_velocity(rootPart, cur_vel)
+                            end
+                        end
+                    end
+
+                    last_root_vel = cur_vel
+                end))
+                table.insert(grapple_char_conns, heartbeat_conn)
+            end
+
+            if plr.Character then
+                setup_grapple_char(plr.Character)
+            end
+            utility:Connection(plr.CharacterAdded, setup_grapple_char)
         end
 
 
