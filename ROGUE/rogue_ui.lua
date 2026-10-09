@@ -30848,12 +30848,22 @@ end
                     local target_pos, target_model = get_grapple_target(character)
                     if not target_pos then return end
 
+                    if target_model and target_model:IsA("Model") then
+                        local target_hrp = target_model:FindFirstChild("HumanoidRootPart") or target_model:FindFirstChild("Torso")
+                        if target_hrp then
+                            local right_vec = target_hrp.CFrame.RightVector
+                            local to_me = rootPart.Position - target_hrp.Position
+                            local side_sign = to_me:Dot(right_vec) >= 0 and 1 or -1
+                            target_pos = target_hrp.Position + (right_vec * (side_sign * 2.8)) + Vector3.new(0, 0.5, 0)
+                        end
+                    end
+
                     local cur_vel = rootPart.AssemblyLinearVelocity
                     local cur_speed = cur_vel.Magnitude
                     local to_target = target_pos - rootPart.Position
                     local dist = to_target.Magnitude
 
-                    if dist > 2.5 and cur_speed >= 8 then
+                    if dist > 2.0 and cur_speed >= 8 then
                         local delta_time = (typeof(dt) == "number" and dt > 0) and dt or 0.016
                         local pull = get_pull_strength()
                         local target_dir = to_target.Unit
