@@ -5216,7 +5216,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         esp_screen_gui.Name = "EspScreenGui"
                         esp_screen_gui.ResetOnSpawn = false
                         esp_screen_gui.DisplayOrder = 10
-                        esp_screen_gui.IgnoreGuiInset = true
+                        esp_screen_gui.IgnoreGuiInset = false
                         esp_screen_gui.Parent = ui or cg
                         esp_screen_origin = Instance.new("Frame")
                         esp_screen_origin.Name = "Origin"
@@ -5227,6 +5227,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         esp_screen_origin.Visible = true
                         esp_screen_origin.Parent = esp_screen_gui
                     end
+                    esp_screen_gui.IgnoreGuiInset = false
                     return esp_screen_gui
                 end
 
@@ -6030,16 +6031,41 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                                             if esp.temperature_widget then
                                                 local box_pos = esp.drawings.box.Position or screen_position
                                                 local box_size = esp.drawings.box.Size or screen_size
-                                                local origin_x = (esp_screen_origin and esp_screen_origin.AbsolutePosition.X) or ((esp_screen_gui and esp_screen_gui.AbsolutePosition.X) or 0)
-                                                local origin_y = (esp_screen_origin and esp_screen_origin.AbsolutePosition.Y) or ((esp_screen_gui and esp_screen_gui.AbsolutePosition.Y) or 0)
-                                                if origin_y == 0 and esp.temperature_widget.AbsolutePosition.Y > 0 and esp.temperature_widget.Position.Y.Offset ~= 0 then
-                                                    local measured = esp.temperature_widget.AbsolutePosition.Y - esp.temperature_widget.Position.Y.Offset
-                                                    if measured > 0 then
-                                                        origin_y = measured
+                                                local left_inset = 0
+                                                local top_inset = 0
+                                                if gui and gui.GetGuiInset then
+                                                    local inset = gui:GetGuiInset()
+                                                    if typeof(inset) == "Vector2" then
+                                                        if inset.Y > 0 then
+                                                            top_inset = inset.Y
+                                                        end
+                                                        if inset.X > 0 then
+                                                            left_inset = inset.X
+                                                        end
                                                     end
                                                 end
-                                                local target_x = math.floor(box_pos.X + (box_size.X - 54) / 2 - origin_x)
-                                                local target_y = math.floor(box_pos.Y + box_size.Y - origin_y)
+                                                if top_inset == 0 and Services and Services.GuiService then
+                                                    local inset = Services.GuiService:GetGuiInset()
+                                                    if typeof(inset) == "Vector2" then
+                                                        if inset.Y > 0 then
+                                                            top_inset = inset.Y
+                                                        end
+                                                        if inset.X > 0 then
+                                                            left_inset = inset.X
+                                                        end
+                                                    end
+                                                end
+                                                if top_inset == 0 and esp.temperature_widget and esp.temperature_widget.AbsolutePosition.Y > 0 and esp.temperature_widget.Position.Y.Offset ~= 0 then
+                                                    local measured = esp.temperature_widget.AbsolutePosition.Y - esp.temperature_widget.Position.Y.Offset
+                                                    if measured > 0 then
+                                                        top_inset = measured
+                                                    end
+                                                end
+                                                if top_inset <= 0 then
+                                                    top_inset = 58
+                                                end
+                                                local target_x = math.floor(box_pos.X + (box_size.X - 54) / 2 - left_inset)
+                                                local target_y = math.floor(box_pos.Y + box_size.Y - top_inset)
                                                 esp.temperature_widget.Position = UDim2.new(0, target_x, 0, target_y)
                                                 esp.temperature_widget.Visible = true
                                             end
