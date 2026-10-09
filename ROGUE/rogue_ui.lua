@@ -9528,6 +9528,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                             grad.Parent = slider
                         end
                         grad.Enabled = true
+                        grad.Rotation = 90
                         grad.Color = get_rainbow_seq((os.clock() * 0.35) % 1)
                         if slider.BackgroundColor3 ~= Color3.new(1, 1, 1) then
                             slider.BackgroundColor3 = Color3.new(1, 1, 1)
@@ -30236,9 +30237,6 @@ end
             local grapple_char_conns = {}
             local last_root_vel = Vector3.new(0, 0, 0)
             local grapple_cooldown = 0
-            local is_boosting = false
-            local boost_end = 0
-            local boost_vel = Vector3.new(0, 0, 0)
             local last_shadowrush_time = 0
 
             local function is_grapple_vel_enabled()
@@ -30261,22 +30259,29 @@ end
                 return mult or 2
             end
 
-            local function apply_body_boost(rootPart, mult, target_vel)
+            local function boost_body_movers(rootPart, mult)
                 for _, obj in ipairs(rootPart:GetChildren()) do
                     if obj:IsA("BodyVelocity") then
-                        if target_vel then
-                            obj.Velocity = target_vel
-                        else
-                            obj.Velocity = obj.Velocity * mult
-                        end
+                        obj.Velocity = obj.Velocity * mult
                         obj.MaxForce = Vector3.new(1e6, 1e6, 1e6)
                     elseif obj:IsA("LinearVelocity") then
-                        if target_vel then
-                            obj.VectorVelocity = target_vel
-                        else
-                            obj.VectorVelocity = obj.VectorVelocity * mult
-                        end
+                        obj.VectorVelocity = obj.VectorVelocity * mult
                         obj.MaxForce = 1e6
+                    end
+                end
+                local char = rootPart.Parent
+                if char then
+                    local torso = char:FindFirstChild("Torso")
+                    if torso then
+                        for _, obj in ipairs(torso:GetChildren()) do
+                            if obj:IsA("BodyVelocity") then
+                                obj.Velocity = obj.Velocity * mult
+                                obj.MaxForce = Vector3.new(1e6, 1e6, 1e6)
+                            elseif obj:IsA("LinearVelocity") then
+                                obj.VectorVelocity = obj.VectorVelocity * mult
+                                obj.MaxForce = 1e6
+                            end
+                        end
                     end
                 end
             end
@@ -30331,49 +30336,7 @@ end
                 return false
             end
 
-            local function get_grapple_target_info(character, rootPart)
-                local cord = character:FindFirstChild("Cord", true)
-                if cord and cord:IsA("Beam") and cord.Attachment1 then
-                    local p = cord.Attachment1.WorldPosition
-                    local diff = p - rootPart.Position
-                    if diff.Magnitude > 1 then
-                        return diff.Unit
-                    end
-                end
-
-                local left_arm = character:FindFirstChild("Left Arm")
-                if left_arm then
-                    local c = left_arm:FindFirstChild("Cord")
-                    if c and c:IsA("Beam") and c.Attachment1 then
-                        local p = c.Attachment1.WorldPosition
-                        local diff = p - rootPart.Position
-                        if diff.Magnitude > 1 then
-                            return diff.Unit
-                        end
-                    end
-                end
-
-                for _, p in ipairs(plrs:GetPlayers()) do
-                    if p ~= plr and p.Character then
-                        local att2 = p.Character:FindFirstChild("Attachment2", true)
-                        if att2 and att2:IsA("Attachment") then
-                            local diff = att2.WorldPosition - rootPart.Position
-                            if diff.Magnitude <= 250 then
-                                return diff.Unit
-                            end
-                        end
-                    end
-                end
-
-                local cam = ws.CurrentCamera
-                if cam then
-                    return cam.CFrame.LookVector
-                end
-
-                return nil
-            end
-
-            local function trigger_grapple_boost(rootPart, current_vel, is_wall_grapple)
+            local function boost_velocity(rootPart, current_vel)
                 if not is_grapple_vel_enabled() then return end
                 local char = rootPart.Parent
                 if not char then return end
@@ -30383,24 +30346,12 @@ end
                 if mult <= 1 then return end
 
                 local new_vel = current_vel * mult
-                if not is_wall_grapple then
-                    local target_dir = get_grapple_target_info(char, rootPart)
-                    if target_dir then
-                        local speed = math.max(current_vel.Magnitude, 60) * mult
-                        new_vel = target_dir * speed
-                    end
-                end
-
                 rootPart.AssemblyLinearVelocity = new_vel
                 pcall(function()
                     rootPart.Velocity = new_vel
                 end)
 
-                apply_body_boost(rootPart, mult, new_vel)
-
-                boost_vel = new_vel
-                boost_end = os.clock() + 0.5
-                is_boosting = true
+                boost_body_movers(rootPart, mult)
                 grapple_cooldown = os.clock() + 0.8
             end
 
@@ -30426,8 +30377,6 @@ end
                 end
                 table.clear(grapple_char_conns)
 
-                is_boosting = false
-                boost_end = 0
                 grapple_cooldown = 0
                 local indicator_boosted = false
 
@@ -30462,7 +30411,28 @@ end
                             local cur = rootPart.AssemblyLinearVelocity
                             if cur.Magnitude >= 25 then
                                 indicator_boosted = true
-                                trigger_grapple_boost(rootPart, cur, false)
+                                boost_velocity(rootPart, cur)
+                            end
+                        end)
+                    elseif desc:IsA("BodyVelocity") or desc:IsA("LinearVelocity") then
+                        task.defer(function()
+                            if not is_grapple_vel_enabled() then return end
+                            if is_shadowrush_active(character) then return end
+                            if has_grapple_indicator(character) then
+                                local mult = get_grapple_multiplier()
+                                if mult > 1 then
+                                    if desc:IsA("BodyVelocity") then
+                                        desc.Velocity = desc.Velocity * mult
+                                        desc.MaxForce = Vector3.new(1e6, 1e6, 1e6)
+                                    elseif desc:IsA("LinearVelocity") then
+                                        desc.VectorVelocity = desc.VectorVelocity * mult
+                                        desc.MaxForce = 1e6
+                                    end
+                                    local cur = rootPart.AssemblyLinearVelocity
+                                    rootPart.AssemblyLinearVelocity = cur * mult
+                                    pcall(function() rootPart.Velocity = cur * mult end)
+                                    grapple_cooldown = os.clock() + 0.8
+                                end
                             end
                         end)
                     end
@@ -30477,29 +30447,14 @@ end
                     local mag = delta.Magnitude
                     local now = os.clock()
 
-                    if is_boosting then
-                        if now < boost_end then
-                            local target_unit = boost_vel.Unit
-                            local proj_speed = cur_vel:Dot(target_unit)
-                            local target_speed = boost_vel.Magnitude
-                            if proj_speed < target_speed * 0.85 then
-                                rootPart.AssemblyLinearVelocity = boost_vel
-                                pcall(function()
-                                    rootPart.Velocity = boost_vel
-                                end)
-                            end
-                            apply_body_boost(rootPart, nil, boost_vel)
-                        else
-                            is_boosting = false
-                        end
-                    elseif is_grapple_vel_enabled() and now >= grapple_cooldown then
+                    if is_grapple_vel_enabled() and now >= grapple_cooldown then
                         local has_indicator = has_grapple_indicator(character)
 
                         if has_indicator then
                             if not indicator_boosted and cur_vel.Magnitude >= 25 then
                                 if not is_shadowrush_active(character) then
                                     indicator_boosted = true
-                                    trigger_grapple_boost(rootPart, cur_vel, false)
+                                    boost_velocity(rootPart, cur_vel)
                                 end
                             end
                         else
@@ -30507,7 +30462,7 @@ end
                             local delta_h = math.sqrt(delta.X * delta.X + delta.Z * delta.Z)
                             if mag >= 75.0 and delta.Y >= 48.0 and cur_vel.Y >= 60.0 and delta_h >= 25.0 then
                                 if not is_shadowrush_active(character) and is_near_wall(rootPart) then
-                                    trigger_grapple_boost(rootPart, cur_vel, true)
+                                    boost_velocity(rootPart, cur_vel)
                                 end
                             end
                         end
