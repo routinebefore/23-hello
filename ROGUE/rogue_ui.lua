@@ -480,6 +480,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             player_hover_details = true,
             player_observe = false,
             player_racial = true,
+            player_temperature = false,
             player_range = 2000,
 
             player_chams = false,
@@ -5047,7 +5048,19 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         end
                     end
                 end)
-            
+
+                local esp_screen_gui
+                local function get_esp_screen_gui()
+                    if not esp_screen_gui or not esp_screen_gui.Parent then
+                        esp_screen_gui = Instance.new("ScreenGui")
+                        esp_screen_gui.Name = "EspScreenGui"
+                        esp_screen_gui.ResetOnSpawn = false
+                        esp_screen_gui.DisplayOrder = 10
+                        esp_screen_gui.Parent = (hidden_folder and hidden_folder.Parent and hidden_folder) or ui or cg
+                    end
+                    return esp_screen_gui
+                end
+
                 function cheat_client:add_player_esp(player)
                     local esp = {
                         player = player,
@@ -5187,11 +5200,70 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                             OutlineColor = Color3.fromRGB(255, 255, 255),
                         }, "esp")
                     end
+
+                    do
+                        local temp_base = Instance.new("ImageLabel")
+                        temp_base.Name = "Temperature"
+                        temp_base.Size = UDim2.new(0, 54, 0, 10)
+                        temp_base.BackgroundTransparency = 1
+                        temp_base.BackgroundColor3 = Color3.new(1, 1, 1)
+                        temp_base.BorderColor3 = Color3.new(0.105882, 0.164706, 0.207843)
+                        temp_base.BorderMode = Enum.BorderMode.Outline
+                        temp_base.BorderSizePixel = 1
+                        temp_base.Image = "rbxassetid://2985309582"
+                        temp_base.ImageColor3 = Color3.new(0.960784, 0.772549, 0.509804)
+                        temp_base.ScaleType = Enum.ScaleType.Slice
+                        temp_base.SliceCenter = Rect.new(14, 0, 40, 0)
+                        temp_base.SliceScale = 1
+                        temp_base.ClipsDescendants = false
+                        temp_base.ZIndex = 4
+                        temp_base.Visible = false
+                        temp_base.Parent = get_esp_screen_gui()
+
+                        local temp_gradient = Instance.new("ImageLabel")
+                        temp_gradient.Name = "Gradient"
+                        temp_gradient.Size = UDim2.new(0, 30, 0, 6)
+                        temp_gradient.Position = UDim2.new(0, 12, 0, 0)
+                        temp_gradient.BackgroundTransparency = 1
+                        temp_gradient.BackgroundColor3 = Color3.new(1, 1, 1)
+                        temp_gradient.BorderColor3 = Color3.new(0.105882, 0.164706, 0.207843)
+                        temp_gradient.BorderSizePixel = 0
+                        temp_gradient.Image = "rbxassetid://2985387760"
+                        temp_gradient.ImageColor3 = Color3.new(1, 1, 1)
+                        temp_gradient.ScaleType = Enum.ScaleType.Stretch
+                        temp_gradient.ClipsDescendants = false
+                        temp_gradient.ZIndex = 5
+                        temp_gradient.Visible = true
+                        temp_gradient.Parent = temp_base
+
+                        local temp_pointer = Instance.new("Frame")
+                        temp_pointer.Name = "Pointer"
+                        temp_pointer.AnchorPoint = Vector2.new(0.5, 0)
+                        temp_pointer.Size = UDim2.new(0, 2, 1, 0)
+                        temp_pointer.Position = UDim2.new(0.5, 0, 0, 0)
+                        temp_pointer.BackgroundColor3 = Color3.new(0.898039, 0.717647, 0.47451)
+                        temp_pointer.BorderColor3 = Color3.new(0.282353, 0.223529, 0.145098)
+                        temp_pointer.BorderMode = Enum.BorderMode.Outline
+                        temp_pointer.BorderSizePixel = 1
+                        temp_pointer.BackgroundTransparency = 0
+                        temp_pointer.ZIndex = 6
+                        temp_pointer.Visible = true
+                        temp_pointer.Parent = temp_gradient
+
+                        esp.temperature_widget = temp_base
+                        esp.temperature_pointer = temp_pointer
+                    end
             
                     function esp:destruct()
                         for _,v in next, esp.drawings do
                             fast_remove(shared.drawing_containers.esp, v)
                             v:Remove()
+                        end
+
+                        if esp.temperature_widget then
+                            esp.temperature_widget:Destroy()
+                            esp.temperature_widget = nil
+                            esp.temperature_pointer = nil
                         end
 
                         esp.highlight:Destroy()
@@ -5339,6 +5411,9 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                                 for _,v in next, esp.drawings do
                                     v.Visible = false
                                 end
+                                if esp.temperature_widget then
+                                    esp.temperature_widget.Visible = false
+                                end
                                 esp.already_disabled = true
                             end
                             return
@@ -5353,6 +5428,9 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                                     for _,v in next, esp.drawings do
                                         v.Visible = false
                                     end
+                                    if esp.temperature_widget then
+                                        esp.temperature_widget.Visible = false
+                                    end
                                     esp.highlight.Adornee = nil
                                     esp.highlight.Enabled = false
                                     esp.highlight.Parent = nil
@@ -5363,6 +5441,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                                     esp.cached_parts.humanoid = FindFirstChildOfClass(character, "Humanoid")
                                     esp.cached_parts.humanoid_root_part = FindFirstChild(character, "HumanoidRootPart")
                                     esp.cached_parts.head = FindFirstChild(character, "Head")
+                                    esp.cached_parts.temperature = nil
 
                                     esp.cached_bbox_position = nil
                                     esp.bbox_cache_frame = 0
@@ -5374,6 +5453,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                                     esp.cached_parts.kenhaki = FindFirstChild(character, "KenHaki")
                                     esp.cached_parts.counterspell = FindFirstChild(character, "CounterSpell")
                                     esp.cached_parts.mana = FindFirstChild(character, "Mana")
+                                    esp.cached_parts.temperature = FindFirstChild(character, "Temperature") or (ws.Live and FindFirstChild(ws.Live, esp.player.Name) and FindFirstChild(ws.Live[esp.player.Name], "Temperature"))
                                     esp.status_cache_time = current_time
                                 end
 
@@ -5384,6 +5464,9 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                                 if not (humanoid_root_part and humanoid) then
                                     for _,v in next, esp.drawings do
                                         v.Visible = false
+                                    end
+                                    if esp.temperature_widget then
+                                        esp.temperature_widget.Visible = false
                                     end
                                     esp.highlight.Adornee = nil
                                     esp.highlight.Enabled = false
@@ -5397,6 +5480,9 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                                 if distance >= ((Options and Options.PlayerRange and Options.PlayerRange.Value) or 100) then
                                     for _,v in next, esp.drawings do
                                         v.Visible = false
+                                    end
+                                    if esp.temperature_widget then
+                                        esp.temperature_widget.Visible = false
                                     end
                                     esp.highlight.Adornee = nil
                                     esp.highlight.Enabled = false
@@ -5415,6 +5501,9 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                                         esp.cached_bbox_on_screen = false
                                         for _,v in next, esp.drawings do
                                             v.Visible = false
+                                        end
+                                        if esp.temperature_widget then
+                                            esp.temperature_widget.Visible = false
                                         end
                                         esp.highlight.Adornee = nil
                                         esp.highlight.Enabled = false
@@ -5436,6 +5525,9 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                                     if not on_screen then
                                         for _,v in next, esp.drawings do
                                             v.Visible = false
+                                        end
+                                        if esp.temperature_widget then
+                                            esp.temperature_widget.Visible = false
                                         end
                                         esp.highlight.Adornee = nil
                                         esp.highlight.Enabled = false
@@ -5731,18 +5823,67 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                                         end
                                     end
 
+                                    local temp_offset = 0
+
+                                    do
+                                        if Toggles and Toggles.PlayerTemperature and Toggles.PlayerTemperature.Value and show_details then
+                                            local temp_val = 0
+                                            local temp_obj = esp.cached_parts.temperature
+                                            if not temp_obj and character then
+                                                temp_obj = FindFirstChild(character, "Temperature")
+                                                if not temp_obj and ws.Live and esp.player then
+                                                    local live_char = FindFirstChild(ws.Live, esp.player.Name)
+                                                    if live_char then
+                                                        temp_obj = FindFirstChild(live_char, "Temperature")
+                                                    end
+                                                end
+                                                esp.cached_parts.temperature = temp_obj
+                                            end
+
+                                            if temp_obj then
+                                                if typeof(temp_obj.Value) == "number" then
+                                                    temp_val = temp_obj.Value
+                                                elseif tonumber(temp_obj.Value) then
+                                                    temp_val = tonumber(temp_obj.Value)
+                                                end
+                                            elseif character then
+                                                local attr = character:GetAttribute("Temperature")
+                                                if typeof(attr) == "number" then
+                                                    temp_val = attr
+                                                end
+                                            end
+
+                                            local alpha = math.clamp((temp_val + 1) / 2, 0, 1)
+                                            if esp.temperature_pointer then
+                                                esp.temperature_pointer.Position = UDim2.new(alpha, 0, 0, 0)
+                                            end
+
+                                            if esp.temperature_widget then
+                                                local box_pos = esp.drawings.box.Position or screen_position
+                                                local box_size = esp.drawings.box.Size or screen_size
+                                                esp.temperature_widget.Position = UDim2.new(0, math.floor(box_pos.X + (box_size.X - 54) / 2), 0, math.floor(box_pos.Y + box_size.Y + 3))
+                                                esp.temperature_widget.Visible = true
+                                            end
+                                            temp_offset = 13
+                                        else
+                                            if esp.temperature_widget then
+                                                esp.temperature_widget.Visible = false
+                                            end
+                                        end
+                                    end
+
                                     do
                                         local disp_runes = esp.player.Character and esp.player.Character:GetAttribute("DispRunes")
 
                                         if Toggles and Toggles.PlayerRacial and Toggles.PlayerRacial.Value and disp_runes and disp_runes ~= 0 and show_details then
                                             esp.drawings.racial.Text = "[Runes]"
                                             esp.drawings.racial.Color = Color3.fromRGB(255, 0, 0)
-                                            esp.drawings.racial.Position = esp.drawings.box.Position + Vector2.new(screen_size.X/2 - 20, esp.drawings.box.Size.Y + 2)
+                                            esp.drawings.racial.Position = esp.drawings.box.Position + Vector2.new(screen_size.X/2 - 20, esp.drawings.box.Size.Y + 2 + temp_offset)
                                             esp.drawings.racial.Visible = true
 
                                             esp.drawings.racial_number.Text = tostring(disp_runes)
                                             esp.drawings.racial_number.Color = Color3.fromRGB(255, 255, 255)
-                                            esp.drawings.racial_number.Position = esp.drawings.box.Position + Vector2.new(screen_size.X/2 + 20, esp.drawings.box.Size.Y + 2)
+                                            esp.drawings.racial_number.Position = esp.drawings.box.Position + Vector2.new(screen_size.X/2 + 20, esp.drawings.box.Size.Y + 2 + temp_offset)
                                             esp.drawings.racial_number.Visible = true
                                         else
                                             esp.drawings.racial.Visible = false
@@ -5758,7 +5899,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                                                 esp.drawings.intent.Text = tool.Name
                                                 local disp_runes = esp.player.Character and esp.player.Character:GetAttribute("DispRunes")
                                                 local racial_offset = (Toggles and Toggles.PlayerRacial and Toggles.PlayerRacial.Value and disp_runes and disp_runes ~= 0 and show_details) and 15 or 0
-                                                esp.drawings.intent.Position = esp.drawings.box.Position + Vector2.new(screen_size.X/2, esp.drawings.box.Size.Y + 2 + racial_offset)
+                                                esp.drawings.intent.Position = esp.drawings.box.Position + Vector2.new(screen_size.X/2, esp.drawings.box.Size.Y + 2 + temp_offset + racial_offset)
 
                                                 esp.drawings.intent.Visible = true
                                             else
@@ -5772,15 +5913,24 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                                     for _,v in next, esp.drawings do
                                         v.Visible = false
                                     end
+                                    if esp.temperature_widget then
+                                        esp.temperature_widget.Visible = false
+                                    end
                                 end
                             else
                                 for _,v in next, esp.drawings do
                                     v.Visible = false
                                 end
+                                if esp.temperature_widget then
+                                    esp.temperature_widget.Visible = false
+                                end
                             end
                         else
                             for _,v in next, esp.drawings do
                                 v.Visible = false
+                            end
+                            if esp.temperature_widget then
+                                esp.temperature_widget.Visible = false
                             end
                         end
                     end
@@ -9058,6 +9208,11 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 group_player:AddToggle("PlayerRacial", {
                     Text = "Racial",
                     Default = cheat_client.config.player_racial
+                })
+
+                group_player:AddToggle("PlayerTemperature", {
+                    Text = "Temperature",
+                    Default = cheat_client.config.player_temperature
                 })
 
                 group_player:AddToggle("PlayerObserve", {
