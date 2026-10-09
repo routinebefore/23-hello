@@ -5206,6 +5206,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         esp_screen_gui.Name = "EspScreenGui"
                         esp_screen_gui.ResetOnSpawn = false
                         esp_screen_gui.DisplayOrder = 10
+                        esp_screen_gui.IgnoreGuiInset = true
                         esp_screen_gui.Parent = (hidden_folder and hidden_folder.Parent and hidden_folder) or ui or cg
                     end
                     return esp_screen_gui
@@ -6011,10 +6012,13 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                                             if esp.temperature_widget then
                                                 local box_pos = esp.drawings.box.Position or screen_position
                                                 local box_size = esp.drawings.box.Size or screen_size
-                                                esp.temperature_widget.Position = UDim2.new(0, math.floor(box_pos.X + (box_size.X - 54) / 2), 0, math.floor(box_pos.Y + box_size.Y))
+                                                local gui_offset = (esp_screen_gui and esp_screen_gui.AbsolutePosition) or Vector2.new(0, 0)
+                                                local target_x = math.floor(box_pos.X + (box_size.X - 54) / 2 - gui_offset.X)
+                                                local target_y = math.floor(box_pos.Y + box_size.Y - gui_offset.Y)
+                                                esp.temperature_widget.Position = UDim2.new(0, target_x, 0, target_y)
                                                 esp.temperature_widget.Visible = true
                                             end
-                                            temp_offset = 11
+                                            temp_offset = 14
                                         else
                                             if esp.temperature_widget then
                                                 esp.temperature_widget.Visible = false
@@ -9792,12 +9796,16 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     return nil
                 end
 
-                local function get_rainbow_seq(shift)
+                local function get_rainbow_seq(shift, span)
+                    span = span or 1
                     local kps = {}
-                    for i = 0, 5 do
-                        local t = i / 5
-                        local h = (shift + t) % 1
-                        table.insert(kps, ColorSequenceKeypoint.new(t, Color3.fromHSV(h, 1, 1)))
+                    local steps = 7
+                    for i = 0, steps do
+                        local t = i / steps
+                        local h = (shift + t * span) % 1
+                        local s = 0.90 + 0.10 * math.cos(t * 3.14159 + shift * 6.28318)
+                        local v = 0.94 + 0.06 * math.sin(t * 6.28318 + shift * 6.28318)
+                        table.insert(kps, ColorSequenceKeypoint.new(t, Color3.fromHSV(h, math.clamp(s, 0.78, 1), math.clamp(v, 0.88, 1))))
                     end
                     return ColorSequence.new(kps)
                 end
@@ -9834,7 +9842,18 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         end
                         grad.Enabled = true
                         grad.Rotation = 90
-                        grad.Color = get_rainbow_seq((os.clock() * 0.35) % 1)
+
+                        local charge_pct = 1
+                        if slider.Size and slider.Size.Y and slider.Size.Y.Scale > 0 and slider.Size.Y.Scale <= 1 then
+                            charge_pct = slider.Size.Y.Scale
+                        elseif slider.AbsoluteSize and slider.Parent and slider.Parent:IsA("GuiObject") and slider.Parent.AbsoluteSize.Y > 0 then
+                            charge_pct = math.clamp(slider.AbsoluteSize.Y / slider.Parent.AbsoluteSize.Y, 0.01, 1)
+                        end
+
+                        local span = math.clamp(charge_pct * 0.9 + 0.1, 0.12, 1.0)
+                        local shift = (-os.clock() * 0.45) % 1
+                        grad.Color = get_rainbow_seq(shift, span)
+
                         if slider.BackgroundColor3 ~= Color3.new(1, 1, 1) then
                             slider.BackgroundColor3 = Color3.new(1, 1, 1)
                         end
