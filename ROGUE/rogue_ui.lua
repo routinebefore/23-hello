@@ -497,6 +497,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             player_observe = false,
             player_racial = true,
             player_temperature = false,
+            killstreaks = false,
             player_range = 2000,
 
             player_chams = false,
@@ -10016,6 +10017,18 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                                 end
                             end
                         end
+                    end
+                end
+            })
+
+            group_overlays:AddToggle("Killstreaks", {
+                Text = "Killstreaks",
+                Default = cheat_client.config.killstreaks,
+                Risky = true,
+                Callback = function(state)
+                    cheat_client.config.killstreaks = state
+                    if cheat_client.update_killstreak_ui then
+                        cheat_client.update_killstreak_ui()
                     end
                 end
             })
@@ -31119,6 +31132,370 @@ end
                 setup_grapple_char(plr.Character)
             end
             utility:Connection(plr.CharacterAdded, setup_grapple_char)
+        end
+
+        do
+            local user_id_str = tostring(plr.UserId)
+            local base_dir = "HYDROXIDE"
+            local user_dir = base_dir .. "/" .. user_id_str
+            local json_file = user_dir .. "/killstreaks.json"
+            local alt_json_file = user_dir .. "/data.json"
+
+            local killstreak_data = {
+                user_id = plr.UserId,
+                username = plr.Name,
+                current_streak = 0,
+                best_streak = 0,
+                lives = 0,
+                grips = {}
+            }
+
+            local function ensure_user_dir()
+                if not isfolder or not makefolder then return end
+                pcall(function()
+                    if not isfolder(base_dir) then
+                        makefolder(base_dir)
+                    end
+                    if not isfolder(user_dir) then
+                        makefolder(user_dir)
+                    end
+                end)
+            end
+
+            local function save_data()
+                ensure_user_dir()
+                if writefile and Services and Services.HttpService then
+                    pcall(function()
+                        local encoded = Services.HttpService:JSONEncode(killstreak_data)
+                        writefile(json_file, encoded)
+                        writefile(alt_json_file, encoded)
+                    end)
+                end
+            end
+
+            local function load_data()
+                ensure_user_dir()
+                if isfile and readfile and Services and Services.HttpService and isfile(json_file) then
+                    local ok, res = pcall(function()
+                        return Services.HttpService:JSONDecode(readfile(json_file))
+                    end)
+                    if ok and typeof(res) == "table" then
+                        killstreak_data = res
+                        killstreak_data.user_id = plr.UserId
+                        killstreak_data.username = plr.Name
+                        killstreak_data.grips = killstreak_data.grips or {}
+                        killstreak_data.current_streak = killstreak_data.current_streak or 0
+                        killstreak_data.best_streak = killstreak_data.best_streak or 0
+                        killstreak_data.lives = killstreak_data.lives or 0
+                    end
+                end
+            end
+
+            load_data()
+
+            local function get_current_lives()
+                local count = nil
+                if rps and rps:FindFirstChild("Requests") and rps.Requests:FindFirstChild("Get") then
+                    local ok, res = pcall(function()
+                        return rps.Requests.Get:InvokeServer(utf8.char(65532) .. "\240\159\152\131", "Lives")["Lives"]
+                    end)
+                    if ok and typeof(res) == "number" then
+                        count = res
+                    end
+                end
+                if not count and plr and plr.Character then
+                    local l = plr.Character:FindFirstChild("Lives")
+                    if l and l:IsA("ValueBase") then count = tonumber(l.Value) end
+                    if not count then
+                        local attr = plr.Character:GetAttribute("Lives")
+                        if typeof(attr) == "number" then count = attr end
+                    end
+                end
+                if not count and plr then
+                    local ls = plr:FindFirstChild("leaderstats")
+                    if ls then
+                        local l = ls:FindFirstChild("Lives")
+                        if l and l:IsA("ValueBase") then count = tonumber(l.Value) end
+                    end
+                end
+                return count
+            end
+
+            local last_known_lives = get_current_lives()
+            if last_known_lives and (not killstreak_data.lives or killstreak_data.lives == 0) then
+                killstreak_data.lives = last_known_lives
+                save_data()
+            end
+
+            local current_bb_gui = nil
+            local current_text_label = nil
+
+            local function create_or_get_bb(head)
+                if not head or not head:IsDescendantOf(ws) then return nil end
+                local existing = head:FindFirstChild("KillstreakUI")
+                if existing and existing:IsA("BillboardGui") then
+                    local frame = existing:FindFirstChild("KillstreakFrame")
+                    local label = frame and frame:FindFirstChild("Killstreak")
+                    if label and label:IsA("TextLabel") then
+                        current_bb_gui = existing
+                        current_text_label = label
+                        return existing
+                    end
+                end
+
+                local bb = Instance.new("BillboardGui")
+                bb.Name = "KillstreakUI"
+                bb.Archivable = true
+                bb.AlwaysOnTop = true
+                bb.LightInfluence = 1
+                bb.MaxDistance = 60
+                bb.SizeOffset = Vector2.new(0, 2)
+                bb.StudsOffset = Vector3.new(0, 1.6, 0)
+                bb.Size = UDim2.new(4, 0, 0.8, 0)
+                bb.Active = true
+                bb.ClipsDescendants = false
+                bb.ResetOnSpawn = false
+
+                local frame = Instance.new("Frame")
+                frame.Name = "KillstreakFrame"
+                frame.Archivable = true
+                frame.AnchorPoint = Vector2.new(0, 0)
+                frame.Position = UDim2.new(0, 0, 0, 0)
+                frame.Size = UDim2.new(1, 0, 1, 0)
+                frame.Active = false
+                frame.ClipsDescendants = false
+                frame.Draggable = false
+                frame.Interactable = true
+                frame.Visible = true
+                frame.BackgroundColor3 = Color3.new(1, 1, 1)
+                frame.BackgroundTransparency = 1
+                frame.BorderColor3 = Color3.new(0, 0, 0)
+                frame.BorderSizePixel = 0
+                frame.ZIndex = 1
+                frame.Parent = bb
+
+                local glow = Instance.new("ImageLabel")
+                glow.Name = "KillstreakGlow"
+                glow.Archivable = true
+                glow.AnchorPoint = Vector2.new(0, 0)
+                glow.Position = UDim2.new(0.15, 0, -0.3, 0)
+                glow.Size = UDim2.new(0.7, 0, 1.7, 0)
+                glow.ZIndex = -2
+                glow.Active = false
+                glow.ClipsDescendants = false
+                glow.Draggable = false
+                glow.Interactable = true
+                glow.Visible = true
+                glow.BackgroundColor3 = Color3.new(1, 1, 1)
+                glow.BackgroundTransparency = 1
+                glow.BorderColor3 = Color3.new(0, 0, 0)
+                glow.BorderSizePixel = 0
+                glow.Image = "rbxassetid://7928096707"
+                glow.ImageColor3 = Color3.new(0.898039, 1, 0)
+                glow.ScaleType = Enum.ScaleType.Stretch
+                glow.Parent = frame
+
+                local crown = Instance.new("ImageLabel")
+                crown.Name = "KillstreakCrown"
+                crown.Archivable = true
+                crown.AnchorPoint = Vector2.new(0, 0)
+                crown.Position = UDim2.new(0.28, 0, 0, 0)
+                crown.Rotation = -17
+                crown.Size = UDim2.new(0.25, 0, 1, 0)
+                crown.ZIndex = 1
+                crown.Active = false
+                crown.ClipsDescendants = false
+                crown.Draggable = false
+                crown.Interactable = true
+                crown.Visible = true
+                crown.BackgroundColor3 = Color3.new(1, 1, 1)
+                crown.BackgroundTransparency = 1
+                crown.BorderColor3 = Color3.new(0, 0, 0)
+                crown.BorderSizePixel = 0
+                crown.Image = "rbxassetid://123575059"
+                crown.ImageColor3 = Color3.new(0.882353, 0.882353, 0.882353)
+                crown.ScaleType = Enum.ScaleType.Stretch
+                crown.Parent = frame
+
+                local label = Instance.new("TextLabel")
+                label.Name = "Killstreak"
+                label.Archivable = true
+                label.AnchorPoint = Vector2.new(0, 0)
+                label.Position = UDim2.new(0.55, 0, 0, 0)
+                label.Size = UDim2.new(0.15, 0, 1, 0)
+                label.ZIndex = 1
+                label.Active = false
+                label.ClipsDescendants = false
+                label.Draggable = false
+                label.Interactable = true
+                label.Visible = true
+                label.BackgroundColor3 = Color3.new(1, 1, 1)
+                label.BackgroundTransparency = 1
+                label.BorderColor3 = Color3.new(0, 0, 0)
+                label.BorderSizePixel = 0
+                label.Text = tostring(killstreak_data.current_streak or 0)
+                label.TextColor3 = Color3.new(0.886275, 1, 0.145098)
+                label.TextSize = 14
+                label.TextScaled = true
+                label.TextStrokeColor3 = Color3.new(0, 0, 0)
+                label.TextStrokeTransparency = 0
+                label.Font = Enum.Font.SourceSans
+                label.TextXAlignment = Enum.TextXAlignment.Left
+                label.TextYAlignment = Enum.TextYAlignment.Center
+                label.Parent = frame
+
+                bb.Parent = head
+                current_bb_gui = bb
+                current_text_label = label
+                return bb
+            end
+
+            local function update_ui()
+                local is_enabled = Toggles and Toggles.Killstreaks and Toggles.Killstreaks.Value
+                local char = plr.Character
+                local head = char and (FindFirstChild(char, "Head") or char:FindFirstChild("Head"))
+                if is_enabled and head then
+                    local bb = create_or_get_bb(head)
+                    if bb then
+                        bb.Enabled = true
+                        bb.Parent = head
+                    end
+                    if current_text_label then
+                        current_text_label.Text = tostring(killstreak_data.current_streak or 0)
+                    end
+                else
+                    if current_bb_gui then
+                        current_bb_gui.Enabled = false
+                    end
+                    if head then
+                        local existing = head:FindFirstChild("KillstreakUI")
+                        if existing then
+                            existing.Enabled = false
+                        end
+                    end
+                end
+            end
+
+            cheat_client.update_killstreak_ui = update_ui
+
+            local active_grip_target = nil
+            local active_grip_start = 0
+
+            local function check_grips_and_lives()
+                local cur_lives = get_current_lives()
+                if cur_lives and last_known_lives then
+                    if cur_lives < last_known_lives then
+                        killstreak_data.current_streak = 0
+                        last_known_lives = cur_lives
+                        killstreak_data.lives = cur_lives
+                        save_data()
+                        update_ui()
+                    elseif cur_lives > last_known_lives then
+                        last_known_lives = cur_lives
+                        killstreak_data.lives = cur_lives
+                        save_data()
+                    end
+                elseif cur_lives and not last_known_lives then
+                    last_known_lives = cur_lives
+                    killstreak_data.lives = cur_lives
+                    save_data()
+                end
+
+                local my_char = plr.Character
+                if not my_char then
+                    active_grip_target = nil
+                    return
+                end
+
+                local executing_acc = my_char:FindFirstChild("Executing")
+
+                if executing_acc then
+                    if not active_grip_target then
+                        if ws.Live then
+                            for _, other in ipairs(ws.Live:GetChildren()) do
+                                if other ~= my_char and other:IsA("Model") and plrs:FindFirstChild(other.Name) then
+                                    local being_exec = other:FindFirstChild("BeingExecuted")
+                                    if being_exec then
+                                        active_grip_target = {
+                                            model = other,
+                                            name = other.Name,
+                                            being_acc = being_exec,
+                                            hum = other:FindFirstChildOfClass("Humanoid")
+                                        }
+                                        active_grip_start = os.clock()
+                                        break
+                                    end
+                                end
+                            end
+                        end
+                    end
+                elseif active_grip_target then
+                    local target_model = active_grip_target.model
+                    local target_name = active_grip_target.name
+                    local being_acc = active_grip_target.being_acc
+                    local target_hum = active_grip_target.hum
+
+                    local being_gone = (not being_acc or being_acc.Parent ~= target_model)
+                    local is_dead = false
+                    if target_hum and target_hum.Health <= 0 then
+                        is_dead = true
+                    elseif not target_model or not target_model:IsDescendantOf(ws) or target_model.Parent == nil then
+                        is_dead = true
+                    elseif target_model:FindFirstChild("Dead") then
+                        is_dead = true
+                    end
+
+                    if being_gone and is_dead and (os.clock() - active_grip_start < 15) then
+                        killstreak_data.current_streak = (killstreak_data.current_streak or 0) + 1
+                        if killstreak_data.current_streak > (killstreak_data.best_streak or 0) then
+                            killstreak_data.best_streak = killstreak_data.current_streak
+                        end
+                        local grip_info = {
+                            player = target_name,
+                            time = os.time(),
+                            date = os.date("!%Y-%m-%d %H:%M:%SZ"),
+                            lives = last_known_lives or 0,
+                            streak = killstreak_data.current_streak
+                        }
+                        table.insert(killstreak_data.grips, grip_info)
+                        killstreak_data.lives = last_known_lives or killstreak_data.lives
+                        save_data()
+                        update_ui()
+                    end
+
+                    active_grip_target = nil
+                end
+            end
+
+            utility:Connection(rs.Heartbeat, LPH_NO_VIRTUALIZE(function()
+                check_grips_and_lives()
+            end))
+
+            local function on_char_added(new_char)
+                active_grip_target = nil
+                task.delay(1, function()
+                    local cur_lives = get_current_lives()
+                    if cur_lives and last_known_lives and cur_lives < last_known_lives then
+                        killstreak_data.current_streak = 0
+                        last_known_lives = cur_lives
+                        killstreak_data.lives = cur_lives
+                        save_data()
+                    elseif cur_lives then
+                        last_known_lives = cur_lives
+                        killstreak_data.lives = cur_lives
+                        save_data()
+                    end
+                    update_ui()
+                end)
+            end
+
+            if plr.Character then
+                task.spawn(function()
+                    task.wait(1)
+                    update_ui()
+                end)
+            end
+            utility:Connection(plr.CharacterAdded, on_char_added)
         end
 
 
