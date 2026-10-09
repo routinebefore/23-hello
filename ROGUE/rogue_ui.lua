@@ -6041,7 +6041,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                                                 local box_pos = esp.drawings.box.Position or screen_position
                                                 local box_size = esp.drawings.box.Size or screen_size
                                                 local box_w = (box_size and box_size.X) or 100
-                                                local scale = math.clamp(box_w / 100, 0.15, 1.25)
+                                                local scale = math.clamp(0.50 + box_w / 200, 0.60, 1.0)
 
                                                 local scale_obj = esp.temperature_scale or esp.temperature_widget:FindFirstChildOfClass("UIScale")
                                                 if not scale_obj then
@@ -31352,16 +31352,17 @@ end
 
             local function update_ui()
                 local is_enabled = Toggles and Toggles.Killstreaks and Toggles.Killstreaks.Value
+                local streak = killstreak_data.current_streak or 0
                 local char = plr.Character
                 local head = char and (FindFirstChild(char, "Head") or char:FindFirstChild("Head"))
-                if is_enabled and head then
+                if is_enabled and head and streak > 0 then
                     local bb = create_or_get_bb(head)
                     if bb then
                         bb.Enabled = true
                         bb.Parent = head
                     end
                     if current_text_label then
-                        current_text_label.Text = tostring(killstreak_data.current_streak or 0)
+                        current_text_label.Text = tostring(streak)
                     end
                 else
                     if current_bb_gui then
@@ -31380,6 +31381,96 @@ end
 
             local active_grip_target = nil
             local active_grip_start = 0
+
+            local last_instant_kill_time = 0
+            local last_instant_kill_move = nil
+            local last_kill_timestamps = {}
+            local tracked_targets = {}
+
+            local instant_kill_lookup = {
+                ["owl slash"] = "Owl Slash",
+                ["owlslash"] = "Owl Slash",
+                ["owl"] = "Owl Slash",
+                ["lethality"] = "Lethality",
+                ["lethal"] = "Lethality",
+                ["axe kick"] = "Axe Kick",
+                ["axekick"] = "Axe Kick",
+                ["blade flash"] = "Blade Flash",
+                ["bladeflash"] = "Blade Flash"
+            }
+
+            local function check_is_instant_kill(name)
+                if not name or typeof(name) ~= "string" then return nil end
+                local lower = name:lower()
+                for pattern, formal_name in pairs(instant_kill_lookup) do
+                    if lower:find(pattern, 1, true) then
+                        return formal_name
+                    end
+                end
+                return nil
+            end
+
+            local function register_instant_move_use(move_name)
+                last_instant_kill_time = os.clock()
+                last_instant_kill_move = move_name
+            end
+
+            local function setup_char_combat_listeners(character)
+                if not character then return end
+                for _, child in ipairs(character:GetChildren()) do
+                    if child:IsA("Tool") and check_is_instant_kill(child.Name) then
+                        utility:Connection(child.Activated, function()
+                            register_instant_move_use(check_is_instant_kill(child.Name))
+                        end)
+                    end
+                end
+                utility:Connection(character.ChildAdded, function(child)
+                    if child:IsA("Tool") and check_is_instant_kill(child.Name) then
+                        register_instant_move_use(check_is_instant_kill(child.Name))
+                        utility:Connection(child.Activated, function()
+                            register_instant_move_use(check_is_instant_kill(child.Name))
+                        end)
+                    elseif check_is_instant_kill(child.Name) then
+                        register_instant_move_use(check_is_instant_kill(child.Name))
+                    end
+                end)
+                utility:Connection(character.DescendantAdded, function(desc)
+                    if desc:IsA("Sound") and check_is_instant_kill(desc.Name) then
+                        register_instant_move_use(check_is_instant_kill(desc.Name))
+                        utility:Connection(desc.Played, function()
+                            register_instant_move_use(check_is_instant_kill(desc.Name))
+                        end)
+                    end
+                end)
+            end
+
+            if plr.Character then
+                setup_char_combat_listeners(plr.Character)
+            end
+
+            local function award_kill(target_name, method)
+                local now = os.clock()
+                local last_t = last_kill_timestamps[target_name] or 0
+                if now - last_t <= 2.5 then return end
+                last_kill_timestamps[target_name] = now
+
+                killstreak_data.current_streak = (killstreak_data.current_streak or 0) + 1
+                if killstreak_data.current_streak > (killstreak_data.best_streak or 0) then
+                    killstreak_data.best_streak = killstreak_data.current_streak
+                end
+                local grip_info = {
+                    player = target_name,
+                    time = os.time(),
+                    date = os.date("!%Y-%m-%d %H:%M:%SZ"),
+                    lives = last_known_lives or 0,
+                    streak = killstreak_data.current_streak,
+                    method = method or "Grip"
+                }
+                table.insert(killstreak_data.grips, grip_info)
+                killstreak_data.lives = last_known_lives or killstreak_data.lives
+                save_data()
+                update_ui()
+            end
 
             local function check_grips_and_lives()
                 local cur_lives = get_current_lives()
@@ -31407,6 +31498,21 @@ end
                     return
                 end
 
+                local now = os.clock()
+                local my_hum = my_char:FindFirstChildOfClass("Humanoid")
+                local my_hrp = my_char:FindFirstChild("HumanoidRootPart") or my_char:FindFirstChild("Torso")
+
+                if my_hum then
+                    local animator = my_hum:FindFirstChildOfClass("Animator") or my_hum
+                    for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+                        local m = check_is_instant_kill(track.Name) or check_is_instant_kill(track.Animation and track.Animation.Name)
+                        if m then
+                            register_instant_move_use(m)
+                            break
+                        end
+                    end
+                end
+
                 local executing_acc = my_char:FindFirstChild("Executing")
 
                 if executing_acc then
@@ -31422,7 +31528,7 @@ end
                                             being_acc = being_exec,
                                             hum = other:FindFirstChildOfClass("Humanoid")
                                         }
-                                        active_grip_start = os.clock()
+                                        active_grip_start = now
                                         break
                                     end
                                 end
@@ -31445,25 +31551,45 @@ end
                         is_dead = true
                     end
 
-                    if being_gone and is_dead and (os.clock() - active_grip_start < 15) then
-                        killstreak_data.current_streak = (killstreak_data.current_streak or 0) + 1
-                        if killstreak_data.current_streak > (killstreak_data.best_streak or 0) then
-                            killstreak_data.best_streak = killstreak_data.current_streak
-                        end
-                        local grip_info = {
-                            player = target_name,
-                            time = os.time(),
-                            date = os.date("!%Y-%m-%d %H:%M:%SZ"),
-                            lives = last_known_lives or 0,
-                            streak = killstreak_data.current_streak
-                        }
-                        table.insert(killstreak_data.grips, grip_info)
-                        killstreak_data.lives = last_known_lives or killstreak_data.lives
-                        save_data()
-                        update_ui()
+                    if being_gone and is_dead and (now - active_grip_start < 15) then
+                        award_kill(target_name, "Grip")
                     end
 
                     active_grip_target = nil
+                end
+
+                if ws.Live then
+                    for _, other in ipairs(ws.Live:GetChildren()) do
+                        if other ~= my_char and other:IsA("Model") and plrs:FindFirstChild(other.Name) then
+                            local other_hum = other:FindFirstChildOfClass("Humanoid")
+                            local other_hrp = other:FindFirstChild("HumanoidRootPart") or other:FindFirstChild("Torso")
+                            local other_name = other.Name
+                            local rec = tracked_targets[other]
+
+                            local cur_hp = other_hum and other_hum.Health or 0
+                            local is_dead = (other_hum and cur_hp <= 0) or (other:FindFirstChild("Dead") ~= nil)
+
+                            if other_hrp and my_hrp then
+                                local dist = (my_hrp.Position - other_hrp.Position).Magnitude
+                                if dist <= 35 and (now - last_instant_kill_time <= 1.5) and is_dead then
+                                    local prev_hp = rec and rec.last_hp
+                                    if (prev_hp and prev_hp > 0 and prev_hp <= 55) or (not prev_hp and cur_hp <= 0) then
+                                        award_kill(other_name, last_instant_kill_move or "Instant Kill")
+                                    end
+                                end
+                            end
+
+                            if not is_dead and other_hum and other_hrp then
+                                tracked_targets[other] = {
+                                    last_hp = cur_hp,
+                                    last_pos = other_hrp.Position,
+                                    name = other_name
+                                }
+                            else
+                                tracked_targets[other] = nil
+                            end
+                        end
+                    end
                 end
             end
 
@@ -31471,8 +31597,25 @@ end
                 check_grips_and_lives()
             end))
 
+            if ws.Live then
+                utility:Connection(ws.Live.ChildRemoved, function(removed)
+                    if tracked_targets[removed] then
+                        local rec = tracked_targets[removed]
+                        local now = os.clock()
+                        local my_hrp = plr.Character and (plr.Character:FindFirstChild("HumanoidRootPart") or plr.Character:FindFirstChild("Torso"))
+                        if my_hrp and rec.last_pos and (my_hrp.Position - rec.last_pos).Magnitude <= 35 then
+                            if (now - last_instant_kill_time <= 1.5) and (rec.last_hp and rec.last_hp > 0 and rec.last_hp <= 55) then
+                                award_kill(rec.name, last_instant_kill_move or "Instant Kill")
+                            end
+                        end
+                        tracked_targets[removed] = nil
+                    end
+                end)
+            end
+
             local function on_char_added(new_char)
                 active_grip_target = nil
+                setup_char_combat_listeners(new_char)
                 task.delay(1, function()
                     local cur_lives = get_current_lives()
                     if cur_lives and last_known_lives and cur_lives < last_known_lives then
