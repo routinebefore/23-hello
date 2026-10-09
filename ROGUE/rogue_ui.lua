@@ -30173,7 +30173,7 @@ end
                 boost_vel = new_vel
                 boost_end = os.clock() + 0.5
                 is_boosting = true
-                grapple_cooldown = os.clock() + 0.6
+                grapple_cooldown = os.clock() + 0.8
             end
 
             local function has_grapple_indicator(character)
@@ -30184,10 +30184,8 @@ end
                 if left_arm and left_arm:FindFirstChild("Cord") then
                     return true
                 end
-                for _, desc in ipairs(character:GetChildren()) do
-                    if desc:IsA("Tool") and desc.Name == "Grapple" then
-                        return true
-                    end
+                if character:FindFirstChild("Cord", true) then
+                    return true
                 end
                 return false
             end
@@ -30203,6 +30201,7 @@ end
                 is_boosting = false
                 boost_end = 0
                 grapple_cooldown = 0
+                local indicator_boosted = false
 
                 if not character then return end
                 local rootPart = character:WaitForChild("HumanoidRootPart", 5)
@@ -30211,12 +30210,14 @@ end
                 last_root_vel = rootPart.AssemblyLinearVelocity
 
                 local desc_conn = utility:Connection(character.DescendantAdded, function(desc)
-                    if desc.Name == "Cord" or desc.Name == "Grappled" or desc:IsA("BodyVelocity") then
+                    if desc.Name == "Cord" or desc.Name == "Grappled" then
                         task.defer(function()
                             if not is_grapple_vel_enabled() then return end
                             if os.clock() < grapple_cooldown then return end
+                            if indicator_boosted then return end
                             local cur = rootPart.AssemblyLinearVelocity
                             if cur.Magnitude >= 25 then
+                                indicator_boosted = true
                                 trigger_grapple_boost(rootPart, cur)
                             end
                         end)
@@ -30248,13 +30249,19 @@ end
                             is_boosting = false
                         end
                     elseif is_grapple_vel_enabled() and now >= grapple_cooldown then
-                        local delta_h = math.sqrt(delta.X * delta.X + delta.Z * delta.Z)
                         local has_indicator = has_grapple_indicator(character)
 
-                        if has_indicator and cur_vel.Magnitude >= 30 then
-                            trigger_grapple_boost(rootPart, cur_vel)
-                        elseif (mag >= 55.0 and delta_h >= 25.0 and cur_vel.Y >= 10.0) or (mag >= 70.0 and cur_vel.Y >= 15.0) then
-                            trigger_grapple_boost(rootPart, cur_vel)
+                        if has_indicator then
+                            if not indicator_boosted and cur_vel.Magnitude >= 30 then
+                                indicator_boosted = true
+                                trigger_grapple_boost(rootPart, cur_vel)
+                            end
+                        else
+                            indicator_boosted = false
+                            local delta_h = math.sqrt(delta.X * delta.X + delta.Z * delta.Z)
+                            if mag >= 75.0 and delta.Y >= 48.0 and cur_vel.Y >= 60.0 and delta_h >= 25.0 then
+                                trigger_grapple_boost(rootPart, cur_vel)
+                            end
                         end
                     end
 
