@@ -536,6 +536,9 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             clock_time = 12,
 
             mana_overlay = false,
+            spoof_mana_color = false,
+            mana_color = Color3.fromRGB(0, 170, 255),
+            rainbow_mana = false,
     
             no_insane = false,
             instant_mine = false,
@@ -9427,6 +9430,126 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     cheat_client:handle_toggle(state)
                 end
             })
+
+            group_overlays:AddToggle("spoof_mana_color", {
+                Text = "Spoof Mana Color",
+                Default = cheat_client.config.spoof_mana_color,
+                Callback = function(state)
+                    cheat_client.config.spoof_mana_color = state
+                end
+            }):AddColorPicker("mana_color", {
+                Default = cheat_client.config.mana_color or Color3.fromRGB(0, 170, 255),
+                Title = "Mana Color",
+                Transparency = 0,
+                Callback = function(value)
+                    cheat_client.config.mana_color = value
+                end
+            })
+
+            group_overlays:AddToggle("rainbow_mana", {
+                Text = "Rainbow Mana",
+                Default = cheat_client.config.rainbow_mana,
+                Callback = function(state)
+                    cheat_client.config.rainbow_mana = state
+                end
+            })
+
+            do
+                local cached_slider = nil
+                local orig_bg_color = nil
+                local orig_img_color = nil
+                local color_captured = false
+
+                local function get_slider()
+                    if cached_slider and cached_slider.Parent then
+                        return cached_slider
+                    end
+                    local pg = plr:FindFirstChild("PlayerGui")
+                    if not pg then return nil end
+                    local sg = pg:FindFirstChild("StatGui")
+                    if not sg then return nil end
+                    local lc = sg:FindFirstChild("LeftContainer")
+                    if not lc then return nil end
+                    local mf = lc:FindFirstChild("Mana")
+                    if not mf then return nil end
+                    local s = mf:FindFirstChild("Slider")
+                    if s then
+                        cached_slider = s
+                        if not color_captured then
+                            orig_bg_color = s.BackgroundColor3
+                            if s:IsA("ImageLabel") or s:IsA("ImageButton") then
+                                orig_img_color = s.ImageColor3
+                            end
+                            color_captured = true
+                        end
+                        return s
+                    end
+                    return nil
+                end
+
+                local function get_rainbow_seq(shift)
+                    local kps = {}
+                    for i = 0, 5 do
+                        local t = i / 5
+                        local h = (shift + t) % 1
+                        table.insert(kps, ColorSequenceKeypoint.new(t, Color3.fromHSV(h, 1, 1)))
+                    end
+                    return ColorSequence.new(kps)
+                end
+
+                utility:Connection(rs.RenderStepped, LPH_NO_VIRTUALIZE(function()
+                    local rainbow_on = (Toggles and Toggles.rainbow_mana and Toggles.rainbow_mana.Value) or cheat_client.config.rainbow_mana
+                    local spoof_on = (Toggles and Toggles.spoof_mana_color and Toggles.spoof_mana_color.Value) or cheat_client.config.spoof_mana_color
+
+                    if not rainbow_on and not spoof_on then
+                        if cached_slider and cached_slider.Parent then
+                            local grad = cached_slider:FindFirstChild("RainbowManaGradient")
+                            if grad then
+                                grad:Destroy()
+                            end
+                            if color_captured and orig_bg_color then
+                                cached_slider.BackgroundColor3 = orig_bg_color
+                                if orig_img_color and (cached_slider:IsA("ImageLabel") or cached_slider:IsA("ImageButton")) then
+                                    cached_slider.ImageColor3 = orig_img_color
+                                end
+                            end
+                        end
+                        return
+                    end
+
+                    local slider = get_slider()
+                    if not slider then return end
+
+                    if rainbow_on then
+                        local grad = slider:FindFirstChild("RainbowManaGradient")
+                        if not grad then
+                            grad = Instance.new("UIGradient")
+                            grad.Name = "RainbowManaGradient"
+                            grad.Parent = slider
+                        end
+                        grad.Enabled = true
+                        grad.Color = get_rainbow_seq((os.clock() * 0.35) % 1)
+                        if slider.BackgroundColor3 ~= Color3.new(1, 1, 1) then
+                            slider.BackgroundColor3 = Color3.new(1, 1, 1)
+                        end
+                        if (slider:IsA("ImageLabel") or slider:IsA("ImageButton")) and slider.ImageColor3 ~= Color3.new(1, 1, 1) then
+                            slider.ImageColor3 = Color3.new(1, 1, 1)
+                        end
+                    elseif spoof_on then
+                        local grad = slider:FindFirstChild("RainbowManaGradient")
+                        if grad then
+                            grad:Destroy()
+                        end
+                        local target_col = (Options and Options.mana_color and Options.mana_color.Value) or cheat_client.config.mana_color or Color3.fromRGB(0, 170, 255)
+                        if slider.BackgroundColor3 ~= target_col then
+                            slider.BackgroundColor3 = target_col
+                        end
+                        if (slider:IsA("ImageLabel") or slider:IsA("ImageButton")) and slider.ImageColor3 ~= target_col then
+                            slider.ImageColor3 = target_col
+                        end
+                    end
+                end))
+            end
 
             group_overlays:AddToggle("better_leaderboard", {
                 Text = "Better Leaderboard",
@@ -30116,6 +30239,7 @@ end
             local is_boosting = false
             local boost_end = 0
             local boost_vel = Vector3.new(0, 0, 0)
+            local last_shadowrush_time = 0
 
             local function is_grapple_vel_enabled()
                 if Toggles and Toggles.GrappleVelocity and type(Toggles.GrappleVelocity.Value) == "boolean" then
@@ -30141,14 +30265,14 @@ end
                 for _, obj in ipairs(rootPart:GetChildren()) do
                     if obj:IsA("BodyVelocity") then
                         if target_vel then
-                            obj.Velocity = Vector3.new(target_vel.X, obj.Velocity.Y, target_vel.Z)
+                            obj.Velocity = target_vel
                         else
                             obj.Velocity = obj.Velocity * mult
                         end
                         obj.MaxForce = Vector3.new(1e6, 1e6, 1e6)
                     elseif obj:IsA("LinearVelocity") then
                         if target_vel then
-                            obj.VectorVelocity = Vector3.new(target_vel.X, obj.VectorVelocity.Y, target_vel.Z)
+                            obj.VectorVelocity = target_vel
                         else
                             obj.VectorVelocity = obj.VectorVelocity * mult
                         end
@@ -30157,18 +30281,122 @@ end
                 end
             end
 
-            local function trigger_grapple_boost(rootPart, current_vel)
+            local function is_shadowrush_active(character)
+                if (os.clock() - last_shadowrush_time) < 2.5 then
+                    return true
+                end
+                local hum = character:FindFirstChildOfClass("Humanoid")
+                if hum then
+                    local animator = hum:FindFirstChildOfClass("Animator") or hum
+                    for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+                        local n1 = (track.Name or ""):lower()
+                        local n2 = (track.Animation and track.Animation.Name or ""):lower()
+                        if n1:find("shadow") or n1:find("rush") or n2:find("shadow") or n2:find("rush") then
+                            return true
+                        end
+                    end
+                end
+                for _, obj in ipairs(character:GetDescendants()) do
+                    if obj:IsA("Sound") and obj.IsPlaying and obj.Name:lower():find("shadowrush") then
+                        return true
+                    end
+                end
+                return false
+            end
+
+            local function is_near_wall(rootPart)
+                local char = rootPart.Parent
+                if not char then return false end
+                local params = RaycastParams.new()
+                params.FilterType = Enum.RaycastFilterType.Blacklist
+                params.FilterDescendantsInstances = {char}
+                local pos = rootPart.Position
+                local cf = rootPart.CFrame
+                local dirs = {
+                    cf.LookVector * 7,
+                    -cf.LookVector * 7,
+                    cf.RightVector * 7,
+                    -cf.RightVector * 7,
+                    (cf.LookVector + cf.RightVector).Unit * 7,
+                    (cf.LookVector - cf.RightVector).Unit * 7,
+                    (-cf.LookVector + cf.RightVector).Unit * 7,
+                    (-cf.LookVector - cf.RightVector).Unit * 7
+                }
+                for _, dir in ipairs(dirs) do
+                    local hit = ws:Raycast(pos, dir, params)
+                    if hit and hit.Instance and hit.Instance.CanCollide and not hit.Instance:IsDescendantOf(plrs) then
+                        return true
+                    end
+                end
+                return false
+            end
+
+            local function get_grapple_target_info(character, rootPart)
+                local cord = character:FindFirstChild("Cord", true)
+                if cord and cord:IsA("Beam") and cord.Attachment1 then
+                    local p = cord.Attachment1.WorldPosition
+                    local diff = p - rootPart.Position
+                    if diff.Magnitude > 1 then
+                        return diff.Unit
+                    end
+                end
+
+                local left_arm = character:FindFirstChild("Left Arm")
+                if left_arm then
+                    local c = left_arm:FindFirstChild("Cord")
+                    if c and c:IsA("Beam") and c.Attachment1 then
+                        local p = c.Attachment1.WorldPosition
+                        local diff = p - rootPart.Position
+                        if diff.Magnitude > 1 then
+                            return diff.Unit
+                        end
+                    end
+                end
+
+                for _, p in ipairs(plrs:GetPlayers()) do
+                    if p ~= plr and p.Character then
+                        local att2 = p.Character:FindFirstChild("Attachment2", true)
+                        if att2 and att2:IsA("Attachment") then
+                            local diff = att2.WorldPosition - rootPart.Position
+                            if diff.Magnitude <= 250 then
+                                return diff.Unit
+                            end
+                        end
+                    end
+                end
+
+                local cam = ws.CurrentCamera
+                if cam then
+                    return cam.CFrame.LookVector
+                end
+
+                return nil
+            end
+
+            local function trigger_grapple_boost(rootPart, current_vel, is_wall_grapple)
                 if not is_grapple_vel_enabled() then return end
+                local char = rootPart.Parent
+                if not char then return end
+                if is_shadowrush_active(char) then return end
+
                 local mult = get_grapple_multiplier()
                 if mult <= 1 then return end
 
                 local new_vel = current_vel * mult
+                if not is_wall_grapple then
+                    local target_dir = get_grapple_target_info(char, rootPart)
+                    if target_dir then
+                        local speed = math.max(current_vel.Magnitude, 60) * mult
+                        new_vel = target_dir * speed
+                    end
+                end
+
                 rootPart.AssemblyLinearVelocity = new_vel
                 pcall(function()
                     rootPart.Velocity = new_vel
                 end)
 
-                apply_body_boost(rootPart, mult)
+                apply_body_boost(rootPart, mult, new_vel)
 
                 boost_vel = new_vel
                 boost_end = os.clock() + 0.5
@@ -30209,16 +30437,32 @@ end
 
                 last_root_vel = rootPart.AssemblyLinearVelocity
 
+                for _, obj in ipairs(character:GetDescendants()) do
+                    if obj:IsA("Sound") and obj.Name:lower():find("shadowrush") then
+                        local sc = utility:Connection(obj.Played, function()
+                            last_shadowrush_time = os.clock()
+                        end)
+                        table.insert(grapple_char_conns, sc)
+                    end
+                end
+
                 local desc_conn = utility:Connection(character.DescendantAdded, function(desc)
-                    if desc.Name == "Cord" or desc.Name == "Grappled" then
+                    if desc:IsA("Sound") and desc.Name:lower():find("shadowrush") then
+                        last_shadowrush_time = os.clock()
+                        local sc = utility:Connection(desc.Played, function()
+                            last_shadowrush_time = os.clock()
+                        end)
+                        table.insert(grapple_char_conns, sc)
+                    elseif desc.Name == "Cord" or desc.Name == "Grappled" then
                         task.defer(function()
                             if not is_grapple_vel_enabled() then return end
                             if os.clock() < grapple_cooldown then return end
                             if indicator_boosted then return end
+                            if is_shadowrush_active(character) then return end
                             local cur = rootPart.AssemblyLinearVelocity
                             if cur.Magnitude >= 25 then
                                 indicator_boosted = true
-                                trigger_grapple_boost(rootPart, cur)
+                                trigger_grapple_boost(rootPart, cur, false)
                             end
                         end)
                     end
@@ -30235,13 +30479,13 @@ end
 
                     if is_boosting then
                         if now < boost_end then
-                            local current_h = math.sqrt(cur_vel.X * cur_vel.X + cur_vel.Z * cur_vel.Z)
-                            local target_h = math.sqrt(boost_vel.X * boost_vel.X + boost_vel.Z * boost_vel.Z)
-                            if current_h < target_h * 0.85 then
-                                local enforced = Vector3.new(boost_vel.X, cur_vel.Y, boost_vel.Z)
-                                rootPart.AssemblyLinearVelocity = enforced
+                            local target_unit = boost_vel.Unit
+                            local proj_speed = cur_vel:Dot(target_unit)
+                            local target_speed = boost_vel.Magnitude
+                            if proj_speed < target_speed * 0.85 then
+                                rootPart.AssemblyLinearVelocity = boost_vel
                                 pcall(function()
-                                    rootPart.Velocity = enforced
+                                    rootPart.Velocity = boost_vel
                                 end)
                             end
                             apply_body_boost(rootPart, nil, boost_vel)
@@ -30252,15 +30496,19 @@ end
                         local has_indicator = has_grapple_indicator(character)
 
                         if has_indicator then
-                            if not indicator_boosted and cur_vel.Magnitude >= 30 then
-                                indicator_boosted = true
-                                trigger_grapple_boost(rootPart, cur_vel)
+                            if not indicator_boosted and cur_vel.Magnitude >= 25 then
+                                if not is_shadowrush_active(character) then
+                                    indicator_boosted = true
+                                    trigger_grapple_boost(rootPart, cur_vel, false)
+                                end
                             end
                         else
                             indicator_boosted = false
                             local delta_h = math.sqrt(delta.X * delta.X + delta.Z * delta.Z)
                             if mag >= 75.0 and delta.Y >= 48.0 and cur_vel.Y >= 60.0 and delta_h >= 25.0 then
-                                trigger_grapple_boost(rootPart, cur_vel)
+                                if not is_shadowrush_active(character) and is_near_wall(rootPart) then
+                                    trigger_grapple_boost(rootPart, cur_vel, true)
+                                end
                             end
                         end
                     end
