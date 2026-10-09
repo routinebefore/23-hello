@@ -567,7 +567,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             fling = false,
             fling_flight_speed = 50,
             grapple_velocity = false,
-            grapple_velocity_multiplier = 2,
+            grapple_velocity_multiplier = 1.5,
 
             flight = false,
             noclip = false,
@@ -3353,6 +3353,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     if esp_screen_gui and esp_screen_gui.Parent then
                         esp_screen_gui:Destroy()
                         esp_screen_gui = nil
+                        esp_screen_origin = nil
                     end
                     if proximity_gui and proximity_gui.Parent then
                         proximity_gui:Destroy()
@@ -5200,6 +5201,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 end)
 
                 local esp_screen_gui
+                local esp_screen_origin
                 local function get_esp_screen_gui()
                     if not esp_screen_gui or not esp_screen_gui.Parent then
                         esp_screen_gui = Instance.new("ScreenGui")
@@ -5207,7 +5209,15 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         esp_screen_gui.ResetOnSpawn = false
                         esp_screen_gui.DisplayOrder = 10
                         esp_screen_gui.IgnoreGuiInset = true
-                        esp_screen_gui.Parent = (hidden_folder and hidden_folder.Parent and hidden_folder) or ui or cg
+                        esp_screen_gui.Parent = ui or cg
+                        esp_screen_origin = Instance.new("Frame")
+                        esp_screen_origin.Name = "Origin"
+                        esp_screen_origin.Size = UDim2.new(0, 0, 0, 0)
+                        esp_screen_origin.Position = UDim2.new(0, 0, 0, 0)
+                        esp_screen_origin.BackgroundTransparency = 1
+                        esp_screen_origin.BorderSizePixel = 0
+                        esp_screen_origin.Visible = true
+                        esp_screen_origin.Parent = esp_screen_gui
                     end
                     return esp_screen_gui
                 end
@@ -6012,13 +6022,20 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                                             if esp.temperature_widget then
                                                 local box_pos = esp.drawings.box.Position or screen_position
                                                 local box_size = esp.drawings.box.Size or screen_size
-                                                local gui_offset = (esp_screen_gui and esp_screen_gui.AbsolutePosition) or Vector2.new(0, 0)
-                                                local target_x = math.floor(box_pos.X + (box_size.X - 54) / 2 - gui_offset.X)
-                                                local target_y = math.floor(box_pos.Y + box_size.Y - gui_offset.Y)
+                                                local origin_x = (esp_screen_origin and esp_screen_origin.AbsolutePosition.X) or ((esp_screen_gui and esp_screen_gui.AbsolutePosition.X) or 0)
+                                                local origin_y = (esp_screen_origin and esp_screen_origin.AbsolutePosition.Y) or ((esp_screen_gui and esp_screen_gui.AbsolutePosition.Y) or 0)
+                                                if origin_y == 0 and esp.temperature_widget.AbsolutePosition.Y > 0 and esp.temperature_widget.Position.Y.Offset ~= 0 then
+                                                    local measured = esp.temperature_widget.AbsolutePosition.Y - esp.temperature_widget.Position.Y.Offset
+                                                    if measured > 0 then
+                                                        origin_y = measured
+                                                    end
+                                                end
+                                                local target_x = math.floor(box_pos.X + (box_size.X - 54) / 2 - origin_x)
+                                                local target_y = math.floor(box_pos.Y + box_size.Y - origin_y)
                                                 esp.temperature_widget.Position = UDim2.new(0, target_x, 0, target_y)
                                                 esp.temperature_widget.Visible = true
                                             end
-                                            temp_offset = 14
+                                            temp_offset = 12
                                         else
                                             if esp.temperature_widget then
                                                 esp.temperature_widget.Visible = false
@@ -10197,10 +10214,10 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             })
 
             tab_grappling:AddSlider("GrappleVelocityMultiplier", {
-                Text = "Multiplier",
-                Default = cheat_client.config.grapple_velocity_multiplier,
-                Min = 1,
-                Max = 5,
+                Text = "Pull Strength",
+                Default = cheat_client.config.grapple_velocity_multiplier or 1.5,
+                Min = 1.1,
+                Max = 3,
                 Rounding = 1,
                 Compact = false,
                 Callback = function(value)
@@ -30666,8 +30683,6 @@ end
 
         do
             local grapple_char_conns = {}
-            local last_root_vel = Vector3.new(0, 0, 0)
-            local grapple_cooldown = 0
             local last_shadowrush_time = 0
 
             local function is_grapple_vel_enabled()
@@ -30680,41 +30695,14 @@ end
                 return false
             end
 
-            local function get_grapple_multiplier()
+            local function get_pull_strength()
                 local mult = nil
                 if Options and Options.GrappleVelocityMultiplier and type(Options.GrappleVelocityMultiplier.Value) == "number" then
                     mult = Options.GrappleVelocityMultiplier.Value
                 elseif cheat_client and cheat_client.config and type(cheat_client.config.grapple_velocity_multiplier) == "number" then
                     mult = cheat_client.config.grapple_velocity_multiplier
                 end
-                return mult or 2
-            end
-
-            local function boost_body_movers(rootPart, mult)
-                for _, obj in ipairs(rootPart:GetChildren()) do
-                    if obj:IsA("BodyVelocity") then
-                        obj.Velocity = obj.Velocity * mult
-                        obj.MaxForce = Vector3.new(1e6, 1e6, 1e6)
-                    elseif obj:IsA("LinearVelocity") then
-                        obj.VectorVelocity = obj.VectorVelocity * mult
-                        obj.MaxForce = 1e6
-                    end
-                end
-                local char = rootPart.Parent
-                if char then
-                    local torso = char:FindFirstChild("Torso")
-                    if torso then
-                        for _, obj in ipairs(torso:GetChildren()) do
-                            if obj:IsA("BodyVelocity") then
-                                obj.Velocity = obj.Velocity * mult
-                                obj.MaxForce = Vector3.new(1e6, 1e6, 1e6)
-                            elseif obj:IsA("LinearVelocity") then
-                                obj.VectorVelocity = obj.VectorVelocity * mult
-                                obj.MaxForce = 1e6
-                            end
-                        end
-                    end
-                end
+                return math.clamp(mult or 1.5, 1.1, 3.0)
             end
 
             local function is_shadowrush_active(character)
@@ -30740,56 +30728,8 @@ end
                 return false
             end
 
-            local function is_near_wall(rootPart)
-                local char = rootPart.Parent
-                if not char then return false end
-                local params = RaycastParams.new()
-                params.FilterType = Enum.RaycastFilterType.Blacklist
-                params.FilterDescendantsInstances = {char}
-                local pos = rootPart.Position
-                local cf = rootPart.CFrame
-                local dirs = {
-                    cf.LookVector * 7,
-                    -cf.LookVector * 7,
-                    cf.RightVector * 7,
-                    -cf.RightVector * 7,
-                    (cf.LookVector + cf.RightVector).Unit * 7,
-                    (cf.LookVector - cf.RightVector).Unit * 7,
-                    (-cf.LookVector + cf.RightVector).Unit * 7,
-                    (-cf.LookVector - cf.RightVector).Unit * 7
-                }
-                for _, dir in ipairs(dirs) do
-                    local hit = ws:Raycast(pos, dir, params)
-                    if hit and hit.Instance and hit.Instance.CanCollide and not hit.Instance:IsDescendantOf(plrs) then
-                        return true
-                    end
-                end
-                return false
-            end
-
-            local function boost_velocity(rootPart, current_vel)
-                if not is_grapple_vel_enabled() then return end
-                local char = rootPart.Parent
-                if not char then return end
-                if is_shadowrush_active(char) then return end
-
-                local mult = get_grapple_multiplier()
-                if mult <= 1 then return end
-
-                local new_vel = current_vel * mult
-                rootPart.AssemblyLinearVelocity = new_vel
-                pcall(function()
-                    rootPart.Velocity = new_vel
-                end)
-
-                boost_body_movers(rootPart, mult)
-                grapple_cooldown = os.clock() + 0.8
-            end
-
-            local function has_grapple_indicator(character)
-                if character:FindFirstChild("Grappled") then
-                    return true
-                end
+            local function is_grappling(character)
+                if not character then return false end
                 local left_arm = character:FindFirstChild("Left Arm")
                 if left_arm and left_arm:FindFirstChild("Cord") then
                     return true
@@ -30797,7 +30737,74 @@ end
                 if character:FindFirstChild("Cord", true) then
                     return true
                 end
+                if character:FindFirstChild("Grappled") then
+                    return true
+                end
                 return false
+            end
+
+            local function get_grapple_target(character)
+                local left_arm = character:FindFirstChild("Left Arm")
+                local cord = (left_arm and left_arm:FindFirstChild("Cord")) or character:FindFirstChild("Cord", true)
+
+                if cord and cord:IsA("Beam") and cord.Attachment1 then
+                    local att1 = cord.Attachment1
+                    local parent_part = att1.Parent
+                    if parent_part then
+                        local model = parent_part:FindFirstAncestorOfClass("Model")
+                        if model and model ~= character then
+                            local hrp = model:FindFirstChild("HumanoidRootPart") or model:FindFirstChild("Torso")
+                            if hrp then
+                                return hrp.Position, model
+                            end
+                        end
+                    end
+                end
+
+                for _, other_plr in ipairs(plrs:GetPlayers()) do
+                    if other_plr ~= plr and other_plr.Character then
+                        local char = other_plr.Character
+                        if FindFirstChild(char, "AIRSLASH") then
+                            local hrp = FindFirstChild(char, "HumanoidRootPart") or FindFirstChild(char, "Torso")
+                            if hrp then
+                                return hrp.Position, char
+                            end
+                        end
+                    end
+                end
+
+                if ws.Live then
+                    for _, npc in ipairs(ws.Live:GetChildren()) do
+                        if npc ~= character and npc:IsA("Model") and FindFirstChild(npc, "AIRSLASH") then
+                            local hrp = FindFirstChild(npc, "HumanoidRootPart") or FindFirstChild(npc, "Torso")
+                            if hrp then
+                                return hrp.Position, npc
+                            end
+                        end
+                    end
+                end
+
+                if cord and cord:IsA("Beam") and cord.Attachment1 then
+                    local att1 = cord.Attachment1
+                    if att1.WorldPosition then
+                        return att1.WorldPosition, nil
+                    elseif att1.Parent and att1.Parent:IsA("BasePart") then
+                        return att1.Parent.Position, nil
+                    end
+                end
+
+                local g_val = character:FindFirstChild("Grappled")
+                if g_val and g_val:IsA("ObjectValue") and g_val.Value then
+                    local t = g_val.Value
+                    if t:IsA("Model") then
+                        local hrp = t:FindFirstChild("HumanoidRootPart") or t:FindFirstChild("Torso")
+                        if hrp then return hrp.Position, t end
+                    elseif t:IsA("BasePart") then
+                        return t.Position, t:FindFirstAncestorOfClass("Model")
+                    end
+                end
+
+                return nil, nil
             end
 
             local function setup_grapple_char(character)
@@ -30808,14 +30815,9 @@ end
                 end
                 table.clear(grapple_char_conns)
 
-                grapple_cooldown = 0
-                local indicator_boosted = false
-
                 if not character then return end
                 local rootPart = character:WaitForChild("HumanoidRootPart", 5)
                 if not rootPart then return end
-
-                last_root_vel = rootPart.AssemblyLinearVelocity
 
                 for _, obj in ipairs(character:GetDescendants()) do
                     if obj:IsA("Sound") and obj.Name:lower():find("shadowrush") then
@@ -30833,73 +30835,38 @@ end
                             last_shadowrush_time = os.clock()
                         end)
                         table.insert(grapple_char_conns, sc)
-                    elseif desc.Name == "Cord" or desc.Name == "Grappled" then
-                        task.defer(function()
-                            if not is_grapple_vel_enabled() then return end
-                            if os.clock() < grapple_cooldown then return end
-                            if indicator_boosted then return end
-                            if is_shadowrush_active(character) then return end
-                            local cur = rootPart.AssemblyLinearVelocity
-                            if cur.Magnitude >= 25 then
-                                indicator_boosted = true
-                                boost_velocity(rootPart, cur)
-                            end
-                        end)
-                    elseif desc:IsA("BodyVelocity") or desc:IsA("LinearVelocity") then
-                        task.defer(function()
-                            if not is_grapple_vel_enabled() then return end
-                            if is_shadowrush_active(character) then return end
-                            if has_grapple_indicator(character) then
-                                local mult = get_grapple_multiplier()
-                                if mult > 1 then
-                                    if desc:IsA("BodyVelocity") then
-                                        desc.Velocity = desc.Velocity * mult
-                                        desc.MaxForce = Vector3.new(1e6, 1e6, 1e6)
-                                    elseif desc:IsA("LinearVelocity") then
-                                        desc.VectorVelocity = desc.VectorVelocity * mult
-                                        desc.MaxForce = 1e6
-                                    end
-                                    local cur = rootPart.AssemblyLinearVelocity
-                                    rootPart.AssemblyLinearVelocity = cur * mult
-                                    pcall(function() rootPart.Velocity = cur * mult end)
-                                    grapple_cooldown = os.clock() + 0.8
-                                end
-                            end
-                        end)
                     end
                 end)
                 table.insert(grapple_char_conns, desc_conn)
 
-                local heartbeat_conn = utility:Connection(rs.Heartbeat, LPH_NO_VIRTUALIZE(function()
-                    if not rootPart:IsDescendantOf(ws) then return end
+                local heartbeat_conn = utility:Connection(rs.Heartbeat, LPH_NO_VIRTUALIZE(function(dt)
+                    if not is_grapple_vel_enabled() then return end
+                    if not character or not rootPart or not rootPart:IsDescendantOf(ws) then return end
+                    if is_shadowrush_active(character) then return end
+                    if not is_grappling(character) then return end
+
+                    local target_pos, target_model = get_grapple_target(character)
+                    if not target_pos then return end
 
                     local cur_vel = rootPart.AssemblyLinearVelocity
-                    local delta = cur_vel - last_root_vel
-                    local mag = delta.Magnitude
-                    local now = os.clock()
+                    local cur_speed = cur_vel.Magnitude
+                    local to_target = target_pos - rootPart.Position
+                    local dist = to_target.Magnitude
 
-                    if is_grapple_vel_enabled() and now >= grapple_cooldown then
-                        local has_indicator = has_grapple_indicator(character)
+                    if dist > 2.5 and cur_speed >= 8 then
+                        local delta_time = (typeof(dt) == "number" and dt > 0) and dt or 0.016
+                        local pull = get_pull_strength()
+                        local target_dir = to_target.Unit
 
-                        if has_indicator then
-                            if not indicator_boosted and cur_vel.Magnitude >= 25 then
-                                if not is_shadowrush_active(character) then
-                                    indicator_boosted = true
-                                    boost_velocity(rootPart, cur_vel)
-                                end
-                            end
-                        else
-                            indicator_boosted = false
-                            local delta_h = math.sqrt(delta.X * delta.X + delta.Z * delta.Z)
-                            if mag >= 75.0 and delta.Y >= 48.0 and cur_vel.Y >= 60.0 and delta_h >= 25.0 then
-                                if not is_shadowrush_active(character) and is_near_wall(rootPart) then
-                                    boost_velocity(rootPart, cur_vel)
-                                end
-                            end
-                        end
+                        local steer_rate = math.clamp(delta_time * (4 + (pull - 1) * 8), 0.1, 0.85)
+                        local target_speed = math.max(cur_speed, 45) * (1 + (pull - 1) * 0.35)
+                        local new_vel = cur_vel:Lerp(target_dir * target_speed, steer_rate)
+
+                        rootPart.AssemblyLinearVelocity = new_vel
+                        pcall(function()
+                            rootPart.Velocity = new_vel
+                        end)
                     end
-
-                    last_root_vel = rootPart.AssemblyLinearVelocity
                 end))
                 table.insert(grapple_char_conns, heartbeat_conn)
             end
