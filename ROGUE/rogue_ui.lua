@@ -9794,12 +9794,11 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 local orig_img_color = nil
                 local color_captured = false
 
-                local shimmer_transparency = NumberSequence.new({
-                    NumberSequenceKeypoint.new(0, 1),
-                    NumberSequenceKeypoint.new(0.32, 1),
-                    NumberSequenceKeypoint.new(0.50, 0.42),
-                    NumberSequenceKeypoint.new(0.68, 1),
-                    NumberSequenceKeypoint.new(1, 1)
+                local liquid_transparency = NumberSequence.new({
+                    NumberSequenceKeypoint.new(0.0, 0.05),
+                    NumberSequenceKeypoint.new(0.04, 0.0),
+                    NumberSequenceKeypoint.new(0.96, 0.0),
+                    NumberSequenceKeypoint.new(1.0, 0.04)
                 })
 
                 local function cleanup_rainbow(s)
@@ -9845,15 +9844,19 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     return nil
                 end
 
-                local function get_rainbow_seq(shift, span)
+                local function get_liquid_rainbow_seq(shift, span, now)
                     span = span or 1
                     local kps = {}
                     local steps = 8
                     for i = 0, steps do
                         local t = i / steps
-                        local raw_h = (shift + t * span) % 1
-                        local s = math.clamp(0.90 + 0.10 * math.cos(t * 3.14159 + shift * 6.28318), 0.80, 1.0)
-                        local v = math.clamp(0.97 + 0.03 * math.sin(t * 6.28318 + shift * 6.28318), 0.92, 1.0)
+                        local wave1 = math.sin(t * 6.28318 - now * 2.2) * 0.045
+                        local wave2 = math.cos(t * 12.566 + now * 1.6) * 0.02
+                        local fluid_t = t + wave1 + wave2
+                        local raw_h = (shift + fluid_t * span) % 1
+                        local fluid_pulse = math.sin(now * 2.0 + t * 4.0) * 0.03
+                        local s = math.clamp(0.86 + 0.10 * math.cos(t * 6.28318 + now * 1.5) - fluid_pulse, 0.78, 0.96)
+                        local v = math.clamp(0.97 + 0.03 * math.sin(t * 6.28318 - now * 2.0) + fluid_pulse, 0.92, 1.0)
                         table.insert(kps, ColorSequenceKeypoint.new(t, Color3.fromHSV(raw_h, s, v)))
                     end
                     return ColorSequence.new(kps)
@@ -9881,6 +9884,18 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
                     if rainbow_on then
                         local now = os.clock()
+
+                        local old_shimmer = slider:FindFirstChild("RainbowManaShimmer")
+                        if old_shimmer then old_shimmer:Destroy() end
+                        local old_crest = slider:FindFirstChild("RainbowManaCrest")
+                        if old_crest then old_crest:Destroy() end
+                        local old_stroke = slider:FindFirstChild("RainbowManaStroke")
+                        if old_stroke then old_stroke:Destroy() end
+                        if slider.Parent and slider.Parent:IsA("GuiObject") then
+                            local old_pstroke = slider.Parent:FindFirstChild("RainbowManaStroke")
+                            if old_pstroke then old_pstroke:Destroy() end
+                        end
+
                         local grad = slider:FindFirstChild("RainbowManaGradient")
                         if not grad then
                             grad = Instance.new("UIGradient")
@@ -9888,9 +9903,10 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                             grad.Parent = slider
                         end
                         grad.Enabled = true
+                        grad.Transparency = liquid_transparency
 
-                        local rot = 84 + math.sin(now * 2.2) * 8
-                        grad.Rotation = rot
+                        local liquid_rot = 90 + math.sin(now * 1.4) * 3.5 + math.cos(now * 2.1) * 1.5
+                        grad.Rotation = liquid_rot
 
                         local charge_pct = 1
                         if slider.Size and slider.Size.Y and slider.Size.Y.Scale > 0 and slider.Size.Y.Scale <= 1 then
@@ -9899,83 +9915,15 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                             charge_pct = math.clamp(slider.AbsoluteSize.Y / slider.Parent.AbsoluteSize.Y, 0.01, 1)
                         end
 
-                        local span = math.clamp(charge_pct * 0.85 + 0.15, 0.15, 1.0)
-                        local shift = (-now * 0.48) % 1
-                        grad.Color = get_rainbow_seq(shift, span)
+                        local span = math.clamp(charge_pct * 0.75 + 0.15, 0.15, 0.85)
+                        local shift = (now * 0.32) % 1
+                        grad.Color = get_liquid_rainbow_seq(shift, span, now)
 
                         if slider.BackgroundColor3 ~= Color3.new(1, 1, 1) then
                             slider.BackgroundColor3 = Color3.new(1, 1, 1)
                         end
                         if (slider:IsA("ImageLabel") or slider:IsA("ImageButton")) and slider.ImageColor3 ~= Color3.new(1, 1, 1) then
                             slider.ImageColor3 = Color3.new(1, 1, 1)
-                        end
-
-                        local shimmer = slider:FindFirstChild("RainbowManaShimmer")
-                        if not shimmer then
-                            shimmer = Instance.new("Frame")
-                            shimmer.Name = "RainbowManaShimmer"
-                            shimmer.BackgroundTransparency = 0
-                            shimmer.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-                            shimmer.BorderSizePixel = 0
-                            shimmer.Size = UDim2.new(1, 0, 1, 0)
-                            shimmer.Position = UDim2.new(0, 0, 0, 0)
-                            shimmer.ZIndex = (slider.ZIndex or 1) + 1
-                            shimmer.Parent = slider
-                        end
-
-                        local sgrad = shimmer:FindFirstChild("ShimmerGrad")
-                        if not sgrad then
-                            sgrad = Instance.new("UIGradient")
-                            sgrad.Name = "ShimmerGrad"
-                            sgrad.Transparency = shimmer_transparency
-                            sgrad.Parent = shimmer
-                        end
-                        sgrad.Rotation = rot
-                        local shimmer_pos = ((now * 0.75) % 2.0) - 1.0
-                        sgrad.Offset = Vector2.new(0, -shimmer_pos)
-
-                        local crest = slider:FindFirstChild("RainbowManaCrest")
-                        if not crest then
-                            crest = Instance.new("Frame")
-                            crest.Name = "RainbowManaCrest"
-                            crest.BorderSizePixel = 0
-                            crest.Size = UDim2.new(1, 0, 0, 2)
-                            crest.Position = UDim2.new(0, 0, 0, 0)
-                            crest.ZIndex = (slider.ZIndex or 1) + 2
-                            crest.Parent = slider
-                        end
-
-                        if slider.AbsoluteSize and slider.AbsoluteSize.Y < 4 then
-                            crest.Visible = false
-                        else
-                            crest.Visible = true
-                            crest.BackgroundColor3 = Color3.fromHSV(shift % 1, 0.35, 1)
-                            crest.BackgroundTransparency = 0.15 + 0.15 * math.sin(now * 5.0)
-                        end
-
-                        local stroke = slider:FindFirstChild("RainbowManaStroke")
-                        if not stroke then
-                            stroke = Instance.new("UIStroke")
-                            stroke.Name = "RainbowManaStroke"
-                            stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-                            stroke.Thickness = 1.2
-                            stroke.Parent = slider
-                        end
-                        stroke.Color = Color3.fromHSV((shift + 0.22) % 1, 0.85, 1)
-                        stroke.Transparency = 0.25 + 0.20 * math.sin(now * 4.0)
-
-                        local mana_frame = slider.Parent
-                        if mana_frame and mana_frame:IsA("GuiObject") then
-                            local mstroke = mana_frame:FindFirstChild("RainbowManaStroke")
-                            if not mstroke then
-                                mstroke = Instance.new("UIStroke")
-                                mstroke.Name = "RainbowManaStroke"
-                                mstroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-                                mstroke.Thickness = 1.5
-                                mstroke.Parent = mana_frame
-                            end
-                            mstroke.Color = Color3.fromHSV((shift + 0.45) % 1, 0.78, 1)
-                            mstroke.Transparency = 0.35 + 0.20 * math.sin(now * 3.2)
                         end
                     elseif spoof_on then
                         cleanup_rainbow(slider)
