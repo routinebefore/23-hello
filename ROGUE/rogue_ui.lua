@@ -23588,6 +23588,80 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     end
                 })
 
+                local reload_btn = nil
+                local reload_confirming = false
+                local reload_confirm_thread = nil
+
+                reload_btn = UtilityGroup:AddButton({
+                    Text = "Reload Script",
+                    Func = function()
+                        if shared and shared.is_unloading then
+                            return
+                        end
+
+                        if not reload_confirming then
+                            reload_confirming = true
+                            if reload_btn and reload_btn.Base then
+                                reload_btn.Base.Text = "Are you sure?"
+                            end
+                            if library and library.Notify then
+                                library:Notify("Click again within 3 seconds to confirm reload", 3)
+                            end
+                            reload_confirm_thread = task.delay(3, function()
+                                reload_confirming = false
+                                if reload_btn and reload_btn.Base then
+                                    reload_btn.Base.Text = "Reload Script"
+                                end
+                            end)
+                            return
+                        end
+
+                        reload_confirming = false
+                        if reload_confirm_thread then
+                            task.cancel(reload_confirm_thread)
+                            reload_confirm_thread = nil
+                        end
+
+                        if reload_btn and reload_btn.Base then
+                            reload_btn.Base.Text = "Reloading..."
+                        end
+                        if library and library.Notify then
+                            library:Notify("Reloading script from GitHub...", 3)
+                        end
+
+                        task.defer(function()
+                            if utility and utility.Unload then
+                                pcall(function() utility:Unload() end)
+                            end
+                            task.wait(0.2)
+                            local url = (game.GameId == 7359098240)
+                                and "https://raw.githubusercontent.com/routinebefore/23-hello/refs/heads/main/ROGUE_BATTLEGROUNDS/rlb.lua"
+                                or "https://raw.githubusercontent.com/routinebefore/23-hello/refs/heads/main/ROGUE/rogue_ui.lua"
+                            local s, code = pcall(function()
+                                return game:HttpGet(url, true)
+                            end)
+                            if not s or not code or #code == 0 then
+                                local req = (syn and syn.request) or http_request or request
+                                if req then
+                                    local res = req({ Url = url, Method = "GET" })
+                                    if res and res.Body and #res.Body > 0 then
+                                        code = res.Body
+                                    end
+                                end
+                            end
+                            if code and #code > 0 then
+                                local fn, load_err = loadstring(code)
+                                if fn then
+                                    task.spawn(fn)
+                                else
+                                    warn("[HXSOL] Reload compile error:", load_err)
+                                end
+                            else
+                                warn("[HXSOL] Failed to fetch updated script from GitHub")
+                            end
+                        end)
+                    end
+                })
 
                 UtilityGroup:AddButton({
                     Text = "Join Discord",
