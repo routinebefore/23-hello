@@ -30848,18 +30848,61 @@ end
                     local target_pos, target_model = get_grapple_target(character)
                     if not target_pos then return end
 
+                    local cur_vel = rootPart.AssemblyLinearVelocity
+                    local cur_speed = cur_vel.Magnitude
+
                     if target_model and target_model:IsA("Model") then
                         local target_hrp = target_model:FindFirstChild("HumanoidRootPart") or target_model:FindFirstChild("Torso")
                         if target_hrp then
+                            local grav = ws.Gravity
+                            if typeof(grav) ~= "number" or grav <= 0 then
+                                grav = 196.2
+                            end
+
+                            local projected_pos = target_hrp.Position
+                            local target_vel = target_hrp.AssemblyLinearVelocity
+                            if typeof(target_vel) ~= "Vector3" then
+                                target_vel = target_hrp.Velocity or Vector3.new(0, 0, 0)
+                            end
+
+                            if target_vel.Magnitude >= 4 then
+                                local to_target_init = target_hrp.Position - rootPart.Position
+                                local dist_init = to_target_init.Magnitude
+                                local time_to_reach = math.clamp(dist_init / math.max(cur_speed, 40), 0.1, 0.8)
+
+                                local lead_t = time_to_reach
+                                local delta_y = 0
+                                if target_vel.Y > 5 then
+                                    local t_peak = target_vel.Y / grav
+                                    lead_t = math.min(t_peak, time_to_reach)
+                                    delta_y = target_vel.Y * lead_t - 0.5 * grav * lead_t * lead_t
+                                else
+                                    delta_y = target_vel.Y * lead_t
+                                end
+
+                                local delta_x = target_vel.X * lead_t
+                                local delta_z = target_vel.Z * lead_t
+                                local predicted_offset = Vector3.new(delta_x, delta_y, delta_z)
+                                local test_pos = target_hrp.Position + predicted_offset
+
+                                local ray_params = RaycastParams.new()
+                                ray_params.FilterType = Enum.RaycastFilterType.Blacklist
+                                ray_params.FilterDescendantsInstances = {character, target_model}
+                                local hit = ws:Raycast(target_hrp.Position, predicted_offset, ray_params)
+                                if hit then
+                                    projected_pos = hit.Position - predicted_offset.Unit * 1.5
+                                else
+                                    projected_pos = test_pos
+                                end
+                            end
+
                             local right_vec = target_hrp.CFrame.RightVector
-                            local to_me = rootPart.Position - target_hrp.Position
+                            local to_me = rootPart.Position - projected_pos
                             local side_sign = to_me:Dot(right_vec) >= 0 and 1 or -1
-                            target_pos = target_hrp.Position + (right_vec * (side_sign * 2.8)) + Vector3.new(0, 0.5, 0)
+                            target_pos = projected_pos + (right_vec * (side_sign * 2.8)) + Vector3.new(0, 0.5, 0)
                         end
                     end
 
-                    local cur_vel = rootPart.AssemblyLinearVelocity
-                    local cur_speed = cur_vel.Magnitude
                     local to_target = target_pos - rootPart.Position
                     local dist = to_target.Magnitude
 
