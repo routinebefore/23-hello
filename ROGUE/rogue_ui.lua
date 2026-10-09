@@ -123,10 +123,15 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
     getgenv()[key] = setmetatable({}, { __tostring = function() return "nil" end })
 
     local success, err = xpcall(function()
+    getgenv()._hx_unloaded = false
     local old_destroy = nil
     do
         if not getgenv().lolololol then
+            getgenv().lolololol = true
             old_destroy = hookfunction(workspace.Destroy, function(Self)
+                if getgenv()._hx_unloaded then
+                    return old_destroy(Self)
+                end
                 if not checkcaller() then
                     if tostring(Self) == "CharacterHandler" then
                         return
@@ -135,6 +140,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
                 return old_destroy(Self)
             end)
+            getgenv()._hx_old_destroy = old_destroy
 
             if anticheat_mode == "Kick" then
                 task.spawn(function()
@@ -142,6 +148,9 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     local lockThreads = {}
 
                     cw = hookfunction(coroutine.wrap, newcclosure(function(f,...)
+                        if getgenv()._hx_unloaded then
+                            return cw(f,...)
+                        end
                         if not checkcaller() then
                             if type(f) == "function" and islclosure(f) then
                                 local consts, upvals = getconstants(f), getupvalues(f)
@@ -175,6 +184,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
                         return cw(f,...)
                     end))
+                    getgenv()._hx_old_cw = cw
                 end)
             else
                 LPH_NO_VIRTUALIZE(function()
@@ -187,6 +197,9 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
                     local old
                     old = hookfunction(coroutine.wrap, newcclosure(function(func)
+                        if getgenv()._hx_unloaded then
+                            return old(func)
+                        end
                         if not checkcaller() then
                             if type(func) == "function" and islclosure(func) then
                                 local upvals = getupvalues(func)
@@ -204,8 +217,11 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         end
                         return old(func)
                     end))
+                    getgenv()._hx_old_cw = old
                 end)()
             end
+        else
+            old_destroy = getgenv()._hx_old_destroy
         end
     end
 
@@ -2878,11 +2894,12 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
         end
     
         function utility:Unload(removeitem)
+            getgenv()._hx_unloaded = true
             if shared then
                 shared.is_unloading = true
             end
 
-            task.wait(0.5)
+            task.wait(0.2)
 
             pcall(function() utility:CompactConnections() end)
 
@@ -2907,8 +2924,18 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 end
                 if shared and shared.drawing_containers then
                     for i,v in pairs(shared.drawing_containers) do
-                        for _,k in pairs(v) do
-                            k:Remove()
+                        if type(v) == "table" then
+                            for _,k in pairs(v) do
+                                if typeof(k) == "Instance" then
+                                    pcall(function() k:Destroy() end)
+                                elseif typeof(k) == "table" or typeof(k) == "userdata" then
+                                    if k.Remove then
+                                        pcall(function() k:Remove() end)
+                                    elseif k.Destroy then
+                                        pcall(function() k:Destroy() end)
+                                    end
+                                end
+                            end
                         end
                     end
                     table.clear(shared.drawing_containers)
@@ -3176,7 +3203,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     end
                 end
                 if game.PlaceId ~= 14341521240 then
-                    plr.CameraMaxZoomDistance = 50
+                    plr.CameraMaxZoomDistance = 128
                     plr.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Zoom
                 end
                 if old_remote then
@@ -3190,8 +3217,10 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 end
                 pcall(function()
                     if plr.Character then
-                        ws.CurrentCamera.CameraSubject = plr.Character
+                        local hum = FindFirstChildOfClass(plr.Character, "Humanoid")
+                        ws.CurrentCamera.CameraSubject = hum or plr.Character
                         ws.CurrentCamera.CameraType = Enum.CameraType.Custom
+                        ws.CurrentCamera.FieldOfView = 70
                     else
                         if plr.PlayerGui and FindFirstChild(plr.PlayerGui, "LeaderboardGui") then
                             FindFirstChild(plr.PlayerGui, "LeaderboardGui").Enabled = false
@@ -3218,25 +3247,143 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
                     local areacolor = FindFirstChild(lit, "areacolor")
                     if areacolor then areacolor.Enabled = true end
+
+                    local sanity = FindFirstChild(lit, "Sanity")
+                    if sanity then sanity.Enabled = true end
+
+                    lit.ClockTime = 14
                 end)
                 pcall(function()
                     if cheat_client.restore_ambience then
-                        cheat_client:restore_ambience();
+                        cheat_client:restore_ambience()
                     end
                     
                     if cheat_client.restore_state then
-                        cheat_client:restore_state();
+                        cheat_client:restore_state()
+                    end
+
+                    if cheat_client.stop_no_snow then
+                        cheat_client.stop_no_snow()
                     end
                     
                     if cheat_client.legit_intent_cleanup then
-                        cheat_client.legit_intent_cleanup();
+                        cheat_client.legit_intent_cleanup()
                     end
                     
                     if cheat_client.proximity_cleanup then
-                        cheat_client.proximity_cleanup();
+                        cheat_client.proximity_cleanup()
                     end
                     
                     watched_guis = nil
+                end)
+                pcall(function()
+                    local pg = plr and plr:FindFirstChild("PlayerGui")
+                    local sg = pg and pg:FindFirstChild("StatGui")
+                    local left = sg and sg:FindFirstChild("LeftContainer")
+                    local mana = left and left:FindFirstChild("Mana")
+                    local slider = mana and mana:FindFirstChild("Slider")
+                    if slider then
+                        local grad = slider:FindFirstChild("RainbowManaGradient")
+                        if grad then
+                            grad:Destroy()
+                        end
+                        slider.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+                        if slider:IsA("ImageLabel") or slider:IsA("ImageButton") then
+                            slider.ImageColor3 = Color3.fromRGB(0, 170, 255)
+                        end
+                    end
+                end)
+                pcall(function()
+                    if cheat_client and cheat_client.esp_rendering then
+                        pcall(cheat_client.esp_rendering.stop_player_esp)
+                        pcall(cheat_client.esp_rendering.stop_trinket_esp)
+                        pcall(cheat_client.esp_rendering.stop_fallion_esp)
+                        pcall(cheat_client.esp_rendering.stop_npc_esp)
+                        pcall(cheat_client.esp_rendering.stop_ingredient_esp)
+                        pcall(cheat_client.esp_rendering.stop_ore_esp)
+                    end
+                    if cheat_client and cheat_client.player_esp_objects then
+                        for _, esp in pairs(cheat_client.player_esp_objects) do
+                            if esp and esp.destruct then
+                                pcall(function() esp:destruct() end)
+                            end
+                        end
+                        table.clear(cheat_client.player_esp_objects)
+                    end
+                    if cheat_client and cheat_client.trinket_esp_objects then
+                        for _, esp in pairs(cheat_client.trinket_esp_objects) do
+                            if esp and esp.destruct then
+                                pcall(function() esp:destruct() end)
+                            end
+                        end
+                        table.clear(cheat_client.trinket_esp_objects)
+                    end
+                    if cheat_client and cheat_client.ingredient_esp_objects then
+                        for _, esp in pairs(cheat_client.ingredient_esp_objects) do
+                            if esp and esp.destruct then
+                                pcall(function() esp:destruct() end)
+                            end
+                        end
+                        table.clear(cheat_client.ingredient_esp_objects)
+                    end
+                    if cheat_client and cheat_client.ore_esp_objects then
+                        for _, esp in pairs(cheat_client.ore_esp_objects) do
+                            if esp and esp.destruct then
+                                pcall(function() esp:destruct() end)
+                            end
+                        end
+                        table.clear(cheat_client.ore_esp_objects)
+                    end
+                    if cheat_client and cheat_client.fallion_esp_objects then
+                        for _, esp in pairs(cheat_client.fallion_esp_objects) do
+                            if esp and esp.destruct then
+                                pcall(function() esp:destruct() end)
+                            end
+                        end
+                        table.clear(cheat_client.fallion_esp_objects)
+                    end
+                    if cheat_client and cheat_client.npc_esp_objects then
+                        for _, esp in pairs(cheat_client.npc_esp_objects) do
+                            if esp and esp.destruct then
+                                pcall(function() esp:destruct() end)
+                            end
+                        end
+                        table.clear(cheat_client.npc_esp_objects)
+                    end
+                    if esp_screen_gui and esp_screen_gui.Parent then
+                        esp_screen_gui:Destroy()
+                        esp_screen_gui = nil
+                    end
+                    if proximity_gui and proximity_gui.Parent then
+                        proximity_gui:Destroy()
+                        proximity_gui = nil
+                    end
+                    if ClickMenu and ClickMenu.Parent then
+                        ClickMenu:Destroy()
+                    end
+                    if library and library.ScreenGui and library.ScreenGui.Parent then
+                        library.ScreenGui:Destroy()
+                    end
+                end)
+                pcall(function()
+                    if plr and plr.Character then
+                        local hum = FindFirstChildOfClass(plr.Character, "Humanoid")
+                        if hum then
+                            hum.WalkSpeed = 16
+                            hum.JumpPower = 50
+                            hum.AutoRotate = true
+                            hum.PlatformStand = false
+                        end
+                        local rootPart = FindFirstChild(plr.Character, "HumanoidRootPart")
+                        if rootPart then
+                            rootPart.Anchored = false
+                        end
+                        for _, obj in ipairs(plr.Character:GetDescendants()) do
+                            if obj:IsA("BodyVelocity") or obj:IsA("BodyGyro") or obj:IsA("BodyPosition") or obj:IsA("LinearVelocity") or obj:IsA("AlignPosition") or obj:IsA("AlignOrientation") or obj:IsA("VectorForce") then
+                                pcall(function() obj:Destroy() end)
+                            end
+                        end
+                    end
                 end)
                 for _, v in pairs(Services.CoreGui:GetChildren()) do
                     task.defer(function()
@@ -3244,7 +3391,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                             v.Enabled = false
                         end
                         if v.Name == "Dex" then
-                            v:Destroy();
+                            v:Destroy()
                         end
                     end)
                 end
@@ -3285,7 +3432,10 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
             pcall(function()
                 getgenv()[key] = nil
-                gcinfo()
+                getgenv().Toggles = nil
+                getgenv().Options = nil
+                getgenv().Labels = nil
+                getgenv().Library = nil
             end)
 
             pcall(function()
@@ -5861,10 +6011,10 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                                             if esp.temperature_widget then
                                                 local box_pos = esp.drawings.box.Position or screen_position
                                                 local box_size = esp.drawings.box.Size or screen_size
-                                                esp.temperature_widget.Position = UDim2.new(0, math.floor(box_pos.X + (box_size.X - 54) / 2), 0, math.floor(box_pos.Y + box_size.Y + 3))
+                                                esp.temperature_widget.Position = UDim2.new(0, math.floor(box_pos.X + (box_size.X - 54) / 2), 0, math.floor(box_pos.Y + box_size.Y))
                                                 esp.temperature_widget.Visible = true
                                             end
-                                            temp_offset = 13
+                                            temp_offset = 11
                                         else
                                             if esp.temperature_widget then
                                                 esp.temperature_widget.Visible = false
@@ -23785,10 +23935,6 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         end
 
                         task.defer(function()
-                            if utility and utility.Unload then
-                                pcall(function() utility:Unload() end)
-                            end
-                            task.wait(0.2)
                             local url = (game.GameId == 7359098240)
                                 and "https://raw.githubusercontent.com/routinebefore/23-hello/refs/heads/main/ROGUE_BATTLEGROUNDS/rlb.lua"
                                 or "https://raw.githubusercontent.com/routinebefore/23-hello/refs/heads/main/ROGUE/rogue_ui.lua"
@@ -23804,16 +23950,26 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                                     end
                                 end
                             end
-                            if code and #code > 0 then
-                                local fn, load_err = loadstring(code)
-                                if fn then
-                                    task.spawn(fn)
-                                else
-                                    warn("[HXSOL] Reload compile error:", load_err)
-                                end
-                            else
+                            if not code or #code == 0 then
                                 warn("[HXSOL] Failed to fetch updated script from GitHub")
+                                if reload_btn and reload_btn.Base then
+                                    reload_btn.Base.Text = "Reload Failed"
+                                end
+                                return
                             end
+                            local fn, load_err = loadstring(code)
+                            if not fn then
+                                warn("[HXSOL] Reload compile error:", load_err)
+                                if reload_btn and reload_btn.Base then
+                                    reload_btn.Base.Text = "Compile Error"
+                                end
+                                return
+                            end
+                            if utility and utility.Unload then
+                                pcall(function() utility:Unload() end)
+                            end
+                            task.wait(0.3)
+                            task.spawn(fn)
                         end)
                     end
                 })
@@ -24296,18 +24452,28 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
         end
 
         do
-            old_hastag = hookfunction(cs.HasTag, function(self, object, tag)
-                if not checkcaller() then
-                    if object == plr.Character then
-                        if tag == "Acrobat" and shared and Toggles and Toggles.spoof_acrobat and Toggles.spoof_acrobat.Value then
-                            return true
-                        elseif tag == "The Soul" and shared and Toggles and Toggles.spoof_the_soul and Toggles.spoof_the_soul.Value then
-                            return true
+            if not getgenv()._hx_hastag_hooked then
+                getgenv()._hx_hastag_hooked = true
+                old_hastag = hookfunction(cs.HasTag, function(self, object, tag)
+                    if getgenv()._hx_unloaded then
+                        return old_hastag(self, object, tag)
+                    end
+                    if not checkcaller() then
+                        if object == plr.Character then
+                            local toggles_ref = (getgenv and getgenv().Toggles) or Toggles
+                            if tag == "Acrobat" and shared and toggles_ref and toggles_ref.spoof_acrobat and toggles_ref.spoof_acrobat.Value then
+                                return true
+                            elseif tag == "The Soul" and shared and toggles_ref and toggles_ref.spoof_the_soul and toggles_ref.spoof_the_soul.Value then
+                                return true
+                            end
                         end
                     end
-                end
-                return old_hastag(self, object, tag)
-            end)
+                    return old_hastag(self, object, tag)
+                end)
+                getgenv()._hx_old_hastag = old_hastag
+            else
+                old_hastag = getgenv()._hx_old_hastag
+            end
         end
 
         do
@@ -24652,93 +24818,102 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             end
 
             if game.PlaceId == 5208655184 or game.PlaceId == 3541987450 or game.PlaceId == 109732117428502 or game.PlaceId == 14341521240 then
-                old_remote = hookfunction(Instance.new("RemoteEvent").FireServer, function(Event, ...)
-                	local args = {...}
-
-                    local char = plr.Character
-                    local remotes_folder = char
-                        and FindFirstChild(char, "CharacterHandler")
-                        and FindFirstChild(char.CharacterHandler, "Remotes")
-
-                    if shared and not mana_remote and remotes_folder and Event.Parent == remotes_folder then
-                        if game.PlaceId == 14341521240 then
-                            if Event.Name == "SetManaChargeState" then
-                                mana_remote = Event
-                            end
-                        elseif game.PlaceId == 3541987450 then
-                            if Event.Name:match("^%x%x%x%x%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x$") and #args == 1 and typeof(args[1]) == "boolean" then
-                                mana_remote = Event
-                            end
-                        else
-                            if Event.Name:sub(1,4) == "M0ai" and #args == 1 and typeof(args[1]) == "table" then
-                                local t = args[1]
-                                local keys = 0
-                                for _ in pairs(t) do keys+=1 end
-                                local a, b = t[1], t[2]
-                                if keys == 2 and typeof(a)=="number" and typeof(b)=="number" and b%1~=0 then
-                                    mana_remote = Event
-                                end
-                            end
-                        end
-                    end
-
-
-                    if shared and remotes_folder and Event.Parent == remotes_folder then
-                        local no_fall_enabled = (Toggles and Toggles.no_fall and Toggles.no_fall.Value) or (trinket_bot and trinket_bot.path_running)
-                        if no_fall_enabled and #args == 2 and typeof(args[2]) == "table" then
-                            return
-                        end
-                    end
-                    
-                	if shared and Toggles and Toggles.gate_anti_backfire and Toggles.gate_anti_backfire.Value and tostring(Event):match("RightClick") then
-                        if plr.Character then
-                            if FindFirstChild(plr.Character, 'Gate') then
-                                local artifacts_folder = FindFirstChild(plr.Character, "Artifacts")
-                                if artifacts_folder and FindFirstChild(artifacts_folder, "PhilosophersStone") then
-                                    return old_remote(Event, ...)
-                                end
-
-                                local mana_instance = FindFirstChild(plr.Character, 'Mana')
-                                if mana_instance then
-                                    local mana_value = mana_instance.Value;
-
-                                    if (mana_value > 75 and mana_value < 80) or not cs:HasTag(plr.Character,'Danger') and FindFirstChild(plr.Character, "AzaelHorn") then
-                                        return old_remote(Event, ...)
-                                    end
-                                    
-                                    return
-                                end
-                            end
-                        end
-                    end
-
-                    if shared and Toggles and Toggles.AntiBackfireViribus and Toggles.AntiBackfireViribus.Value and tostring(Event) == "RightClick" then
-                        if plr and plr.Character and cs:HasTag(plr.Character, "SnapCool") then
+                if not getgenv()._hx_remote_hooked then
+                    getgenv()._hx_remote_hooked = true
+                    old_remote = hookfunction(Instance.new("RemoteEvent").FireServer, function(Event, ...)
+                        if getgenv()._hx_unloaded then
                             return old_remote(Event, ...)
                         end
-                        
-                        if plr and plr.Character and FindFirstChild(plr.Character, "Viribus") then
-                            local artifacts_folder = FindFirstChild(plr.Character, "Artifacts")
-                            if not (artifacts_folder and FindFirstChild(artifacts_folder, "PhilosophersStone")) then
-                                local mana_instance = FindFirstChild(plr.Character, "Mana")
-                                if mana_instance then
-                                    local mana_value = mana_instance.Value
-                                    if (mana_value > 0 and mana_value < 60) or (mana_value > 70) then
-                                        task.spawn(block)
+                    	local args = {...}
+
+                        local char = plr.Character
+                        local remotes_folder = char
+                            and FindFirstChild(char, "CharacterHandler")
+                            and FindFirstChild(char.CharacterHandler, "Remotes")
+
+                        if shared and not mana_remote and remotes_folder and Event.Parent == remotes_folder then
+                            if game.PlaceId == 14341521240 then
+                                if Event.Name == "SetManaChargeState" then
+                                    mana_remote = Event
+                                end
+                            elseif game.PlaceId == 3541987450 then
+                                if Event.Name:match("^%x%x%x%x%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x$") and #args == 1 and typeof(args[1]) == "boolean" then
+                                    mana_remote = Event
+                                end
+                            else
+                                if Event.Name:sub(1,4) == "M0ai" and #args == 1 and typeof(args[1]) == "table" then
+                                    local t = args[1]
+                                    local keys = 0
+                                    for _ in pairs(t) do keys+=1 end
+                                    local a, b = t[1], t[2]
+                                    if keys == 2 and typeof(a)=="number" and typeof(b)=="number" and b%1~=0 then
+                                        mana_remote = Event
                                     end
                                 end
                             end
                         end
-                    end
 
-                    if shared and Toggles and Toggles.temperature_lock and Toggles.temperature_lock.Value and rps.Requests and Event.Parent == rps.Requests and Event.Name ~= "ClearTrinket" then
-                        if #args == 1 and typeof(args[1]) == "string" then
-                            return 'Oresfall';
+
+                        if shared and remotes_folder and Event.Parent == remotes_folder then
+                            local no_fall_enabled = (Toggles and Toggles.no_fall and Toggles.no_fall.Value) or (trinket_bot and trinket_bot.path_running)
+                            if no_fall_enabled and #args == 2 and typeof(args[2]) == "table" then
+                                return
+                            end
                         end
-                    end
+                        
+                    	if shared and Toggles and Toggles.gate_anti_backfire and Toggles.gate_anti_backfire.Value and tostring(Event):match("RightClick") then
+                            if plr.Character then
+                                if FindFirstChild(plr.Character, 'Gate') then
+                                    local artifacts_folder = FindFirstChild(plr.Character, "Artifacts")
+                                    if artifacts_folder and FindFirstChild(artifacts_folder, "PhilosophersStone") then
+                                        return old_remote(Event, ...)
+                                    end
 
-                	return old_remote(Event, ...)
-                end)
+                                    local mana_instance = FindFirstChild(plr.Character, 'Mana')
+                                    if mana_instance then
+                                        local mana_value = mana_instance.Value;
+
+                                        if (mana_value > 75 and mana_value < 80) or not cs:HasTag(plr.Character,'Danger') and FindFirstChild(plr.Character, "AzaelHorn") then
+                                            return old_remote(Event, ...)
+                                        end
+                                        
+                                        return
+                                    end
+                                end
+                            end
+                        end
+
+                        if shared and Toggles and Toggles.AntiBackfireViribus and Toggles.AntiBackfireViribus.Value and tostring(Event) == "RightClick" then
+                            if plr and plr.Character and cs:HasTag(plr.Character, "SnapCool") then
+                                return old_remote(Event, ...)
+                            end
+                            
+                            if plr and plr.Character and FindFirstChild(plr.Character, "Viribus") then
+                                local artifacts_folder = FindFirstChild(plr.Character, "Artifacts")
+                                if not (artifacts_folder and FindFirstChild(artifacts_folder, "PhilosophersStone")) then
+                                    local mana_instance = FindFirstChild(plr.Character, "Mana")
+                                    if mana_instance then
+                                        local mana_value = mana_instance.Value
+                                        if (mana_value > 0 and mana_value < 60) or (mana_value > 70) then
+                                            task.spawn(block)
+                                        end
+                                    end
+                                end
+                            end
+                        end
+
+                        if shared and Toggles and Toggles.temperature_lock and Toggles.temperature_lock.Value and rps.Requests and Event.Parent == rps.Requests and Event.Name ~= "ClearTrinket" then
+                            if #args == 1 and typeof(args[1]) == "string" then
+                                return 'Oresfall';
+                            end
+                        end
+
+                    	return old_remote(Event, ...)
+                    end)
+                    getgenv()._hx_old_remote = old_remote
+                else
+                    old_remote = getgenv()._hx_old_remote
+                end
             end
         end
 
@@ -25495,13 +25670,21 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     end
                 end)
             else
-                local x
-                x = hookmetamethod(game, "__index", LPH_NO_VIRTUALIZE(function(self,key)
-                    if self == plr and key == "Name" and not checkcaller() and shared and Toggles and Toggles.auto_bard and Toggles.auto_bard.Value and getcallingscript().Parent and getcallingscript().Parent.Name == "BardGui" then
-                        return "Melon_Sensei"
-                    end
-                    return x(self,key)
-                end))
+                if not getgenv()._hx_index_hooked then
+                    getgenv()._hx_index_hooked = true
+                    local x
+                    x = hookmetamethod(game, "__index", LPH_NO_VIRTUALIZE(function(self,key)
+                        if getgenv()._hx_unloaded then
+                            return x(self,key)
+                        end
+                        local toggles_ref = (getgenv and getgenv().Toggles) or Toggles
+                        if self == plr and key == "Name" and not checkcaller() and shared and toggles_ref and toggles_ref.auto_bard and toggles_ref.auto_bard.Value and getcallingscript().Parent and getcallingscript().Parent.Name == "BardGui" then
+                            return "Melon_Sensei"
+                        end
+                        return x(self,key)
+                    end))
+                    getgenv()._hx_old_index = x
+                end
             end
         end
 
