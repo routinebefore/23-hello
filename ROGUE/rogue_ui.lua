@@ -31654,17 +31654,21 @@ end
         end
 
         do
-            local tracked_emitters = {}
-            local original_colors = {}
+            local tracked_seq_targets = {}
+            local original_seq_colors = {}
+            local tracked_c3_targets = {}
+            local original_c3_colors = {}
+            local orb_listeners = {}
             local setting_rainbow_color = false
 
             local function get_local_char()
-                if plr.Character then return plr.Character end
+                if plr.Character and plr.Character.Parent then return plr.Character end
                 local live = ws:FindFirstChild("Live")
                 if live and plr.Name then
-                    return live:FindFirstChild(plr.Name)
+                    local live_char = live:FindFirstChild(plr.Name)
+                    if live_char then return live_char end
                 end
-                return nil
+                return plr.Character
             end
 
             local function get_synced_vfx_rainbow_seq()
@@ -31680,6 +31684,204 @@ end
                     table.insert(kps, ColorSequenceKeypoint.new(t, Color3.fromHSV(raw_h, 0.9, 1)))
                 end
                 return ColorSequence.new(kps)
+            end
+
+            local function get_synced_vfx_rainbow_c3()
+                local now = os.clock()
+                local shift = (now * 0.32) % 1
+                return Color3.fromHSV(shift, 0.9, 1)
+            end
+
+            local function track_seq_target(emitter)
+                if not emitter or tracked_seq_targets[emitter] then return end
+                local ok, col = pcall(function() return emitter.Color end)
+                if ok and typeof(col) == "ColorSequence" then
+                    original_seq_colors[emitter] = col
+                else
+                    return
+                end
+                tracked_seq_targets[emitter] = true
+
+                local is_enabled = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
+                if is_enabled then
+                    setting_rainbow_color = true
+                    pcall(function()
+                        emitter.Color = get_synced_vfx_rainbow_seq()
+                    end)
+                    setting_rainbow_color = false
+                end
+
+                local conn_enabled
+                pcall(function()
+                    if emitter:IsA("ParticleEmitter") or emitter:IsA("Beam") or emitter:IsA("Trail") then
+                        conn_enabled = emitter:GetPropertyChangedSignal("Enabled"):Connect(function()
+                            local active = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
+                            if active and emitter.Enabled and not setting_rainbow_color then
+                                setting_rainbow_color = true
+                                pcall(function()
+                                    emitter.Color = get_synced_vfx_rainbow_seq()
+                                end)
+                                setting_rainbow_color = false
+                            end
+                        end)
+                    end
+                end)
+
+                local conn_color
+                conn_color = emitter:GetPropertyChangedSignal("Color"):Connect(function()
+                    if setting_rainbow_color then return end
+                    local active = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
+                    if active then
+                        task.defer(function()
+                            if setting_rainbow_color then return end
+                            setting_rainbow_color = true
+                            pcall(function()
+                                emitter.Color = get_synced_vfx_rainbow_seq()
+                            end)
+                            setting_rainbow_color = false
+                        end)
+                    end
+                end)
+
+                local conn_ancestry
+                conn_ancestry = emitter.AncestryChanged:Connect(function(_, parent)
+                    if not parent then
+                        tracked_seq_targets[emitter] = nil
+                        original_seq_colors[emitter] = nil
+                        if conn_enabled then conn_enabled:Disconnect() end
+                        if conn_color then conn_color:Disconnect() end
+                        if conn_ancestry then conn_ancestry:Disconnect() end
+                    end
+                end)
+            end
+
+            local function track_c3_target(inst, prop_name)
+                if not inst then return end
+                if tracked_c3_targets[inst] and tracked_c3_targets[inst][prop_name] then return end
+
+                local ok, orig_val = pcall(function() return inst[prop_name] end)
+                if not ok or typeof(orig_val) ~= "Color3" then return end
+
+                if not original_c3_colors[inst] then
+                    original_c3_colors[inst] = {}
+                end
+                original_c3_colors[inst][prop_name] = orig_val
+
+                if not tracked_c3_targets[inst] then
+                    tracked_c3_targets[inst] = {}
+                end
+                tracked_c3_targets[inst][prop_name] = true
+
+                local is_enabled = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
+                if is_enabled then
+                    setting_rainbow_color = true
+                    pcall(function()
+                        inst[prop_name] = get_synced_vfx_rainbow_c3()
+                    end)
+                    setting_rainbow_color = false
+                end
+
+                local conn_prop
+                pcall(function()
+                    conn_prop = inst:GetPropertyChangedSignal(prop_name):Connect(function()
+                        if setting_rainbow_color then return end
+                        local active = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
+                        if active then
+                            task.defer(function()
+                                if setting_rainbow_color then return end
+                                setting_rainbow_color = true
+                                pcall(function()
+                                    inst[prop_name] = get_synced_vfx_rainbow_c3()
+                                end)
+                                setting_rainbow_color = false
+                            end)
+                        end
+                    end)
+                end)
+
+                local conn_anc
+                conn_anc = inst.AncestryChanged:Connect(function(_, parent)
+                    if not parent then
+                        tracked_c3_targets[inst] = nil
+                        original_c3_colors[inst] = nil
+                        if conn_prop then conn_prop:Disconnect() end
+                        if conn_anc then conn_anc:Disconnect() end
+                    end
+                end)
+            end
+
+            local function track_any_target(inst)
+                if not inst then return end
+                if inst:IsA("ParticleEmitter") or inst:IsA("Beam") or inst:IsA("Trail") then
+                    track_seq_target(inst)
+                elseif inst:IsA("Light") then
+                    track_c3_target(inst, "Color")
+                elseif inst:IsA("BasePart") then
+                    track_c3_target(inst, "Color")
+                elseif inst:IsA("Fire") then
+                    track_c3_target(inst, "Color")
+                    track_c3_target(inst, "SecondaryColor")
+                elseif inst:IsA("Smoke") then
+                    track_c3_target(inst, "Color")
+                elseif inst:IsA("Sparkles") then
+                    track_c3_target(inst, "SparkleColor")
+                elseif inst:IsA("Highlight") then
+                    track_c3_target(inst, "FillColor")
+                    track_c3_target(inst, "OutlineColor")
+                elseif inst:IsA("SelectionBox") or inst:IsA("BoxHandleAdornment") or inst:IsA("SphereHandleAdornment") or inst:IsA("Decal") or inst:IsA("Texture") then
+                    track_c3_target(inst, "Color3")
+                end
+            end
+
+            local function is_orb_object(obj)
+                if not obj then return false end
+                local name = string.lower(obj.Name)
+                if string.find(name, "orb", 1, true) then
+                    return true
+                end
+                local ancestor = obj.Parent
+                while ancestor and ancestor ~= ws and ancestor ~= game do
+                    if string.find(string.lower(ancestor.Name), "orb", 1, true) then
+                        return true
+                    end
+                    ancestor = ancestor.Parent
+                end
+                return false
+            end
+
+            local function track_orb_hierarchy(orb_inst)
+                if not orb_inst then return end
+                track_any_target(orb_inst)
+                for _, desc in ipairs(orb_inst:GetDescendants()) do
+                    track_any_target(desc)
+                end
+                if not orb_listeners[orb_inst] then
+                    orb_listeners[orb_inst] = orb_inst.DescendantAdded:Connect(function(desc)
+                        track_any_target(desc)
+                    end)
+                end
+            end
+
+            local function scan_orb_in_character(char)
+                if not char then return end
+                local hrp = char:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    for _, child in ipairs(hrp:GetChildren()) do
+                        if string.find(string.lower(child.Name), "orb", 1, true) then
+                            track_orb_hierarchy(child)
+                        end
+                    end
+                end
+                for _, child in ipairs(char:GetChildren()) do
+                    if string.find(string.lower(child.Name), "orb", 1, true) then
+                        track_orb_hierarchy(child)
+                    end
+                end
+                for _, desc in ipairs(char:GetDescendants()) do
+                    if string.find(string.lower(desc.Name), "orb", 1, true) then
+                        track_orb_hierarchy(desc)
+                    end
+                end
             end
 
             local function is_attached_to_char(obj, char)
@@ -31761,9 +31963,7 @@ end
                     {
                         id = "Orb",
                         matches = function(desc, char)
-                            if not (desc:IsA("ParticleEmitter") or desc:IsA("Beam") or desc:IsA("Trail")) then return false end
-                            if desc.Name == "Orb" or (desc.Parent and desc.Parent.Name == "Orb") then return true end
-                            if desc:FindFirstAncestor("Orb") then return true end
+                            if is_orb_object(desc) then return true end
                             local hrp = char:FindFirstChild("HumanoidRootPart")
                             if hrp then
                                 local orb = hrp:FindFirstChild("Orb")
@@ -31813,67 +32013,15 @@ end
                 end
             end
 
-            local function track_target(emitter)
-                if not emitter or tracked_emitters[emitter] then return end
-                local ok, col = pcall(function() return emitter.Color end)
-                if ok and col then
-                    original_colors[emitter] = col
-                end
-                tracked_emitters[emitter] = true
-
-                local is_enabled = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
-                if is_enabled then
-                    setting_rainbow_color = true
-                    pcall(function()
-                        emitter.Color = get_synced_vfx_rainbow_seq()
-                    end)
-                    setting_rainbow_color = false
-                end
-
-                local conn_enabled
-                conn_enabled = emitter:GetPropertyChangedSignal("Enabled"):Connect(function()
-                    local active = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
-                    if active and emitter.Enabled and not setting_rainbow_color then
-                        setting_rainbow_color = true
-                        pcall(function()
-                            emitter.Color = get_synced_vfx_rainbow_seq()
-                        end)
-                        setting_rainbow_color = false
-                    end
-                end)
-
-                local conn_color
-                conn_color = emitter:GetPropertyChangedSignal("Color"):Connect(function()
-                    if setting_rainbow_color then return end
-                    local active = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
-                    if active then
-                        task.defer(function()
-                            if setting_rainbow_color then return end
-                            setting_rainbow_color = true
-                            pcall(function()
-                                emitter.Color = get_synced_vfx_rainbow_seq()
-                            end)
-                            setting_rainbow_color = false
-                        end)
-                    end
-                end)
-
-                local conn_ancestry
-                conn_ancestry = emitter.AncestryChanged:Connect(function(_, parent)
-                    if not parent then
-                        tracked_emitters[emitter] = nil
-                        original_colors[emitter] = nil
-                        if conn_enabled then conn_enabled:Disconnect() end
-                        if conn_color then conn_color:Disconnect() end
-                        if conn_ancestry then conn_ancestry:Disconnect() end
-                    end
-                end)
-            end
-
             local function scan_character_descendant(descendant)
                 if not descendant then return end
                 local char = get_local_char()
                 if not char or not descendant:IsDescendantOf(char) then return end
+
+                if is_orb_object(descendant) then
+                    track_orb_hierarchy(descendant)
+                    return
+                end
 
                 for _, rule in ipairs(vfx_registry.character_rules) do
                     local matches = false
@@ -31882,7 +32030,7 @@ end
                         matches = true
                     end
                     if matches then
-                        track_target(descendant)
+                        track_any_target(descendant)
                         break
                     end
                 end
@@ -31898,11 +32046,11 @@ end
                         if ok and matches then
                             for _, desc in ipairs(child:GetDescendants()) do
                                 if rule.matches_emitter(desc) then
-                                    track_target(desc)
+                                    track_any_target(desc)
                                 end
                             end
                             if rule.matches_emitter(child) then
-                                track_target(child)
+                                track_any_target(child)
                             end
                         end
                     end
@@ -31919,11 +32067,11 @@ end
                         if ok and matches then
                             for _, d in ipairs(child:GetDescendants()) do
                                 if rule.matches_emitter(d) then
-                                    track_target(d)
+                                    track_any_target(d)
                                 end
                             end
                             if rule.matches_emitter(desc) then
-                                track_target(desc)
+                                track_any_target(desc)
                             end
                         end
                     end)
@@ -31950,6 +32098,7 @@ end
 
             local function bind_character(char)
                 if not char then return end
+                scan_orb_in_character(char)
                 for _, desc in ipairs(char:GetDescendants()) do
                     scan_character_descendant(desc)
                 end
@@ -31962,6 +32111,7 @@ end
                 if state then
                     local char = get_local_char()
                     if char then
+                        scan_orb_in_character(char)
                         for _, desc in ipairs(char:GetDescendants()) do
                             scan_character_descendant(desc)
                         end
@@ -31973,17 +32123,32 @@ end
                         end
                     end
                     local seq = get_synced_vfx_rainbow_seq()
+                    local c3 = get_synced_vfx_rainbow_c3()
                     setting_rainbow_color = true
-                    for emitter in pairs(tracked_emitters) do
+                    for emitter in pairs(tracked_seq_targets) do
                         if emitter.Parent then
                             pcall(function() emitter.Color = seq end)
                         end
                     end
+                    for inst, props in pairs(tracked_c3_targets) do
+                        if inst.Parent then
+                            for prop_name in pairs(props) do
+                                pcall(function() inst[prop_name] = c3 end)
+                            end
+                        end
+                    end
                     setting_rainbow_color = false
                 else
-                    for emitter, orig_col in pairs(original_colors) do
+                    for emitter, orig_col in pairs(original_seq_colors) do
                         if emitter.Parent then
                             pcall(function() emitter.Color = orig_col end)
+                        end
+                    end
+                    for inst, props in pairs(original_c3_colors) do
+                        if inst.Parent then
+                            for prop_name, orig_val in pairs(props) do
+                                pcall(function() inst[prop_name] = orig_val end)
+                            end
                         end
                     end
                 end
@@ -31995,16 +32160,36 @@ end
                 local rainbow_vfx_on = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
                 if not rainbow_vfx_on then return end
 
+                local char = get_local_char()
+                if char then
+                    scan_orb_in_character(char)
+                end
+
                 local seq = get_synced_vfx_rainbow_seq()
+                local c3 = get_synced_vfx_rainbow_c3()
+
                 setting_rainbow_color = true
-                for emitter in pairs(tracked_emitters) do
+                for emitter in pairs(tracked_seq_targets) do
                     if emitter.Parent then
                         pcall(function()
                             emitter.Color = seq
                         end)
                     else
-                        tracked_emitters[emitter] = nil
-                        original_colors[emitter] = nil
+                        tracked_seq_targets[emitter] = nil
+                        original_seq_colors[emitter] = nil
+                    end
+                end
+
+                for inst, props in pairs(tracked_c3_targets) do
+                    if inst.Parent then
+                        for prop_name in pairs(props) do
+                            pcall(function()
+                                inst[prop_name] = c3
+                            end)
+                        end
+                    else
+                        tracked_c3_targets[inst] = nil
+                        original_c3_colors[inst] = nil
                     end
                 end
                 setting_rainbow_color = false
