@@ -31659,6 +31659,9 @@ end
             local tracked_c3_targets = {}
             local original_c3_colors = {}
             local orb_listeners = {}
+            local orb_tracked_set = {}
+            local grapple_listeners = {}
+            local cord_tracked_set = {}
             local setting_rainbow_color = false
 
             local function get_local_char()
@@ -31849,6 +31852,23 @@ end
                 return false
             end
 
+            local function is_grapple_object(obj)
+                if not obj then return false end
+                local name = string.lower(obj.Name)
+                if name == "cord" or string.find(name, "cord", 1, true) or string.find(name, "grapple", 1, true) then
+                    return true
+                end
+                local ancestor = obj.Parent
+                while ancestor and ancestor ~= ws and ancestor ~= game do
+                    local aname = string.lower(ancestor.Name)
+                    if aname == "cord" or string.find(aname, "cord", 1, true) or string.find(aname, "grapple", 1, true) then
+                        return true
+                    end
+                    ancestor = ancestor.Parent
+                end
+                return false
+            end
+
             local function track_orb_hierarchy(orb_inst)
                 if not orb_inst then return end
                 track_any_target(orb_inst)
@@ -31860,28 +31880,37 @@ end
                         track_any_target(desc)
                     end)
                 end
-            end
-
-            local function scan_orb_in_character(char)
-                if not char then return end
-                local hrp = char:FindFirstChild("HumanoidRootPart")
-                if hrp then
-                    for _, child in ipairs(hrp:GetChildren()) do
-                        if string.find(string.lower(child.Name), "orb", 1, true) then
-                            track_orb_hierarchy(child)
+                orb_inst.AncestryChanged:Connect(function(_, parent)
+                    if not parent then
+                        orb_tracked_set[orb_inst] = nil
+                        if orb_listeners[orb_inst] then
+                            orb_listeners[orb_inst]:Disconnect()
+                            orb_listeners[orb_inst] = nil
                         end
                     end
+                end)
+            end
+
+            local function track_grapple_hierarchy(inst)
+                if not inst then return end
+                track_any_target(inst)
+                for _, desc in ipairs(inst:GetDescendants()) do
+                    track_any_target(desc)
                 end
-                for _, child in ipairs(char:GetChildren()) do
-                    if string.find(string.lower(child.Name), "orb", 1, true) then
-                        track_orb_hierarchy(child)
+                if not grapple_listeners[inst] then
+                    grapple_listeners[inst] = inst.DescendantAdded:Connect(function(desc)
+                        track_any_target(desc)
+                    end)
+                end
+                inst.AncestryChanged:Connect(function(_, parent)
+                    if not parent then
+                        cord_tracked_set[inst] = nil
+                        if grapple_listeners[inst] then
+                            grapple_listeners[inst]:Disconnect()
+                            grapple_listeners[inst] = nil
+                        end
                     end
-                end
-                for _, desc in ipairs(char:GetDescendants()) do
-                    if string.find(string.lower(desc.Name), "orb", 1, true) then
-                        track_orb_hierarchy(desc)
-                    end
-                end
+                end)
             end
 
             local function is_attached_to_char(obj, char)
@@ -31963,15 +31992,13 @@ end
                     {
                         id = "Orb",
                         matches = function(desc, char)
-                            if is_orb_object(desc) then return true end
-                            local hrp = char:FindFirstChild("HumanoidRootPart")
-                            if hrp then
-                                local orb = hrp:FindFirstChild("Orb")
-                                if orb and (desc == orb or desc:IsDescendantOf(orb)) then
-                                    return true
-                                end
-                            end
-                            return false
+                            return is_orb_object(desc)
+                        end
+                    },
+                    {
+                        id = "Grapple",
+                        matches = function(desc, char)
+                            return is_grapple_object(desc)
                         end
                     },
                     {
@@ -32000,6 +32027,16 @@ end
                         matches_emitter = function(desc)
                             return desc:IsA("ParticleEmitter") or desc:IsA("Beam") or desc:IsA("Trail")
                         end
+                    },
+                    {
+                        id = "GrappleThrown",
+                        matches_container = function(obj, char)
+                            if not is_grapple_object(obj) then return false end
+                            return is_attached_to_char(obj, char)
+                        end,
+                        matches_emitter = function(desc)
+                            return desc:IsA("Beam") or desc:IsA("ParticleEmitter") or desc:IsA("Trail") or desc:IsA("BasePart")
+                        end
                     }
                 }
             }
@@ -32020,6 +32057,11 @@ end
 
                 if is_orb_object(descendant) then
                     track_orb_hierarchy(descendant)
+                    return
+                end
+
+                if is_grapple_object(descendant) then
+                    track_grapple_hierarchy(descendant)
                     return
                 end
 
@@ -32098,20 +32140,38 @@ end
 
             local function bind_character(char)
                 if not char then return end
-                scan_orb_in_character(char)
+
                 for _, desc in ipairs(char:GetDescendants()) do
                     scan_character_descendant(desc)
                 end
+
                 utility:Connection(char.DescendantAdded, function(desc)
                     scan_character_descendant(desc)
                 end)
+
+                local hrp = char:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    utility:Connection(hrp.ChildAdded, function(child)
+                        if is_orb_object(child) then
+                            track_orb_hierarchy(child)
+                        end
+                    end)
+                end
+
+                local left_arm = char:FindFirstChild("Left Arm")
+                if left_arm then
+                    utility:Connection(left_arm.ChildAdded, function(child)
+                        if is_grapple_object(child) then
+                            track_grapple_hierarchy(child)
+                        end
+                    end)
+                end
             end
 
             local function refresh_all_vfx(state)
                 if state then
                     local char = get_local_char()
                     if char then
-                        scan_orb_in_character(char)
                         for _, desc in ipairs(char:GetDescendants()) do
                             scan_character_descendant(desc)
                         end
@@ -32162,7 +32222,24 @@ end
 
                 local char = get_local_char()
                 if char then
-                    scan_orb_in_character(char)
+                    local hrp = char:FindFirstChild("HumanoidRootPart")
+                    if hrp then
+                        for _, child in ipairs(hrp:GetChildren()) do
+                            if string.find(string.lower(child.Name), "orb", 1, true) then
+                                if not orb_tracked_set[child] then
+                                    orb_tracked_set[child] = true
+                                    track_orb_hierarchy(child)
+                                end
+                            end
+                        end
+                    end
+
+                    local left_arm = char:FindFirstChild("Left Arm")
+                    local cord = (left_arm and left_arm:FindFirstChild("Cord")) or char:FindFirstChild("Cord")
+                    if cord and not cord_tracked_set[cord] then
+                        cord_tracked_set[cord] = true
+                        track_grapple_hierarchy(cord)
+                    end
                 end
 
                 local seq = get_synced_vfx_rainbow_seq()
