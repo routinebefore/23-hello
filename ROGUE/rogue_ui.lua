@@ -557,6 +557,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             spoof_mana_color = false,
             mana_color = Color3.fromRGB(0, 170, 255),
             rainbow_mana = false,
+            rainbow_vfx = false,
     
             no_insane = false,
             instant_mine = false,
@@ -9915,6 +9916,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     end
                     return ColorSequence.new(kps)
                 end
+                utility.get_liquid_rainbow_seq = get_liquid_rainbow_seq
 
                 utility:Connection(rs.RenderStepped, LPH_NO_VIRTUALIZE(function()
                     local rainbow_on = (Toggles and Toggles.rainbow_mana and Toggles.rainbow_mana.Value) or cheat_client.config.rainbow_mana
@@ -10024,11 +10026,21 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             group_overlays:AddToggle("Killstreaks", {
                 Text = "Killstreaks",
                 Default = cheat_client.config.killstreaks,
-                Risky = true,
                 Callback = function(state)
                     cheat_client.config.killstreaks = state
                     if cheat_client.update_killstreak_ui then
                         cheat_client.update_killstreak_ui()
+                    end
+                end
+            })
+
+            group_overlays:AddToggle("RainbowVFX", {
+                Text = "Rainbow VFX",
+                Default = cheat_client.config.rainbow_vfx,
+                Callback = function(state)
+                    cheat_client.config.rainbow_vfx = state
+                    if cheat_client.update_rainbow_vfx then
+                        cheat_client.update_rainbow_vfx(state)
                     end
                 end
             })
@@ -31639,6 +31651,392 @@ end
                 end)
             end
             utility:Connection(plr.CharacterAdded, on_char_added)
+        end
+
+        do
+            local tracked_emitters = {}
+            local original_colors = {}
+            local setting_rainbow_color = false
+
+            local function get_local_char()
+                if plr.Character then return plr.Character end
+                local live = ws:FindFirstChild("Live")
+                if live and plr.Name then
+                    return live:FindFirstChild(plr.Name)
+                end
+                return nil
+            end
+
+            local function get_synced_vfx_rainbow_seq()
+                local now = os.clock()
+                local shift = (now * 0.32) % 1
+                if utility.get_liquid_rainbow_seq then
+                    return utility.get_liquid_rainbow_seq(shift, 0.85, now)
+                end
+                local kps = {}
+                for i = 0, 8 do
+                    local t = i / 8
+                    local raw_h = (shift + t * 0.85) % 1
+                    table.insert(kps, ColorSequenceKeypoint.new(t, Color3.fromHSV(raw_h, 0.9, 1)))
+                end
+                return ColorSequence.new(kps)
+            end
+
+            local function is_attached_to_char(obj, char)
+                if not char or not obj then return false end
+                if obj:IsA("JointInstance") or obj:IsA("WeldConstraint") then
+                    local p0 = obj.Part0
+                    local p1 = obj.Part1
+                    if (p0 and p0:IsDescendantOf(char)) or (p1 and p1:IsDescendantOf(char)) then
+                        return true
+                    end
+                end
+                for _, desc in ipairs(obj:GetDescendants()) do
+                    if desc:IsA("JointInstance") or desc:IsA("WeldConstraint") then
+                        local p0 = desc.Part0
+                        local p1 = desc.Part1
+                        if (p0 and p0:IsDescendantOf(char)) or (p1 and p1:IsDescendantOf(char)) then
+                            return true
+                        end
+                    elseif desc:IsA("ObjectValue") then
+                        if desc.Value == char or desc.Value == plr then
+                            return true
+                        end
+                    elseif desc:IsA("StringValue") then
+                        if desc.Value == char.Name or desc.Value == plr.Name then
+                            return true
+                        end
+                    end
+                end
+                for _, desc in ipairs(char:GetDescendants()) do
+                    if desc:IsA("JointInstance") or desc:IsA("WeldConstraint") then
+                        local p0 = desc.Part0
+                        local p1 = desc.Part1
+                        if (p0 and p0:IsDescendantOf(obj)) or (p1 and p1:IsDescendantOf(obj)) then
+                            return true
+                        end
+                    end
+                end
+                if string.find(obj.Name, plr.Name, 1, true) or string.find(obj.Name, char.Name, 1, true) then
+                    return true
+                end
+                local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso")
+                local right_arm = char:FindFirstChild("Right Arm") or char:FindFirstChild("RightHand")
+                local left_arm = char:FindFirstChild("Left Arm") or char:FindFirstChild("LeftHand")
+                local obj_part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart", true)
+                if obj_part then
+                    local check_pos = obj_part.Position
+                    local d_ra = right_arm and (check_pos - right_arm.Position).Magnitude or 999
+                    local d_la = left_arm and (check_pos - left_arm.Position).Magnitude or 999
+                    local d_rt = root and (check_pos - root.Position).Magnitude or 999
+                    local min_dist = math.min(d_ra, d_la, d_rt)
+                    if min_dist < 4.5 then
+                        local live = ws:FindFirstChild("Live")
+                        if live then
+                            local closest_char = nil
+                            local closest_dist = 999
+                            for _, other_char in ipairs(live:GetChildren()) do
+                                local other_root = other_char:FindFirstChild("HumanoidRootPart") or other_char:FindFirstChild("Torso")
+                                if other_root then
+                                    local dist = (check_pos - other_root.Position).Magnitude
+                                    if dist < closest_dist then
+                                        closest_dist = dist
+                                        closest_char = other_char
+                                    end
+                                end
+                            end
+                            if closest_char == char then
+                                return true
+                            end
+                        else
+                            return true
+                        end
+                    end
+                end
+                return false
+            end
+
+            local vfx_registry = {
+                character_rules = {
+                    {
+                        id = "Orb",
+                        matches = function(desc, char)
+                            if not (desc:IsA("ParticleEmitter") or desc:IsA("Beam") or desc:IsA("Trail")) then return false end
+                            if desc.Name == "Orb" or (desc.Parent and desc.Parent.Name == "Orb") then return true end
+                            if desc:FindFirstAncestor("Orb") then return true end
+                            local hrp = char:FindFirstChild("HumanoidRootPart")
+                            if hrp then
+                                local orb = hrp:FindFirstChild("Orb")
+                                if orb and (desc == orb or desc:IsDescendantOf(orb)) then
+                                    return true
+                                end
+                            end
+                            return false
+                        end
+                    },
+                    {
+                        id = "DodgePartic",
+                        matches = function(desc, char)
+                            if not (desc:IsA("ParticleEmitter") or desc:IsA("Beam") or desc:IsA("Trail")) then return false end
+                            if desc.Name == "DodgePartic" or (desc.Parent and desc.Parent.Name == "DodgePartic") then return true end
+                            local hrp = char:FindFirstChild("HumanoidRootPart")
+                            if hrp then
+                                local dp = hrp:FindFirstChild("DodgePartic")
+                                if dp and (desc == dp or desc:IsDescendantOf(dp)) then
+                                    return true
+                                end
+                            end
+                            return false
+                        end
+                    }
+                },
+                thrown_rules = {
+                    {
+                        id = "ParticleArm",
+                        matches_container = function(obj, char)
+                            if not (obj.Name == "ParticleArm" or string.find(obj.Name, "ParticleArm", 1, true)) then return false end
+                            return is_attached_to_char(obj, char)
+                        end,
+                        matches_emitter = function(desc)
+                            return desc:IsA("ParticleEmitter") or desc:IsA("Beam") or desc:IsA("Trail")
+                        end
+                    }
+                }
+            }
+
+            cheat_client.rainbow_vfx_registry = vfx_registry
+            cheat_client.add_rainbow_vfx_rule = function(rule_type, rule_def)
+                if rule_type == "character" and vfx_registry.character_rules then
+                    table.insert(vfx_registry.character_rules, rule_def)
+                elseif rule_type == "thrown" and vfx_registry.thrown_rules then
+                    table.insert(vfx_registry.thrown_rules, rule_def)
+                end
+            end
+
+            local function track_target(emitter)
+                if not emitter or tracked_emitters[emitter] then return end
+                local ok, col = pcall(function() return emitter.Color end)
+                if ok and col then
+                    original_colors[emitter] = col
+                end
+                tracked_emitters[emitter] = true
+
+                local is_enabled = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
+                if is_enabled then
+                    setting_rainbow_color = true
+                    pcall(function()
+                        emitter.Color = get_synced_vfx_rainbow_seq()
+                    end)
+                    setting_rainbow_color = false
+                end
+
+                local conn_enabled
+                conn_enabled = emitter:GetPropertyChangedSignal("Enabled"):Connect(function()
+                    local active = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
+                    if active and emitter.Enabled and not setting_rainbow_color then
+                        setting_rainbow_color = true
+                        pcall(function()
+                            emitter.Color = get_synced_vfx_rainbow_seq()
+                        end)
+                        setting_rainbow_color = false
+                    end
+                end)
+
+                local conn_color
+                conn_color = emitter:GetPropertyChangedSignal("Color"):Connect(function()
+                    if setting_rainbow_color then return end
+                    local active = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
+                    if active then
+                        task.defer(function()
+                            if setting_rainbow_color then return end
+                            setting_rainbow_color = true
+                            pcall(function()
+                                emitter.Color = get_synced_vfx_rainbow_seq()
+                            end)
+                            setting_rainbow_color = false
+                        end)
+                    end
+                end)
+
+                local conn_ancestry
+                conn_ancestry = emitter.AncestryChanged:Connect(function(_, parent)
+                    if not parent then
+                        tracked_emitters[emitter] = nil
+                        original_colors[emitter] = nil
+                        if conn_enabled then conn_enabled:Disconnect() end
+                        if conn_color then conn_color:Disconnect() end
+                        if conn_ancestry then conn_ancestry:Disconnect() end
+                    end
+                end)
+            end
+
+            local function scan_character_descendant(descendant)
+                if not descendant then return end
+                local char = get_local_char()
+                if not char or not descendant:IsDescendantOf(char) then return end
+
+                for _, rule in ipairs(vfx_registry.character_rules) do
+                    local matches = false
+                    local ok, res = pcall(rule.matches, descendant, char)
+                    if ok and res then
+                        matches = true
+                    end
+                    if matches then
+                        track_target(descendant)
+                        break
+                    end
+                end
+            end
+
+            local function handle_thrown_child(child)
+                if not child then return end
+                for _, rule in ipairs(vfx_registry.thrown_rules) do
+                    local function check_and_apply()
+                        local char = get_local_char()
+                        if not char then return end
+                        local ok, matches = pcall(rule.matches_container, child, char)
+                        if ok and matches then
+                            for _, desc in ipairs(child:GetDescendants()) do
+                                if rule.matches_emitter(desc) then
+                                    track_target(desc)
+                                end
+                            end
+                            if rule.matches_emitter(child) then
+                                track_target(child)
+                            end
+                        end
+                    end
+
+                    check_and_apply()
+                    task.defer(check_and_apply)
+                    task.delay(0.08, check_and_apply)
+
+                    local conn_desc
+                    conn_desc = child.DescendantAdded:Connect(function(desc)
+                        local char = get_local_char()
+                        if not char then return end
+                        local ok, matches = pcall(rule.matches_container, child, char)
+                        if ok and matches then
+                            for _, d in ipairs(child:GetDescendants()) do
+                                if rule.matches_emitter(d) then
+                                    track_target(d)
+                                end
+                            end
+                            if rule.matches_emitter(desc) then
+                                track_target(desc)
+                            end
+                        end
+                    end)
+
+                    local conn_anc
+                    conn_anc = child.AncestryChanged:Connect(function(_, parent)
+                        if not parent then
+                            if conn_desc then conn_desc:Disconnect() end
+                            if conn_anc then conn_anc:Disconnect() end
+                        end
+                    end)
+                end
+            end
+
+            local function bind_thrown_folder(thrown_folder)
+                if not thrown_folder then return end
+                for _, child in ipairs(thrown_folder:GetChildren()) do
+                    handle_thrown_child(child)
+                end
+                utility:Connection(thrown_folder.ChildAdded, function(child)
+                    handle_thrown_child(child)
+                end)
+            end
+
+            local function bind_character(char)
+                if not char then return end
+                for _, desc in ipairs(char:GetDescendants()) do
+                    scan_character_descendant(desc)
+                end
+                utility:Connection(char.DescendantAdded, function(desc)
+                    scan_character_descendant(desc)
+                end)
+            end
+
+            local function refresh_all_vfx(state)
+                if state then
+                    local char = get_local_char()
+                    if char then
+                        for _, desc in ipairs(char:GetDescendants()) do
+                            scan_character_descendant(desc)
+                        end
+                    end
+                    local current_thrown = ws:FindFirstChild("Thrown")
+                    if current_thrown then
+                        for _, child in ipairs(current_thrown:GetChildren()) do
+                            handle_thrown_child(child)
+                        end
+                    end
+                    local seq = get_synced_vfx_rainbow_seq()
+                    setting_rainbow_color = true
+                    for emitter in pairs(tracked_emitters) do
+                        if emitter.Parent then
+                            pcall(function() emitter.Color = seq end)
+                        end
+                    end
+                    setting_rainbow_color = false
+                else
+                    for emitter, orig_col in pairs(original_colors) do
+                        if emitter.Parent then
+                            pcall(function() emitter.Color = orig_col end)
+                        end
+                    end
+                end
+            end
+
+            cheat_client.update_rainbow_vfx = refresh_all_vfx
+
+            utility:Connection(rs.RenderStepped, LPH_NO_VIRTUALIZE(function()
+                local rainbow_vfx_on = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
+                if not rainbow_vfx_on then return end
+
+                local seq = get_synced_vfx_rainbow_seq()
+                setting_rainbow_color = true
+                for emitter in pairs(tracked_emitters) do
+                    if emitter.Parent then
+                        pcall(function()
+                            emitter.Color = seq
+                        end)
+                    else
+                        tracked_emitters[emitter] = nil
+                        original_colors[emitter] = nil
+                    end
+                end
+                setting_rainbow_color = false
+            end))
+
+            utility:Connection(plr.CharacterAdded, function(char)
+                bind_character(char)
+            end)
+
+            if plr.Character then
+                bind_character(plr.Character)
+            end
+
+            local live = ws:FindFirstChild("Live")
+            if live then
+                utility:Connection(live.ChildAdded, function(child)
+                    if child.Name == plr.Name then
+                        bind_character(child)
+                    end
+                end)
+            end
+
+            local existing_thrown = ws:FindFirstChild("Thrown")
+            if existing_thrown then
+                bind_thrown_folder(existing_thrown)
+            end
+
+            utility:Connection(ws.ChildAdded, function(child)
+                if child.Name == "Thrown" then
+                    bind_thrown_folder(child)
+                end
+            end)
         end
 
 
