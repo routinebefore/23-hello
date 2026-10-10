@@ -31802,8 +31802,6 @@ end
             local original_seq_colors = {}
             local tracked_c3_targets = {}
             local original_c3_colors = {}
-            local shield_beams = {}
-            local original_shield_props = {}
             local orb_listeners = {}
             local orb_tracked_set = {}
             local grapple_listeners = {}
@@ -31875,105 +31873,6 @@ end
                     depth = depth + 1
                 end
                 return false
-            end
-
-            local function setup_shield_rainbow_beam(part)
-                if not part or not part:IsA("BasePart") then return end
-                if shield_beams[part] then return end
-
-                local att = part:FindFirstChild("Attachment")
-                local orig_emitter = att and att:FindFirstChildWhichIsA("ParticleEmitter")
-                if not orig_emitter then
-                    orig_emitter = part:FindFirstChildWhichIsA("ParticleEmitter", true)
-                end
-
-                local shield_size = 6.5
-                local shield_tex = "rbxassetid://241650934"
-                if orig_emitter then
-                    if orig_emitter.Texture and orig_emitter.Texture ~= "" then
-                        shield_tex = orig_emitter.Texture
-                    end
-                    local kps = orig_emitter.Size and orig_emitter.Size.Keypoints
-                    if kps then
-                        for _, kp in ipairs(kps) do
-                            if kp.Value > shield_size then
-                                shield_size = kp.Value
-                            end
-                        end
-                    end
-                end
-
-                local rad = shield_size * 0.5
-                local parent_target = att or part
-
-                local att_bottom = parent_target:FindFirstChild("RainbowShieldAtt0")
-                if not att_bottom then
-                    att_bottom = Instance.new("Attachment")
-                    att_bottom.Name = "RainbowShieldAtt0"
-                    att_bottom.Position = Vector3.new(0, -rad, 0)
-                    att_bottom.Parent = parent_target
-                end
-
-                local att_top = parent_target:FindFirstChild("RainbowShieldAtt1")
-                if not att_top then
-                    att_top = Instance.new("Attachment")
-                    att_top.Name = "RainbowShieldAtt1"
-                    att_top.Position = Vector3.new(0, rad, 0)
-                    att_top.Parent = parent_target
-                end
-
-                local beam = parent_target:FindFirstChild("RainbowShieldBeam")
-                if not beam then
-                    beam = Instance.new("Beam")
-                    beam.Name = "RainbowShieldBeam"
-                    beam.Attachment0 = att_bottom
-                    beam.Attachment1 = att_top
-                    beam.Width0 = shield_size
-                    beam.Width1 = shield_size
-                    beam.FaceCamera = true
-                    beam.Segments = 16
-                    beam.LightEmission = 1
-                    beam.LightInfluence = 0
-                    beam.TextureMode = Enum.TextureMode.Stretch
-                    beam.TextureLength = 1
-                    beam.TextureSpeed = 0
-                    beam.Texture = shield_tex
-                    beam.Color = get_synced_vfx_rainbow_seq()
-                    beam.Parent = parent_target
-                end
-
-                local conn_en = nil
-                if orig_emitter then
-                    beam.Enabled = orig_emitter.Enabled
-                    conn_en = orig_emitter:GetPropertyChangedSignal("Enabled"):Connect(function()
-                        beam.Enabled = orig_emitter.Enabled
-                    end)
-                    if not original_shield_props[orig_emitter] then
-                        original_shield_props[orig_emitter] = {
-                            Transparency = orig_emitter.Transparency
-                        }
-                    end
-                    orig_emitter.Transparency = NumberSequence.new(1)
-                else
-                    beam.Enabled = true
-                end
-
-                shield_beams[part] = {
-                    beam = beam,
-                    att0 = att_bottom,
-                    att1 = att_top,
-                    emitter = orig_emitter,
-                    conn = conn_en
-                }
-                tracked_seq_targets[beam] = true
-
-                part.AncestryChanged:Connect(function(_, p)
-                    if not p then
-                        if conn_en then conn_en:Disconnect() end
-                        shield_beams[part] = nil
-                        tracked_seq_targets[beam] = nil
-                    end
-                end)
             end
 
             local function track_seq_target(emitter)
@@ -32087,9 +31986,29 @@ end
             local function track_any_target(inst)
                 if not inst then return end
                 if is_shield_or_orb_object(inst) then
+                    local old_b = inst:FindFirstChild("RainbowShieldBeam", true)
+                    if old_b then old_b:Destroy() end
+                    local old_a0 = inst:FindFirstChild("RainbowShieldAtt0", true)
+                    if old_a0 then old_a0:Destroy() end
+                    local old_a1 = inst:FindFirstChild("RainbowShieldAtt1", true)
+                    if old_a1 then old_a1:Destroy() end
                     if inst:IsA("BasePart") then
-                        setup_shield_rainbow_beam(inst)
+                        if original_c3_colors[inst] and original_c3_colors[inst].Color then
+                            pcall(function() inst.Color = original_c3_colors[inst].Color end)
+                        end
+                        tracked_c3_targets[inst] = nil
                         return
+                    end
+                    if inst:IsA("ParticleEmitter") then
+                        local t_kps = inst.Transparency and inst.Transparency.Keypoints
+                        if t_kps and #t_kps == 2 and t_kps[1].Value == 1 and t_kps[2].Value == 1 then
+                            inst.Transparency = NumberSequence.new({
+                                NumberSequenceKeypoint.new(0, 0),
+                                NumberSequenceKeypoint.new(0.0184, 0),
+                                NumberSequenceKeypoint.new(0.0353, 1),
+                                NumberSequenceKeypoint.new(1, 1)
+                            })
+                        end
                     end
                 end
                 if inst:IsA("ParticleEmitter") or inst:IsA("Beam") or inst:IsA("Trail") then
@@ -32436,7 +32355,11 @@ end
                     local char = get_local_char()
                     if char then
                         for _, desc in ipairs(char:GetDescendants()) do
-                            scan_character_descendant(desc)
+                            if desc.Name == "RainbowShieldBeam" or desc.Name == "RainbowShieldAtt0" or desc.Name == "RainbowShieldAtt1" then
+                                desc:Destroy()
+                            else
+                                scan_character_descendant(desc)
+                            end
                         end
                     end
                     local current_thrown = ws:FindFirstChild("Thrown")
@@ -32462,17 +32385,13 @@ end
                     end
                     setting_rainbow_color = false
                 else
-                    for part, data in pairs(shield_beams) do
-                        if data.conn then data.conn:Disconnect() end
-                        if data.beam and data.beam.Parent then data.beam:Destroy() end
-                        if data.att0 and data.att0.Parent then data.att0:Destroy() end
-                        if data.att1 and data.att1.Parent then data.att1:Destroy() end
-                        if data.emitter and data.emitter.Parent and original_shield_props[data.emitter] then
-                            pcall(function()
-                                data.emitter.Transparency = original_shield_props[data.emitter].Transparency
-                            end)
+                    local char = get_local_char()
+                    if char then
+                        for _, desc in ipairs(char:GetDescendants()) do
+                            if desc.Name == "RainbowShieldBeam" or desc.Name == "RainbowShieldAtt0" or desc.Name == "RainbowShieldAtt1" then
+                                desc:Destroy()
+                            end
                         end
-                        shield_beams[part] = nil
                     end
                     for emitter, orig_col in pairs(original_seq_colors) do
                         if emitter.Parent then
@@ -32518,19 +32437,6 @@ end
                             cord_tracked_set[cord] = true
                             track_grapple_hierarchy(cord)
                         end
-                    end
-                end
-
-                for part, data in pairs(shield_beams) do
-                    if part.Parent then
-                        if data.emitter and data.emitter.Parent then
-                            if data.beam.Enabled ~= data.emitter.Enabled then
-                                data.beam.Enabled = data.emitter.Enabled
-                            end
-                        end
-                    else
-                        if data.conn then data.conn:Disconnect() end
-                        shield_beams[part] = nil
                     end
                 end
 
