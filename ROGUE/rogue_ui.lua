@@ -557,6 +557,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             spoof_mana_color = false,
             mana_color = Color3.fromRGB(0, 170, 255),
             rainbow_mana = false,
+            rainbow_health = false,
             rainbow_vfx = false,
     
             no_insane = false,
@@ -9843,11 +9844,29 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 end
             })
 
+            group_overlays:AddToggle("rainbow_health", {
+                Text = "Rainbow Health",
+                Default = cheat_client.config.rainbow_health,
+                Callback = function(state)
+                    cheat_client.config.rainbow_health = state
+                end
+            })
+
             do
                 local cached_slider = nil
                 local orig_bg_color = nil
                 local orig_img_color = nil
                 local color_captured = false
+                local cached_mana_grad = nil
+
+                local cached_health_slider = nil
+                local orig_health_bg_color = nil
+                local orig_health_img_color = nil
+                local health_color_captured = false
+                local cached_health_grad = nil
+
+                local mana_rainbow_active = false
+                local health_rainbow_active = false
 
                 local liquid_transparency = NumberSequence.new({
                     NumberSequenceKeypoint.new(0.0, 0.05),
@@ -9870,6 +9889,24 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         local pstroke = s.Parent:FindFirstChild("RainbowManaStroke")
                         if pstroke then pstroke:Destroy() end
                     end
+                    cached_mana_grad = nil
+                end
+
+                local function cleanup_health_rainbow(s)
+                    if not s then return end
+                    local grad = s:FindFirstChild("RainbowHealthGradient")
+                    if grad then grad:Destroy() end
+                    local shimmer = s:FindFirstChild("RainbowHealthShimmer")
+                    if shimmer then shimmer:Destroy() end
+                    local crest = s:FindFirstChild("RainbowHealthCrest")
+                    if crest then crest:Destroy() end
+                    local stroke = s:FindFirstChild("RainbowHealthStroke")
+                    if stroke then stroke:Destroy() end
+                    if s.Parent and s.Parent:IsA("GuiObject") then
+                        local pstroke = s.Parent:FindFirstChild("RainbowHealthStroke")
+                        if pstroke then pstroke:Destroy() end
+                    end
+                    cached_health_grad = nil
                 end
 
                 local function get_slider()
@@ -9880,7 +9917,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     if not pg then return nil end
                     local sg = pg:FindFirstChild("StatGui")
                     if not sg then return nil end
-                    local lc = sg:FindFirstChild("LeftContainer")
+                    local lc = sg:FindFirstChild("LeftContainer") or sg:FindFirstChild("Container")
                     if not lc then return nil end
                     local mf = lc:FindFirstChild("Mana")
                     if not mf then return nil end
@@ -9899,10 +9936,49 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     return nil
                 end
 
+                local function get_health_slider()
+                    if cached_health_slider and cached_health_slider.Parent then
+                        return cached_health_slider
+                    end
+                    local pg = plr:FindFirstChild("PlayerGui")
+                    if not pg then return nil end
+                    local sg = pg:FindFirstChild("StatGui")
+                    if not sg then return nil end
+                    local c = sg:FindFirstChild("Container") or sg:FindFirstChild("LeftContainer")
+                    if not c then return nil end
+                    local hf = c:FindFirstChild("Health")
+                    if not hf then return nil end
+                    local s = hf:FindFirstChild("Slider")
+                    if s then
+                        cached_health_slider = s
+                        if not health_color_captured then
+                            orig_health_bg_color = s.BackgroundColor3
+                            if s:IsA("ImageLabel") or s:IsA("ImageButton") then
+                                orig_health_img_color = s.ImageColor3
+                            end
+                            health_color_captured = true
+                        end
+                        return s
+                    end
+                    return nil
+                end
+
+                local cached_seqs = {}
+                local cached_seqs_time = 0
+
                 local function get_liquid_rainbow_seq(shift, span, now)
                     span = span or 1
-                    local kps = {}
+                    local rounded_span = math.floor(span * 100 + 0.5) / 100
+                    if now ~= cached_seqs_time then
+                        table.clear(cached_seqs)
+                        cached_seqs_time = now
+                    end
+                    local cached = cached_seqs[rounded_span]
+                    if cached then
+                        return cached
+                    end
                     local steps = 8
+                    local kps = table.create(steps + 1)
                     for i = 0, steps do
                         local t = i / steps
                         local wave1 = math.sin(t * 6.28318 - now * 2.2) * 0.045
@@ -9912,83 +9988,151 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         local fluid_pulse = math.sin(now * 2.0 + t * 4.0) * 0.03
                         local s = math.clamp(0.86 + 0.10 * math.cos(t * 6.28318 + now * 1.5) - fluid_pulse, 0.78, 0.96)
                         local v = math.clamp(0.97 + 0.03 * math.sin(t * 6.28318 - now * 2.0) + fluid_pulse, 0.92, 1.0)
-                        table.insert(kps, ColorSequenceKeypoint.new(t, Color3.fromHSV(raw_h, s, v)))
+                        kps[i + 1] = ColorSequenceKeypoint.new(t, Color3.fromHSV(raw_h, s, v))
                     end
-                    return ColorSequence.new(kps)
+                    local seq = ColorSequence.new(kps)
+                    cached_seqs[rounded_span] = seq
+                    return seq
                 end
                 utility.get_liquid_rainbow_seq = get_liquid_rainbow_seq
 
                 utility:Connection(rs.RenderStepped, LPH_NO_VIRTUALIZE(function()
                     local rainbow_on = (Toggles and Toggles.rainbow_mana and Toggles.rainbow_mana.Value) or cheat_client.config.rainbow_mana
                     local spoof_on = (Toggles and Toggles.spoof_mana_color and Toggles.spoof_mana_color.Value) or cheat_client.config.spoof_mana_color
+                    local rainbow_health_on = (Toggles and Toggles.rainbow_health and Toggles.rainbow_health.Value) or cheat_client.config.rainbow_health
 
                     if not rainbow_on and not spoof_on then
-                        if cached_slider and cached_slider.Parent then
-                            cleanup_rainbow(cached_slider)
-                            if color_captured and orig_bg_color then
-                                cached_slider.BackgroundColor3 = orig_bg_color
-                                if orig_img_color and (cached_slider:IsA("ImageLabel") or cached_slider:IsA("ImageButton")) then
-                                    cached_slider.ImageColor3 = orig_img_color
+                        if mana_rainbow_active then
+                            if cached_slider and cached_slider.Parent then
+                                cleanup_rainbow(cached_slider)
+                                if color_captured and orig_bg_color then
+                                    cached_slider.BackgroundColor3 = orig_bg_color
+                                    if orig_img_color and (cached_slider:IsA("ImageLabel") or cached_slider:IsA("ImageButton")) then
+                                        cached_slider.ImageColor3 = orig_img_color
+                                    end
                                 end
                             end
+                            mana_rainbow_active = false
                         end
+                    else
+                        mana_rainbow_active = true
+                    end
+
+                    if not rainbow_health_on then
+                        if health_rainbow_active then
+                            if cached_health_slider and cached_health_slider.Parent then
+                                cleanup_health_rainbow(cached_health_slider)
+                                if health_color_captured and orig_health_bg_color then
+                                    cached_health_slider.BackgroundColor3 = orig_health_bg_color
+                                    if orig_health_img_color and (cached_health_slider:IsA("ImageLabel") or cached_health_slider:IsA("ImageButton")) then
+                                        cached_health_slider.ImageColor3 = orig_health_img_color
+                                    end
+                                end
+                            end
+                            health_rainbow_active = false
+                        end
+                    else
+                        health_rainbow_active = true
+                    end
+
+                    if not rainbow_on and not spoof_on and not rainbow_health_on then
                         return
                     end
 
-                    local slider = get_slider()
-                    if not slider then return end
+                    local now = os.clock()
+                    local shift = (now * 0.32) % 1
+                    local wave_osc = math.sin(now * 1.4) * 3.5 + math.cos(now * 2.1) * 1.5
 
                     if rainbow_on then
-                        local now = os.clock()
+                        local slider = get_slider()
+                        if slider then
+                            if not cached_mana_grad or cached_mana_grad.Parent ~= slider then
+                                cached_mana_grad = slider:FindFirstChild("RainbowManaGradient")
+                                if not cached_mana_grad then
+                                    cached_mana_grad = Instance.new("UIGradient")
+                                    cached_mana_grad.Name = "RainbowManaGradient"
+                                    cached_mana_grad.Parent = slider
+                                end
+                            end
+                            cached_mana_grad.Enabled = true
+                            cached_mana_grad.Transparency = liquid_transparency
+                            cached_mana_grad.Rotation = 90 + wave_osc
 
-                        local old_shimmer = slider:FindFirstChild("RainbowManaShimmer")
-                        if old_shimmer then old_shimmer:Destroy() end
-                        local old_crest = slider:FindFirstChild("RainbowManaCrest")
-                        if old_crest then old_crest:Destroy() end
-                        local old_stroke = slider:FindFirstChild("RainbowManaStroke")
-                        if old_stroke then old_stroke:Destroy() end
-                        if slider.Parent and slider.Parent:IsA("GuiObject") then
-                            local old_pstroke = slider.Parent:FindFirstChild("RainbowManaStroke")
-                            if old_pstroke then old_pstroke:Destroy() end
-                        end
+                            local charge_pct = 1
+                            if slider.Size and slider.Size.Y and slider.Size.Y.Scale > 0 and slider.Size.Y.Scale <= 1 then
+                                charge_pct = slider.Size.Y.Scale
+                            elseif slider.AbsoluteSize and slider.Parent and slider.Parent:IsA("GuiObject") and slider.Parent.AbsoluteSize.Y > 0 then
+                                charge_pct = math.clamp(slider.AbsoluteSize.Y / slider.Parent.AbsoluteSize.Y, 0.01, 1)
+                            end
 
-                        local grad = slider:FindFirstChild("RainbowManaGradient")
-                        if not grad then
-                            grad = Instance.new("UIGradient")
-                            grad.Name = "RainbowManaGradient"
-                            grad.Parent = slider
-                        end
-                        grad.Enabled = true
-                        grad.Transparency = liquid_transparency
+                            local span = math.clamp(charge_pct * 0.75 + 0.15, 0.15, 0.85)
+                            cached_mana_grad.Color = get_liquid_rainbow_seq(shift, span, now)
 
-                        local liquid_rot = 90 + math.sin(now * 1.4) * 3.5 + math.cos(now * 2.1) * 1.5
-                        grad.Rotation = liquid_rot
-
-                        local charge_pct = 1
-                        if slider.Size and slider.Size.Y and slider.Size.Y.Scale > 0 and slider.Size.Y.Scale <= 1 then
-                            charge_pct = slider.Size.Y.Scale
-                        elseif slider.AbsoluteSize and slider.Parent and slider.Parent:IsA("GuiObject") and slider.Parent.AbsoluteSize.Y > 0 then
-                            charge_pct = math.clamp(slider.AbsoluteSize.Y / slider.Parent.AbsoluteSize.Y, 0.01, 1)
-                        end
-
-                        local span = math.clamp(charge_pct * 0.75 + 0.15, 0.15, 0.85)
-                        local shift = (now * 0.32) % 1
-                        grad.Color = get_liquid_rainbow_seq(shift, span, now)
-
-                        if slider.BackgroundColor3 ~= Color3.new(1, 1, 1) then
-                            slider.BackgroundColor3 = Color3.new(1, 1, 1)
-                        end
-                        if (slider:IsA("ImageLabel") or slider:IsA("ImageButton")) and slider.ImageColor3 ~= Color3.new(1, 1, 1) then
-                            slider.ImageColor3 = Color3.new(1, 1, 1)
+                            if slider.BackgroundColor3 ~= Color3.new(1, 1, 1) then
+                                slider.BackgroundColor3 = Color3.new(1, 1, 1)
+                            end
+                            if (slider:IsA("ImageLabel") or slider:IsA("ImageButton")) and slider.ImageColor3 ~= Color3.new(1, 1, 1) then
+                                slider.ImageColor3 = Color3.new(1, 1, 1)
+                            end
                         end
                     elseif spoof_on then
-                        cleanup_rainbow(slider)
-                        local target_col = (Options and Options.mana_color and Options.mana_color.Value) or cheat_client.config.mana_color or Color3.fromRGB(0, 170, 255)
-                        if slider.BackgroundColor3 ~= target_col then
-                            slider.BackgroundColor3 = target_col
+                        local slider = get_slider()
+                        if slider then
+                            cleanup_rainbow(slider)
+                            local target_col = (Options and Options.mana_color and Options.mana_color.Value) or cheat_client.config.mana_color or Color3.fromRGB(0, 170, 255)
+                            if slider.BackgroundColor3 ~= target_col then
+                                slider.BackgroundColor3 = target_col
+                            end
+                            if (slider:IsA("ImageLabel") or slider:IsA("ImageButton")) and slider.ImageColor3 ~= target_col then
+                                slider.ImageColor3 = target_col
+                            end
                         end
-                        if (slider:IsA("ImageLabel") or slider:IsA("ImageButton")) and slider.ImageColor3 ~= target_col then
-                            slider.ImageColor3 = target_col
+                    end
+
+                    if rainbow_health_on then
+                        local hslider = get_health_slider()
+                        if hslider then
+                            if not cached_health_grad or cached_health_grad.Parent ~= hslider then
+                                cached_health_grad = hslider:FindFirstChild("RainbowHealthGradient")
+                                if not cached_health_grad then
+                                    cached_health_grad = Instance.new("UIGradient")
+                                    cached_health_grad.Name = "RainbowHealthGradient"
+                                    cached_health_grad.Parent = hslider
+                                end
+                            end
+                            cached_health_grad.Enabled = true
+                            cached_health_grad.Transparency = liquid_transparency
+
+                            local is_vert = hslider.AbsoluteSize.Y > hslider.AbsoluteSize.X and hslider.AbsoluteSize.X > 0
+                            if is_vert then
+                                cached_health_grad.Rotation = 90 + wave_osc
+                            else
+                                cached_health_grad.Rotation = wave_osc
+                            end
+
+                            local charge_pct = 1
+                            if hslider.Size and hslider.Size.X and hslider.Size.X.Scale > 0 and hslider.Size.X.Scale <= 1 then
+                                charge_pct = hslider.Size.X.Scale
+                            elseif hslider.Size and hslider.Size.Y and hslider.Size.Y.Scale > 0 and hslider.Size.Y.Scale <= 1 then
+                                charge_pct = hslider.Size.Y.Scale
+                            elseif hslider.AbsoluteSize and hslider.Parent and hslider.Parent:IsA("GuiObject") then
+                                local psize = hslider.Parent.AbsoluteSize
+                                if not is_vert and psize.X > 0 and hslider.AbsoluteSize.X > 0 then
+                                    charge_pct = math.clamp(hslider.AbsoluteSize.X / psize.X, 0.01, 1)
+                                elseif is_vert and psize.Y > 0 and hslider.AbsoluteSize.Y > 0 then
+                                    charge_pct = math.clamp(hslider.AbsoluteSize.Y / psize.Y, 0.01, 1)
+                                end
+                            end
+
+                            local span = math.clamp(charge_pct * 0.75 + 0.15, 0.15, 0.85)
+                            cached_health_grad.Color = get_liquid_rainbow_seq(shift, span, now)
+
+                            if hslider.BackgroundColor3 ~= Color3.new(1, 1, 1) then
+                                hslider.BackgroundColor3 = Color3.new(1, 1, 1)
+                            end
+                            if (hslider:IsA("ImageLabel") or hslider:IsA("ImageButton")) and hslider.ImageColor3 ~= Color3.new(1, 1, 1) then
+                                hslider.ImageColor3 = Color3.new(1, 1, 1)
+                            end
                         end
                     end
                 end))
@@ -31658,11 +31802,24 @@ end
             local original_seq_colors = {}
             local tracked_c3_targets = {}
             local original_c3_colors = {}
+            local shield_beams = {}
+            local original_shield_props = {}
             local orb_listeners = {}
             local orb_tracked_set = {}
             local grapple_listeners = {}
             local cord_tracked_set = {}
             local setting_rainbow_color = false
+            local last_vfx_scan = 0
+            local last_c3_time = 0
+            local last_c3_res = nil
+
+            local function safe_set_seq(emitter, seq)
+                emitter.Color = seq
+            end
+
+            local function safe_set_c3(inst, prop, c3)
+                inst[prop] = c3
+            end
 
             local function get_local_char()
                 if plr.Character and plr.Character.Parent then return plr.Character end
@@ -31691,8 +31848,132 @@ end
 
             local function get_synced_vfx_rainbow_c3()
                 local now = os.clock()
+                if now == last_c3_time and last_c3_res then
+                    return last_c3_res
+                end
                 local shift = (now * 0.32) % 1
-                return Color3.fromHSV(shift, 0.9, 1)
+                local c3 = Color3.fromHSV(shift, 0.9, 1)
+                last_c3_time = now
+                last_c3_res = c3
+                return c3
+            end
+
+            local function is_shield_or_orb_object(obj)
+                if not obj then return false end
+                local name = string.lower(obj.Name)
+                if string.find(name, "orb", 1, true) or string.find(name, "shield", 1, true) or string.find(name, "bubble", 1, true) then
+                    return true
+                end
+                local ancestor = obj.Parent
+                local depth = 0
+                while ancestor and ancestor ~= ws and ancestor ~= game and depth < 6 do
+                    local aname = string.lower(ancestor.Name)
+                    if string.find(aname, "orb", 1, true) or string.find(aname, "shield", 1, true) or string.find(aname, "bubble", 1, true) then
+                        return true
+                    end
+                    ancestor = ancestor.Parent
+                    depth = depth + 1
+                end
+                return false
+            end
+
+            local function setup_shield_rainbow_beam(part)
+                if not part or not part:IsA("BasePart") then return end
+                if shield_beams[part] then return end
+
+                local att = part:FindFirstChild("Attachment")
+                local orig_emitter = att and att:FindFirstChildWhichIsA("ParticleEmitter")
+                if not orig_emitter then
+                    orig_emitter = part:FindFirstChildWhichIsA("ParticleEmitter", true)
+                end
+
+                local shield_size = 6.5
+                local shield_tex = "rbxassetid://241650934"
+                if orig_emitter then
+                    if orig_emitter.Texture and orig_emitter.Texture ~= "" then
+                        shield_tex = orig_emitter.Texture
+                    end
+                    local kps = orig_emitter.Size and orig_emitter.Size.Keypoints
+                    if kps then
+                        for _, kp in ipairs(kps) do
+                            if kp.Value > shield_size then
+                                shield_size = kp.Value
+                            end
+                        end
+                    end
+                end
+
+                local rad = shield_size * 0.5
+                local parent_target = att or part
+
+                local att_bottom = parent_target:FindFirstChild("RainbowShieldAtt0")
+                if not att_bottom then
+                    att_bottom = Instance.new("Attachment")
+                    att_bottom.Name = "RainbowShieldAtt0"
+                    att_bottom.Position = Vector3.new(0, -rad, 0)
+                    att_bottom.Parent = parent_target
+                end
+
+                local att_top = parent_target:FindFirstChild("RainbowShieldAtt1")
+                if not att_top then
+                    att_top = Instance.new("Attachment")
+                    att_top.Name = "RainbowShieldAtt1"
+                    att_top.Position = Vector3.new(0, rad, 0)
+                    att_top.Parent = parent_target
+                end
+
+                local beam = parent_target:FindFirstChild("RainbowShieldBeam")
+                if not beam then
+                    beam = Instance.new("Beam")
+                    beam.Name = "RainbowShieldBeam"
+                    beam.Attachment0 = att_bottom
+                    beam.Attachment1 = att_top
+                    beam.Width0 = shield_size
+                    beam.Width1 = shield_size
+                    beam.FaceCamera = true
+                    beam.Segments = 16
+                    beam.LightEmission = 1
+                    beam.LightInfluence = 0
+                    beam.TextureMode = Enum.TextureMode.Stretch
+                    beam.TextureLength = 1
+                    beam.TextureSpeed = 0
+                    beam.Texture = shield_tex
+                    beam.Color = get_synced_vfx_rainbow_seq()
+                    beam.Parent = parent_target
+                end
+
+                local conn_en = nil
+                if orig_emitter then
+                    beam.Enabled = orig_emitter.Enabled
+                    conn_en = orig_emitter:GetPropertyChangedSignal("Enabled"):Connect(function()
+                        beam.Enabled = orig_emitter.Enabled
+                    end)
+                    if not original_shield_props[orig_emitter] then
+                        original_shield_props[orig_emitter] = {
+                            Transparency = orig_emitter.Transparency
+                        }
+                    end
+                    orig_emitter.Transparency = NumberSequence.new(1)
+                else
+                    beam.Enabled = true
+                end
+
+                shield_beams[part] = {
+                    beam = beam,
+                    att0 = att_bottom,
+                    att1 = att_top,
+                    emitter = orig_emitter,
+                    conn = conn_en
+                }
+                tracked_seq_targets[beam] = true
+
+                part.AncestryChanged:Connect(function(_, p)
+                    if not p then
+                        if conn_en then conn_en:Disconnect() end
+                        shield_beams[part] = nil
+                        tracked_seq_targets[beam] = nil
+                    end
+                end)
             end
 
             local function track_seq_target(emitter)
@@ -31708,9 +31989,7 @@ end
                 local is_enabled = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
                 if is_enabled then
                     setting_rainbow_color = true
-                    pcall(function()
-                        emitter.Color = get_synced_vfx_rainbow_seq()
-                    end)
+                    pcall(safe_set_seq, emitter, get_synced_vfx_rainbow_seq())
                     setting_rainbow_color = false
                 end
 
@@ -31721,9 +32000,7 @@ end
                             local active = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
                             if active and emitter.Enabled and not setting_rainbow_color then
                                 setting_rainbow_color = true
-                                pcall(function()
-                                    emitter.Color = get_synced_vfx_rainbow_seq()
-                                end)
+                                pcall(safe_set_seq, emitter, get_synced_vfx_rainbow_seq())
                                 setting_rainbow_color = false
                             end
                         end)
@@ -31738,9 +32015,7 @@ end
                         task.defer(function()
                             if setting_rainbow_color then return end
                             setting_rainbow_color = true
-                            pcall(function()
-                                emitter.Color = get_synced_vfx_rainbow_seq()
-                            end)
+                            pcall(safe_set_seq, emitter, get_synced_vfx_rainbow_seq())
                             setting_rainbow_color = false
                         end)
                     end
@@ -31778,9 +32053,7 @@ end
                 local is_enabled = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
                 if is_enabled then
                     setting_rainbow_color = true
-                    pcall(function()
-                        inst[prop_name] = get_synced_vfx_rainbow_c3()
-                    end)
+                    pcall(safe_set_c3, inst, prop_name, get_synced_vfx_rainbow_c3())
                     setting_rainbow_color = false
                 end
 
@@ -31793,9 +32066,7 @@ end
                             task.defer(function()
                                 if setting_rainbow_color then return end
                                 setting_rainbow_color = true
-                                pcall(function()
-                                    inst[prop_name] = get_synced_vfx_rainbow_c3()
-                                end)
+                                pcall(safe_set_c3, inst, prop_name, get_synced_vfx_rainbow_c3())
                                 setting_rainbow_color = false
                             end)
                         end
@@ -31815,6 +32086,12 @@ end
 
             local function track_any_target(inst)
                 if not inst then return end
+                if is_shield_or_orb_object(inst) then
+                    if inst:IsA("BasePart") then
+                        setup_shield_rainbow_beam(inst)
+                        return
+                    end
+                end
                 if inst:IsA("ParticleEmitter") or inst:IsA("Beam") or inst:IsA("Trail") then
                     track_seq_target(inst)
                 elseif inst:IsA("Light") then
@@ -31836,22 +32113,6 @@ end
                 end
             end
 
-            local function is_orb_object(obj)
-                if not obj then return false end
-                local name = string.lower(obj.Name)
-                if string.find(name, "orb", 1, true) then
-                    return true
-                end
-                local ancestor = obj.Parent
-                while ancestor and ancestor ~= ws and ancestor ~= game do
-                    if string.find(string.lower(ancestor.Name), "orb", 1, true) then
-                        return true
-                    end
-                    ancestor = ancestor.Parent
-                end
-                return false
-            end
-
             local function is_grapple_object(obj)
                 if not obj then return false end
                 local name = string.lower(obj.Name)
@@ -31859,12 +32120,14 @@ end
                     return true
                 end
                 local ancestor = obj.Parent
-                while ancestor and ancestor ~= ws and ancestor ~= game do
+                local depth = 0
+                while ancestor and ancestor ~= ws and ancestor ~= game and depth < 6 do
                     local aname = string.lower(ancestor.Name)
                     if aname == "cord" or string.find(aname, "cord", 1, true) or string.find(aname, "grapple", 1, true) then
                         return true
                     end
                     ancestor = ancestor.Parent
+                    depth = depth + 1
                 end
                 return false
             end
@@ -31992,7 +32255,7 @@ end
                     {
                         id = "Orb",
                         matches = function(desc, char)
-                            return is_orb_object(desc)
+                            return is_shield_or_orb_object(desc)
                         end
                     },
                     {
@@ -32055,7 +32318,7 @@ end
                 local char = get_local_char()
                 if not char or not descendant:IsDescendantOf(char) then return end
 
-                if is_orb_object(descendant) then
+                if is_shield_or_orb_object(descendant) then
                     track_orb_hierarchy(descendant)
                     return
                 end
@@ -32152,7 +32415,7 @@ end
                 local hrp = char:FindFirstChild("HumanoidRootPart")
                 if hrp then
                     utility:Connection(hrp.ChildAdded, function(child)
-                        if is_orb_object(child) then
+                        if is_shield_or_orb_object(child) then
                             track_orb_hierarchy(child)
                         end
                     end)
@@ -32187,27 +32450,39 @@ end
                     setting_rainbow_color = true
                     for emitter in pairs(tracked_seq_targets) do
                         if emitter.Parent then
-                            pcall(function() emitter.Color = seq end)
+                            pcall(safe_set_seq, emitter, seq)
                         end
                     end
                     for inst, props in pairs(tracked_c3_targets) do
                         if inst.Parent then
                             for prop_name in pairs(props) do
-                                pcall(function() inst[prop_name] = c3 end)
+                                pcall(safe_set_c3, inst, prop_name, c3)
                             end
                         end
                     end
                     setting_rainbow_color = false
                 else
+                    for part, data in pairs(shield_beams) do
+                        if data.conn then data.conn:Disconnect() end
+                        if data.beam and data.beam.Parent then data.beam:Destroy() end
+                        if data.att0 and data.att0.Parent then data.att0:Destroy() end
+                        if data.att1 and data.att1.Parent then data.att1:Destroy() end
+                        if data.emitter and data.emitter.Parent and original_shield_props[data.emitter] then
+                            pcall(function()
+                                data.emitter.Transparency = original_shield_props[data.emitter].Transparency
+                            end)
+                        end
+                        shield_beams[part] = nil
+                    end
                     for emitter, orig_col in pairs(original_seq_colors) do
                         if emitter.Parent then
-                            pcall(function() emitter.Color = orig_col end)
+                            pcall(safe_set_seq, emitter, orig_col)
                         end
                     end
                     for inst, props in pairs(original_c3_colors) do
                         if inst.Parent then
                             for prop_name, orig_val in pairs(props) do
-                                pcall(function() inst[prop_name] = orig_val end)
+                                pcall(safe_set_c3, inst, prop_name, orig_val)
                             end
                         end
                     end
@@ -32220,25 +32495,42 @@ end
                 local rainbow_vfx_on = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
                 if not rainbow_vfx_on then return end
 
-                local char = get_local_char()
-                if char then
-                    local hrp = char:FindFirstChild("HumanoidRootPart")
-                    if hrp then
-                        for _, child in ipairs(hrp:GetChildren()) do
-                            if string.find(string.lower(child.Name), "orb", 1, true) then
-                                if not orb_tracked_set[child] then
-                                    orb_tracked_set[child] = true
-                                    track_orb_hierarchy(child)
+                local now = os.clock()
+                if now - last_vfx_scan > 0.35 then
+                    last_vfx_scan = now
+                    local char = get_local_char()
+                    if char then
+                        local hrp = char:FindFirstChild("HumanoidRootPart")
+                        if hrp then
+                            for _, child in ipairs(hrp:GetChildren()) do
+                                if is_shield_or_orb_object(child) then
+                                    if not orb_tracked_set[child] then
+                                        orb_tracked_set[child] = true
+                                        track_orb_hierarchy(child)
+                                    end
                                 end
                             end
                         end
-                    end
 
-                    local left_arm = char:FindFirstChild("Left Arm")
-                    local cord = (left_arm and left_arm:FindFirstChild("Cord")) or char:FindFirstChild("Cord")
-                    if cord and not cord_tracked_set[cord] then
-                        cord_tracked_set[cord] = true
-                        track_grapple_hierarchy(cord)
+                        local left_arm = char:FindFirstChild("Left Arm")
+                        local cord = (left_arm and left_arm:FindFirstChild("Cord")) or char:FindFirstChild("Cord")
+                        if cord and not cord_tracked_set[cord] then
+                            cord_tracked_set[cord] = true
+                            track_grapple_hierarchy(cord)
+                        end
+                    end
+                end
+
+                for part, data in pairs(shield_beams) do
+                    if part.Parent then
+                        if data.emitter and data.emitter.Parent then
+                            if data.beam.Enabled ~= data.emitter.Enabled then
+                                data.beam.Enabled = data.emitter.Enabled
+                            end
+                        end
+                    else
+                        if data.conn then data.conn:Disconnect() end
+                        shield_beams[part] = nil
                     end
                 end
 
@@ -32248,9 +32540,9 @@ end
                 setting_rainbow_color = true
                 for emitter in pairs(tracked_seq_targets) do
                     if emitter.Parent then
-                        pcall(function()
-                            emitter.Color = seq
-                        end)
+                        if not emitter:IsA("Beam") or emitter.Enabled then
+                            pcall(safe_set_seq, emitter, seq)
+                        end
                     else
                         tracked_seq_targets[emitter] = nil
                         original_seq_colors[emitter] = nil
@@ -32260,9 +32552,7 @@ end
                 for inst, props in pairs(tracked_c3_targets) do
                     if inst.Parent then
                         for prop_name in pairs(props) do
-                            pcall(function()
-                                inst[prop_name] = c3
-                            end)
+                            pcall(safe_set_c3, inst, prop_name, c3)
                         end
                     else
                         tracked_c3_targets[inst] = nil
