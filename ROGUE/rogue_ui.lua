@@ -453,6 +453,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
         notifications = {},
     }
     local cheat_client = {
+        unload_hooks = {},
         config = {
             anticheat_mode = "Normal",
             perflora_teleport = false,
@@ -2895,7 +2896,13 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 end
             end))
         end
-    
+
+        cheat_client.register_unload_hook = function(fn)
+            if typeof(fn) == "function" then
+                table.insert(cheat_client.unload_hooks, fn)
+            end
+        end
+
         function utility:Unload(removeitem)
             getgenv()._hx_unloaded = true
             if shared then
@@ -3301,6 +3308,68 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         slider.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
                         if slider:IsA("ImageLabel") or slider:IsA("ImageButton") then
                             slider.ImageColor3 = Color3.fromRGB(0, 170, 255)
+                        end
+                    end
+                end)
+                pcall(function()
+                    local pg = plr and plr:FindFirstChild("PlayerGui")
+                    local sg = pg and pg:FindFirstChild("StatGui")
+                    local cont = sg and sg:FindFirstChild("Container")
+                    local hp = cont and cont:FindFirstChild("Health")
+                    local slider = hp and hp:FindFirstChild("Slider")
+                    if slider then
+                        local grad = slider:FindFirstChild("RainbowHealthGradient")
+                        if grad then grad:Destroy() end
+                        local shimmer = slider:FindFirstChild("RainbowHealthShimmer")
+                        if shimmer then shimmer:Destroy() end
+                        local crest = slider:FindFirstChild("RainbowHealthCrest")
+                        if crest then crest:Destroy() end
+                        local stroke = slider:FindFirstChild("RainbowHealthStroke")
+                        if stroke then stroke:Destroy() end
+                        if hp then
+                            local pstroke = hp:FindFirstChild("RainbowHealthStroke")
+                            if pstroke then pstroke:Destroy() end
+                        end
+                        slider.BackgroundColor3 = Color3.fromRGB(255, 75, 75)
+                        if slider:IsA("ImageLabel") or slider:IsA("ImageButton") then
+                            slider.ImageColor3 = Color3.fromRGB(255, 75, 75)
+                        end
+                    end
+                end)
+                pcall(function()
+                    if cheat_client and cheat_client.cleanup_killstreaks then
+                        cheat_client.cleanup_killstreaks()
+                    end
+                    local char = plr and plr.Character
+                    local head = char and char:FindFirstChild("Head")
+                    local ks_ui = head and head:FindFirstChild("KillstreakUI")
+                    if ks_ui then ks_ui:Destroy() end
+                    local live = ws:FindFirstChild("Live")
+                    if live then
+                        for _, c in ipairs(live:GetChildren()) do
+                            local h = c:FindFirstChild("Head")
+                            local kui = h and h:FindFirstChild("KillstreakUI")
+                            if kui then kui:Destroy() end
+                        end
+                    end
+                end)
+                pcall(function()
+                    if cheat_client and cheat_client.update_rainbow_vfx then
+                        cheat_client.update_rainbow_vfx(false)
+                    end
+                    local char = plr and plr.Character
+                    if char then
+                        for _, desc in ipairs(char:GetDescendants()) do
+                            if desc.Name == "RainbowShieldBeam" or desc.Name == "RainbowShieldAtt0" or desc.Name == "RainbowShieldAtt1" then
+                                desc:Destroy()
+                            end
+                        end
+                    end
+                end)
+                pcall(function()
+                    if cheat_client and cheat_client.unload_hooks then
+                        for _, hook_fn in ipairs(cheat_client.unload_hooks) do
+                            pcall(hook_fn)
                         end
                     end
                 end)
@@ -9997,6 +10066,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 utility.get_liquid_rainbow_seq = get_liquid_rainbow_seq
 
                 utility:Connection(rs.RenderStepped, LPH_NO_VIRTUALIZE(function()
+                    if not shared or shared.is_unloading then return end
                     local rainbow_on = (Toggles and Toggles.rainbow_mana and Toggles.rainbow_mana.Value) or cheat_client.config.rainbow_mana
                     local spoof_on = (Toggles and Toggles.spoof_mana_color and Toggles.spoof_mana_color.Value) or cheat_client.config.spoof_mana_color
                     local rainbow_health_on = (Toggles and Toggles.rainbow_health and Toggles.rainbow_health.Value) or cheat_client.config.rainbow_health
@@ -10136,6 +10206,29 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         end
                     end
                 end))
+
+                if cheat_client.register_unload_hook then
+                    cheat_client.register_unload_hook(function()
+                        if cached_slider and cached_slider.Parent then
+                            cleanup_rainbow(cached_slider)
+                            if color_captured and orig_bg_color then
+                                cached_slider.BackgroundColor3 = orig_bg_color
+                                if orig_img_color and (cached_slider:IsA("ImageLabel") or cached_slider:IsA("ImageButton")) then
+                                    cached_slider.ImageColor3 = orig_img_color
+                                end
+                            end
+                        end
+                        if cached_health_slider and cached_health_slider.Parent then
+                            cleanup_health_rainbow(cached_health_slider)
+                            if health_color_captured and orig_health_bg_color then
+                                cached_health_slider.BackgroundColor3 = orig_health_bg_color
+                                if orig_health_img_color and (cached_health_slider:IsA("ImageLabel") or cached_health_slider:IsA("ImageButton")) then
+                                    cached_health_slider.ImageColor3 = orig_health_img_color
+                                end
+                            end
+                        end
+                    end)
+                end
             end
 
             group_overlays:AddToggle("better_leaderboard", {
@@ -31534,6 +31627,23 @@ end
             end
 
             cheat_client.update_killstreak_ui = update_ui
+            cheat_client.cleanup_killstreaks = function()
+                if current_bb_gui and current_bb_gui.Parent then
+                    current_bb_gui:Destroy()
+                    current_bb_gui = nil
+                end
+                local char = plr.Character
+                local head = char and (FindFirstChild(char, "Head") or char:FindFirstChild("Head"))
+                if head then
+                    local existing = head:FindFirstChild("KillstreakUI")
+                    if existing then existing:Destroy() end
+                end
+            end
+            if cheat_client.register_unload_hook then
+                cheat_client.register_unload_hook(function()
+                    cheat_client.cleanup_killstreaks()
+                end)
+            end
 
             local active_grip_target = nil
             local active_grip_start = 0
@@ -31750,6 +31860,7 @@ end
             end
 
             utility:Connection(rs.Heartbeat, LPH_NO_VIRTUALIZE(function()
+                if not shared or shared.is_unloading then return end
                 check_grips_and_lives()
             end))
 
@@ -31983,25 +32094,166 @@ end
                 end)
             end
 
+            local shield_beam_data = nil
+
+            local function cleanup_shield_beam()
+                if shield_beam_data then
+                    if shield_beam_data.conn then
+                        pcall(function() shield_beam_data.conn:Disconnect() end)
+                    end
+                    if shield_beam_data.beam and shield_beam_data.beam.Parent then
+                        shield_beam_data.beam:Destroy()
+                    end
+                    if shield_beam_data.att0 and shield_beam_data.att0.Parent then
+                        shield_beam_data.att0:Destroy()
+                    end
+                    if shield_beam_data.att1 and shield_beam_data.att1.Parent then
+                        shield_beam_data.att1:Destroy()
+                    end
+                    if shield_beam_data.emitter and shield_beam_data.emitter.Parent then
+                        pcall(function()
+                            shield_beam_data.emitter.Transparency = NumberSequence.new({
+                                NumberSequenceKeypoint.new(0, 0),
+                                NumberSequenceKeypoint.new(0.0184, 0),
+                                NumberSequenceKeypoint.new(0.0353, 1),
+                                NumberSequenceKeypoint.new(1, 1)
+                            })
+                        end)
+                    end
+                    shield_beam_data = nil
+                end
+            end
+
+            local function setup_shield_beam(part)
+                if not part or not part:IsA("BasePart") then return end
+
+                local att = part:FindFirstChild("Attachment")
+                local orig_emitter = att and att:FindFirstChildWhichIsA("ParticleEmitter")
+                if not orig_emitter then
+                    orig_emitter = part:FindFirstChildWhichIsA("ParticleEmitter", true)
+                end
+
+                local center = att and att.Position or Vector3.new(0, 0, 0)
+                local shield_size = 6.5
+                local shield_tex = "rbxassetid://241650934"
+                if orig_emitter then
+                    if orig_emitter.Texture and orig_emitter.Texture ~= "" then
+                        shield_tex = orig_emitter.Texture
+                    end
+                    local kps = orig_emitter.Size and orig_emitter.Size.Keypoints
+                    if kps then
+                        for _, kp in ipairs(kps) do
+                            if kp.Value > shield_size then
+                                shield_size = kp.Value
+                            end
+                        end
+                    end
+                end
+                local rad = shield_size * 0.5
+
+                local att_bottom = part:FindFirstChild("RainbowShieldAtt0")
+                if not att_bottom then
+                    att_bottom = Instance.new("Attachment")
+                    att_bottom.Name = "RainbowShieldAtt0"
+                    att_bottom.Position = center - Vector3.new(0, rad, 0)
+                    att_bottom.Parent = part
+                else
+                    att_bottom.Position = center - Vector3.new(0, rad, 0)
+                end
+
+                local att_top = part:FindFirstChild("RainbowShieldAtt1")
+                if not att_top then
+                    att_top = Instance.new("Attachment")
+                    att_top.Name = "RainbowShieldAtt1"
+                    att_top.Position = center + Vector3.new(0, rad, 0)
+                    att_top.Parent = part
+                else
+                    att_top.Position = center + Vector3.new(0, rad, 0)
+                end
+
+                local beam = part:FindFirstChild("RainbowShieldBeam")
+                if not beam then
+                    beam = Instance.new("Beam")
+                    beam.Name = "RainbowShieldBeam"
+                    beam.Attachment0 = att_bottom
+                    beam.Attachment1 = att_top
+                    beam.Width0 = shield_size
+                    beam.Width1 = shield_size
+                    beam.FaceCamera = true
+                    beam.Segments = 1
+                    beam.LightEmission = 1
+                    beam.LightInfluence = 0
+                    beam.TextureMode = Enum.TextureMode.Stretch
+                    beam.TextureLength = 1
+                    beam.TextureSpeed = 0
+                    beam.Texture = shield_tex
+                    beam.Transparency = NumberSequence.new(0.08)
+                    beam.Color = get_synced_vfx_rainbow_seq()
+                    beam.Parent = part
+                else
+                    beam.Attachment0 = att_bottom
+                    beam.Attachment1 = att_top
+                    beam.Width0 = shield_size
+                    beam.Width1 = shield_size
+                    beam.FaceCamera = true
+                    beam.Color = get_synced_vfx_rainbow_seq()
+                end
+
+                local is_enabled = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
+                if is_enabled then
+                    if orig_emitter then
+                        beam.Enabled = orig_emitter.Enabled
+                        orig_emitter.Transparency = NumberSequence.new(1)
+                    else
+                        beam.Enabled = true
+                    end
+                else
+                    beam.Enabled = false
+                end
+
+                local conn_en = nil
+                if orig_emitter then
+                    conn_en = orig_emitter:GetPropertyChangedSignal("Enabled"):Connect(function()
+                        local active = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
+                        if active then
+                            beam.Enabled = orig_emitter.Enabled
+                            orig_emitter.Transparency = NumberSequence.new(1)
+                        end
+                    end)
+                end
+
+                tracked_seq_targets[beam] = true
+
+                shield_beam_data = {
+                    part = part,
+                    beam = beam,
+                    att0 = att_bottom,
+                    att1 = att_top,
+                    emitter = orig_emitter,
+                    conn = conn_en
+                }
+            end
+
             local function track_any_target(inst)
                 if not inst then return end
                 if is_shield_or_orb_object(inst) then
-                    local old_b = inst:FindFirstChild("RainbowShieldBeam", true)
-                    if old_b then old_b:Destroy() end
-                    local old_a0 = inst:FindFirstChild("RainbowShieldAtt0", true)
-                    if old_a0 then old_a0:Destroy() end
-                    local old_a1 = inst:FindFirstChild("RainbowShieldAtt1", true)
-                    if old_a1 then old_a1:Destroy() end
+                    local is_enabled = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
                     if inst:IsA("BasePart") then
                         if original_c3_colors[inst] and original_c3_colors[inst].Color then
                             pcall(function() inst.Color = original_c3_colors[inst].Color end)
                         end
                         tracked_c3_targets[inst] = nil
+                        if is_enabled then
+                            setup_shield_beam(inst)
+                        else
+                            cleanup_shield_beam()
+                        end
                         return
                     end
                     if inst:IsA("ParticleEmitter") then
-                        local t_kps = inst.Transparency and inst.Transparency.Keypoints
-                        if t_kps and #t_kps == 2 and t_kps[1].Value == 1 and t_kps[2].Value == 1 then
+                        if is_enabled then
+                            inst.Transparency = NumberSequence.new(1)
+                        else
                             inst.Transparency = NumberSequence.new({
                                 NumberSequenceKeypoint.new(0, 0),
                                 NumberSequenceKeypoint.new(0.0184, 0),
@@ -32009,6 +32261,7 @@ end
                                 NumberSequenceKeypoint.new(1, 1)
                             })
                         end
+                        return
                     end
                 end
                 if inst:IsA("ParticleEmitter") or inst:IsA("Beam") or inst:IsA("Trail") then
@@ -32385,6 +32638,7 @@ end
                     end
                     setting_rainbow_color = false
                 else
+                    cleanup_shield_beam()
                     local char = get_local_char()
                     if char then
                         for _, desc in ipairs(char:GetDescendants()) do
@@ -32409,10 +32663,28 @@ end
             end
 
             cheat_client.update_rainbow_vfx = refresh_all_vfx
+            if cheat_client.register_unload_hook then
+                cheat_client.register_unload_hook(function()
+                    refresh_all_vfx(false)
+                end)
+            end
 
             utility:Connection(rs.RenderStepped, LPH_NO_VIRTUALIZE(function()
+                if not shared or shared.is_unloading then return end
                 local rainbow_vfx_on = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
                 if not rainbow_vfx_on then return end
+
+                if shield_beam_data then
+                    if shield_beam_data.part and shield_beam_data.part.Parent then
+                        if shield_beam_data.emitter and shield_beam_data.emitter.Parent then
+                            if shield_beam_data.beam.Enabled ~= shield_beam_data.emitter.Enabled then
+                                shield_beam_data.beam.Enabled = shield_beam_data.emitter.Enabled
+                            end
+                        end
+                    else
+                        cleanup_shield_beam()
+                    end
+                end
 
                 local now = os.clock()
                 if now - last_vfx_scan > 0.35 then
