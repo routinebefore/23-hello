@@ -3359,8 +3359,15 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     local char = plr and plr.Character
                     if char then
                         for _, desc in ipairs(char:GetDescendants()) do
-                            if desc.Name == "RainbowShieldBeam" or desc.Name == "RainbowShieldAtt0" or desc.Name == "RainbowShieldAtt1" then
+                            if desc.Name:find("RainbowShield", 1, true) then
                                 desc:Destroy()
+                            elseif desc:IsA("ParticleEmitter") and (desc.Texture:find("241650934", 1, true) or desc.Name:lower():find("orb", 1, true) or (desc.Parent and desc.Parent.Name:lower():find("orb", 1, true))) then
+                                desc.Transparency = NumberSequence.new({
+                                    NumberSequenceKeypoint.new(0, 0),
+                                    NumberSequenceKeypoint.new(0.0184, 0),
+                                    NumberSequenceKeypoint.new(0.0353, 1),
+                                    NumberSequenceKeypoint.new(1, 1)
+                                })
                             end
                         end
                     end
@@ -31918,7 +31925,6 @@ end
             local cord_tracked_set = {}
             local vfx_connections = {}
             local bound_chars = {}
-            local shield_beam_data = nil
             local setting_rainbow_color = false
             local last_vfx_scan = 0
             local last_c3_time = 0
@@ -32000,6 +32006,9 @@ end
             local function is_shield_or_orb_object(obj)
                 if not obj then return false end
                 if obj.Name:find("RainbowShield", 1, true) then return false end
+                if obj:IsA("ParticleEmitter") and obj.Texture and obj.Texture:find("241650934", 1, true) then
+                    return true
+                end
                 local name = string.lower(obj.Name)
                 if string.find(name, "orb", 1, true) or string.find(name, "shield", 1, true) or string.find(name, "bubble", 1, true) then
                     return true
@@ -32018,150 +32027,6 @@ end
                 return false
             end
 
-            local function cleanup_shield_beam()
-                if shield_beam_data then
-                    if shield_beam_data.conn then
-                        pcall(function() shield_beam_data.conn:Disconnect() end)
-                    end
-                    if shield_beam_data.beam then
-                        tracked_seq_targets[shield_beam_data.beam] = nil
-                        if shield_beam_data.beam.Parent then
-                            pcall(function() shield_beam_data.beam:Destroy() end)
-                        end
-                    end
-                    if shield_beam_data.att0 and shield_beam_data.att0.Parent then
-                        pcall(function() shield_beam_data.att0:Destroy() end)
-                    end
-                    if shield_beam_data.att1 and shield_beam_data.att1.Parent then
-                        pcall(function() shield_beam_data.att1:Destroy() end)
-                    end
-                    if shield_beam_data.emitter and shield_beam_data.emitter.Parent then
-                        pcall(function()
-                            shield_beam_data.emitter.Transparency = NumberSequence.new({
-                                NumberSequenceKeypoint.new(0, 0),
-                                NumberSequenceKeypoint.new(0.0184, 0),
-                                NumberSequenceKeypoint.new(0.0353, 1),
-                                NumberSequenceKeypoint.new(1, 1)
-                            })
-                        end)
-                    end
-                    shield_beam_data = nil
-                end
-            end
-
-            local function setup_shield_beam(part)
-                if not part or not part:IsA("BasePart") or not part:IsDescendantOf(ws) then return end
-                if shield_beam_data and shield_beam_data.part == part and shield_beam_data.beam and shield_beam_data.beam.Parent == part then
-                    return
-                end
-                cleanup_shield_beam()
-
-                local is_enabled = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
-                if not is_enabled then return end
-
-                local att = part:FindFirstChild("Attachment")
-                local orig_emitter = att and att:FindFirstChildWhichIsA("ParticleEmitter")
-                if not orig_emitter then
-                    orig_emitter = part:FindFirstChildWhichIsA("ParticleEmitter", true)
-                end
-
-                local center = att and att.Position or Vector3.new(0, 0, 0)
-                local shield_size = 6.5
-                local shield_tex = "rbxassetid://241650934"
-                if orig_emitter then
-                    if orig_emitter.Texture and orig_emitter.Texture ~= "" then
-                        shield_tex = orig_emitter.Texture
-                    end
-                    local kps = orig_emitter.Size and orig_emitter.Size.Keypoints
-                    if kps then
-                        for _, kp in ipairs(kps) do
-                            if kp.Value > shield_size then
-                                shield_size = kp.Value
-                            end
-                        end
-                    end
-                end
-                local rad = shield_size * 0.5
-
-                local att_bottom = part:FindFirstChild("RainbowShieldAtt0")
-                if not att_bottom then
-                    att_bottom = Instance.new("Attachment")
-                    att_bottom.Name = "RainbowShieldAtt0"
-                    att_bottom.Position = center - Vector3.new(0, rad, 0)
-                    att_bottom.Parent = part
-                else
-                    att_bottom.Position = center - Vector3.new(0, rad, 0)
-                end
-
-                local att_top = part:FindFirstChild("RainbowShieldAtt1")
-                if not att_top then
-                    att_top = Instance.new("Attachment")
-                    att_top.Name = "RainbowShieldAtt1"
-                    att_top.Position = center + Vector3.new(0, rad, 0)
-                    att_top.Parent = part
-                else
-                    att_top.Position = center + Vector3.new(0, rad, 0)
-                end
-
-                local beam = part:FindFirstChild("RainbowShieldBeam")
-                if not beam then
-                    beam = Instance.new("Beam")
-                    beam.Name = "RainbowShieldBeam"
-                    beam.Attachment0 = att_bottom
-                    beam.Attachment1 = att_top
-                    beam.Width0 = shield_size
-                    beam.Width1 = shield_size
-                    beam.FaceCamera = true
-                    beam.Segments = 1
-                    beam.LightEmission = 1
-                    beam.LightInfluence = 0
-                    beam.TextureMode = Enum.TextureMode.Stretch
-                    beam.TextureLength = 1
-                    beam.TextureSpeed = 0
-                    beam.Texture = shield_tex
-                    beam.Transparency = NumberSequence.new(0.08)
-                    beam.Color = get_synced_vfx_rainbow_seq()
-                    beam.Parent = part
-                else
-                    beam.Attachment0 = att_bottom
-                    beam.Attachment1 = att_top
-                    beam.Width0 = shield_size
-                    beam.Width1 = shield_size
-                    beam.FaceCamera = true
-                    beam.Color = get_synced_vfx_rainbow_seq()
-                end
-
-                if orig_emitter then
-                    beam.Enabled = orig_emitter.Enabled
-                    orig_emitter.Transparency = NumberSequence.new(1)
-                else
-                    beam.Enabled = true
-                end
-
-                local conn_en = nil
-                if orig_emitter then
-                    conn_en = track_vfx_conn(orig_emitter:GetPropertyChangedSignal("Enabled"):Connect(function()
-                        if not shared or shared.is_unloading or getgenv()._hx_unloaded then return end
-                        local active = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
-                        if active then
-                            beam.Enabled = orig_emitter.Enabled
-                            orig_emitter.Transparency = NumberSequence.new(1)
-                        end
-                    end))
-                end
-
-                tracked_seq_targets[beam] = true
-
-                shield_beam_data = {
-                    part = part,
-                    beam = beam,
-                    att0 = att_bottom,
-                    att1 = att_top,
-                    emitter = orig_emitter,
-                    conn = conn_en
-                }
-            end
-
             local function track_seq_target(emitter)
                 if not emitter or tracked_seq_targets[emitter] then return end
                 local ok, col = pcall(function() return emitter.Color end)
@@ -32175,7 +32040,11 @@ end
                 local is_enabled = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
                 if is_enabled then
                     setting_rainbow_color = true
-                    pcall(safe_set_seq, emitter, get_synced_vfx_rainbow_seq())
+                    if emitter:IsA("ParticleEmitter") and is_shield_or_orb_object(emitter) then
+                        pcall(safe_set_seq, emitter, ColorSequence.new(get_synced_vfx_rainbow_c3()))
+                    else
+                        pcall(safe_set_seq, emitter, get_synced_vfx_rainbow_seq())
+                    end
                     setting_rainbow_color = false
                 end
 
@@ -32220,36 +32089,24 @@ end
             end
 
             local function track_any_target(inst)
-                if not inst or inst.Name:find("RainbowShield", 1, true) then return end
-                if is_shield_or_orb_object(inst) then
-                    local is_enabled = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
-                    if inst:IsA("BasePart") then
-                        if original_c3_colors[inst] and original_c3_colors[inst].Color then
-                            pcall(function() inst.Color = original_c3_colors[inst].Color end)
-                        end
-                        tracked_c3_targets[inst] = nil
-                        if is_enabled then
-                            setup_shield_beam(inst)
-                        else
-                            cleanup_shield_beam()
-                        end
-                        return
-                    end
-                    if inst:IsA("ParticleEmitter") then
-                        if is_enabled then
-                            inst.Transparency = NumberSequence.new(1)
-                        else
+                if not inst then return end
+                if inst.Name:find("RainbowShield", 1, true) then
+                    pcall(function() inst:Destroy() end)
+                    return
+                end
+                if inst:IsA("ParticleEmitter") then
+                    if is_shield_or_orb_object(inst) then
+                        pcall(function()
                             inst.Transparency = NumberSequence.new({
                                 NumberSequenceKeypoint.new(0, 0),
                                 NumberSequenceKeypoint.new(0.0184, 0),
                                 NumberSequenceKeypoint.new(0.0353, 1),
                                 NumberSequenceKeypoint.new(1, 1)
                             })
-                        end
-                        return
+                        end)
                     end
-                end
-                if inst:IsA("ParticleEmitter") or inst:IsA("Beam") or inst:IsA("Trail") then
+                    track_seq_target(inst)
+                elseif inst:IsA("Beam") or inst:IsA("Trail") then
                     track_seq_target(inst)
                 elseif inst:IsA("Light") then
                     track_c3_target(inst, "Color")
@@ -32290,17 +32147,27 @@ end
             end
 
             local function track_orb_hierarchy(orb_inst)
-                if not orb_inst or orb_inst.Name:find("RainbowShield", 1, true) then return end
+                if not orb_inst then return end
+                if orb_inst.Name:find("RainbowShield", 1, true) then
+                    pcall(function() orb_inst:Destroy() end)
+                    return
+                end
                 track_any_target(orb_inst)
                 for _, desc in ipairs(orb_inst:GetDescendants()) do
-                    if not desc.Name:find("RainbowShield", 1, true) then
+                    if desc.Name:find("RainbowShield", 1, true) then
+                        pcall(function() desc:Destroy() end)
+                    else
                         track_any_target(desc)
                     end
                 end
                 if not orb_listeners[orb_inst] then
                     orb_listeners[orb_inst] = track_vfx_conn(orb_inst.DescendantAdded:Connect(function(desc)
                         if not shared or shared.is_unloading or getgenv()._hx_unloaded then return end
-                        if not desc or desc.Name:find("RainbowShield", 1, true) then return end
+                        if not desc then return end
+                        if desc.Name:find("RainbowShield", 1, true) then
+                            pcall(function() desc:Destroy() end)
+                            return
+                        end
                         track_any_target(desc)
                     end))
                 end
@@ -32476,7 +32343,11 @@ end
             end
 
             local function scan_character_descendant(descendant)
-                if not descendant or descendant.Name:find("RainbowShield", 1, true) then return end
+                if not descendant then return end
+                if descendant.Name:find("RainbowShield", 1, true) then
+                    pcall(function() descendant:Destroy() end)
+                    return
+                end
                 local char = get_local_char()
                 if not char or not descendant:IsDescendantOf(char) then return end
 
@@ -32606,7 +32477,7 @@ end
                     local char = get_local_char()
                     if char then
                         for _, desc in ipairs(char:GetDescendants()) do
-                            if desc.Name == "RainbowShieldBeam" or desc.Name == "RainbowShieldAtt0" or desc.Name == "RainbowShieldAtt1" then
+                            if desc.Name:find("RainbowShield", 1, true) then
                                 pcall(function() desc:Destroy() end)
                             else
                                 scan_character_descendant(desc)
@@ -32624,7 +32495,11 @@ end
                     setting_rainbow_color = true
                     for emitter in pairs(tracked_seq_targets) do
                         if emitter.Parent then
-                            pcall(safe_set_seq, emitter, seq)
+                            if emitter:IsA("ParticleEmitter") and is_shield_or_orb_object(emitter) then
+                                pcall(safe_set_seq, emitter, ColorSequence.new(c3))
+                            else
+                                pcall(safe_set_seq, emitter, seq)
+                            end
                         end
                     end
                     for inst, props in pairs(tracked_c3_targets) do
@@ -32636,13 +32511,21 @@ end
                     end
                     setting_rainbow_color = false
                 else
-                    cleanup_shield_beam()
                     disconnect_all_vfx_conns()
                     local char = get_local_char()
                     if char then
                         for _, desc in ipairs(char:GetDescendants()) do
-                            if desc.Name == "RainbowShieldBeam" or desc.Name == "RainbowShieldAtt0" or desc.Name == "RainbowShieldAtt1" then
+                            if desc.Name:find("RainbowShield", 1, true) then
                                 pcall(function() desc:Destroy() end)
+                            elseif desc:IsA("ParticleEmitter") and is_shield_or_orb_object(desc) then
+                                pcall(function()
+                                    desc.Transparency = NumberSequence.new({
+                                        NumberSequenceKeypoint.new(0, 0),
+                                        NumberSequenceKeypoint.new(0.0184, 0),
+                                        NumberSequenceKeypoint.new(0.0353, 1),
+                                        NumberSequenceKeypoint.new(1, 1)
+                                    })
+                                end)
                             end
                         end
                     end
@@ -32680,18 +32563,6 @@ end
                 local rainbow_vfx_on = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
                 if not rainbow_vfx_on then return end
 
-                if shield_beam_data then
-                    if shield_beam_data.part and shield_beam_data.part.Parent then
-                        if shield_beam_data.emitter and shield_beam_data.emitter.Parent then
-                            if shield_beam_data.beam.Enabled ~= shield_beam_data.emitter.Enabled then
-                                shield_beam_data.beam.Enabled = shield_beam_data.emitter.Enabled
-                            end
-                        end
-                    else
-                        cleanup_shield_beam()
-                    end
-                end
-
                 local now = os.clock()
                 if now - last_vfx_scan > 0.35 then
                     last_vfx_scan = now
@@ -32724,8 +32595,12 @@ end
                 setting_rainbow_color = true
                 for emitter in pairs(tracked_seq_targets) do
                     if emitter.Parent then
-                        if not emitter:IsA("Beam") or emitter.Enabled then
-                            pcall(safe_set_seq, emitter, seq)
+                        if emitter:IsA("ParticleEmitter") and is_shield_or_orb_object(emitter) then
+                            pcall(safe_set_seq, emitter, ColorSequence.new(c3))
+                        else
+                            if not emitter:IsA("Beam") or emitter.Enabled then
+                                pcall(safe_set_seq, emitter, seq)
+                            end
                         end
                     else
                         tracked_seq_targets[emitter] = nil
