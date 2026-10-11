@@ -463,6 +463,8 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             hold_block_delay = 0,
             no_stun = false,
             anti_confusion = false,
+			hold_carry = false,
+            verdien_highlight = false,
 
             auto_perfect_block = false,
             parry_viribus = false,
@@ -9235,6 +9237,19 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     Compact = true
                 })
 
+                group_combat_utils:AddToggle("HoldCarry", {
+                    Text = "Hold Carry (V)",
+                    Default = cheat_client.config.hold_carry,
+                    Callback = function(value)
+                        cheat_client.config.hold_carry = value
+                        if value then
+                            if cheat_client.start_hold_carry then cheat_client.start_hold_carry() end
+                        else
+                            if cheat_client.stop_hold_carry then cheat_client.stop_hold_carry() end
+                        end
+                    end
+                })
+
             group_combat_utils:AddDivider()
 
            group_combat_utils:AddToggle("BaneTeleport", {
@@ -9264,6 +9279,18 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 Compact = true,
                 Callback = function(value)
                     cheat_client.config.bane_teleport_radius = value
+                end
+            })
+
+            group_combat_utils:AddToggle("VerdienHighlight", {
+                Text = "Verdien Highlight",
+                Default = cheat_client.config.verdien_highlight,
+                Tooltip = "Highlights targets green or red (verdien cd/blocked/out of range) when Verdien is equipped",
+                Callback = function(value)
+                    cheat_client.config.verdien_highlight = value
+                    if not value then
+                        if cheat_client.clear_verdien_highlights then cheat_client.clear_verdien_highlights() end
+                    end
                 end
             })
 
@@ -29222,6 +29249,148 @@ end
                     end
                 end))
             end
+
+        -- ── Hold Carry ──────────────────────────────────────────────────
+        do
+            local holdingV = false
+
+            local function start_hold_carry()
+                if cheat_client.feature_connections.hold_carry then return end
+
+                cheat_client.feature_connections.hold_carry_input_began = utility:Connection(uis.InputBegan, function(input, processed)
+                    if not processed and input.KeyCode == Enum.KeyCode.V then
+                        holdingV = true
+                    end
+                end)
+
+                cheat_client.feature_connections.hold_carry_input_ended = utility:Connection(uis.InputEnded, function(input)
+                    if input.KeyCode == Enum.KeyCode.V then
+                        holdingV = false
+                    end
+                end)
+
+                cheat_client.feature_connections.hold_carry = utility:Connection(rs.RenderStepped, function()
+                    if not holdingV or not plr.Character then return end
+
+                    -- stop spamming once Grabbing accessory exists
+                    if plr.Character:FindFirstChild("Grabbing") then return end
+
+                    local remote = plr.Character:FindFirstChild("CharacterHandler")
+                        and plr.Character.CharacterHandler:FindFirstChild("Remotes")
+                        and plr.Character.CharacterHandler.Remotes:FindFirstChild("Carry")
+
+                    if remote then
+                        pcall(function() remote:FireServer() end)
+                    end
+                end)
+            end
+
+            local function stop_hold_carry()
+                holdingV = false
+                for _, key in next, { "hold_carry", "hold_carry_input_began", "hold_carry_input_ended" } do
+                    if cheat_client.feature_connections[key] then
+                        cheat_client.feature_connections[key]:Disconnect()
+                        cheat_client.feature_connections[key] = nil
+                    end
+                end
+            end
+
+            cheat_client.start_hold_carry = start_hold_carry
+            cheat_client.stop_hold_carry  = stop_hold_carry
+
+            if Toggles and Toggles.HoldCarry and Toggles.HoldCarry.Value then
+                start_hold_carry()
+            end
+        end
+
+        -- ── Verdien Highlight ───────────────────────────────────────────
+        do
+            local highlight_pool = {}
+
+            local function get_or_make_highlight(char)
+                local addr = tostring(char)
+                if highlight_pool[addr] and highlight_pool[addr].Parent then
+                    return highlight_pool[addr]
+                end
+                -- clean up stale
+                if highlight_pool[addr] then
+                    pcall(function() highlight_pool[addr]:Destroy() end)
+                end
+                local h = Instance.new("SelectionBox")
+                h.LineThickness   = 0.05
+                h.SurfaceTransparency = 0.6
+                h.Color3          = Color3.fromRGB(0, 255, 0)
+                h.SurfaceColor3   = Color3.fromRGB(0, 255, 0)
+                h.Adornee         = char
+                h.Parent          = game:GetService("CoreGui")
+                highlight_pool[addr] = h
+                return h
+            end
+
+            local function clear_highlights()
+                for addr, h in next, highlight_pool do
+                    pcall(function() h:Destroy() end)
+                    highlight_pool[addr] = nil
+                end
+            end
+
+            cheat_client.clear_verdien_highlights = clear_highlights
+
+            utility:Connection(rs.RenderStepped, function()
+                if not (Toggles and Toggles.VerdienHighlight and Toggles.VerdienHighlight.Value) then
+                    clear_highlights()
+                    return
+                end
+
+                -- check local player has Verdien equipped
+                local char = plr.Character
+                if not char then clear_highlights(); return end
+
+                local hasVerdien = false
+                for _, v in next, char:GetChildren() do
+                    if v.ClassName == "Tool" and v.Name == "Verdien" then hasVerdien = true; break end
+                end
+                if not hasVerdien then clear_highlights(); return end
+
+                local myRoot = char:FindFirstChild("HumanoidRootPart")
+                if not myRoot then clear_highlights(); return end
+                local myPos = myRoot.Position
+
+                local seen = {}
+
+                for _, p in next, Players:GetPlayers() do
+                    if p == plr then continue end
+                    local tc = p.Character
+                    if not tc then continue end
+                    local tRoot = tc:FindFirstChild("HumanoidRootPart")
+                        or tc:FindFirstChild("UpperTorso")
+                        or tc:FindFirstChild("Torso")
+                    if not tRoot then continue end
+
+                    local addr = tostring(tc)
+                    seen[addr] = true
+
+                    local dist       = (tRoot.Position - myPos).Magnitude
+                    local hasCooldown = tc:FindFirstChild("VerdienCooldown") ~= nil
+                    local hasBlocking = tc:FindFirstChild("Blocking") ~= nil
+                    local hittable   = dist <= 25 and not hasCooldown and not hasBlocking
+
+                    local h = get_or_make_highlight(tc)
+                    local col = hittable and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 50, 50)
+                    h.Color3        = col
+                    h.SurfaceColor3 = col
+                    h.Adornee       = tc
+                end
+
+                -- remove highlights for players no longer relevant
+                for addr, h in next, highlight_pool do
+                    if not seen[addr] then
+                        pcall(function() h:Destroy() end)
+                        highlight_pool[addr] = nil
+                    end
+                end
+            end)
+        end
 
             local function stop_hold_block()
                 holdingF = false
