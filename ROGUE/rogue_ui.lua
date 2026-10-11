@@ -32088,6 +32088,8 @@ end
                 on_cooldown = {},
                 active_frames = {},
                 active_tweens = {},
+                frame_expiry = {},
+                original_overlay_colors = {},
                 current_tool = "",
                 current_spell = "",
                 painted = false,
@@ -32098,6 +32100,16 @@ end
 
             local function is_indicator_enabled()
                 return (Toggles and Toggles.CooldownIndicator and Toggles.CooldownIndicator.Value == true) or cheat_client.config.cooldown_indicator == true
+            end
+
+            local function get_idle_color(overlay)
+                if overlay and not cd_state.original_overlay_colors[overlay] then
+                    local current_col = overlay.ImageColor3
+                    if current_col ~= cd_colors.melee and current_col ~= cd_colors.spell and current_col ~= cd_colors.special and current_col ~= cd_colors.meleeShown then
+                        cd_state.original_overlay_colors[overlay] = current_col
+                    end
+                end
+                return (overlay and cd_state.original_overlay_colors[overlay]) or cd_colors.idle
             end
 
             local function get_slot_containers()
@@ -32130,6 +32142,19 @@ end
                 return nil
             end
 
+            local function reset_slot_overlay(slot)
+                if not slot then
+                    return
+                end
+                local overlay = slot:FindFirstChild("Overlay")
+                if overlay then
+                    local remaining = slot:FindFirstChild("SpellFrame") or slot:FindFirstChild("MeleeFrame")
+                    if not remaining then
+                        overlay.ImageColor3 = get_idle_color(overlay)
+                    end
+                end
+            end
+
             local function toggle_indicator_frames(visible)
                 local containers = get_slot_containers()
                 for _, container in ipairs(containers) do
@@ -32148,7 +32173,7 @@ end
                                 if melee_frame then
                                     melee_frame.Visible = true
                                     if overlay then
-                                        overlay.ImageColor3 = cd_colors.meleeShown
+                                        overlay.ImageColor3 = cd_colors.melee
                                     end
                                 end
                             else
@@ -32159,7 +32184,7 @@ end
                                     melee_frame.Visible = false
                                 end
                                 if overlay then
-                                    overlay.ImageColor3 = cd_colors.idle
+                                    overlay.ImageColor3 = get_idle_color(overlay)
                                 end
                             end
                         end
@@ -32220,12 +32245,17 @@ end
                 table.clear(cd_state.active_tweens)
                 for frame in pairs(cd_state.active_frames) do
                     pcall(function()
+                        local parent_slot = frame.Parent
                         if frame and frame.Destroy then
                             frame:Destroy()
+                        end
+                        if parent_slot then
+                            reset_slot_overlay(parent_slot)
                         end
                     end)
                 end
                 table.clear(cd_state.active_frames)
+                table.clear(cd_state.frame_expiry)
             end
 
             local function trigger_cooldown(cd_type, tool_or_skill_name)
@@ -32274,6 +32304,7 @@ end
                         cd_state.active_tweens[existing] = nil
                     end
                     cd_state.active_frames[existing] = nil
+                    cd_state.frame_expiry[existing] = nil
                     pcall(function()
                         existing:Destroy()
                     end)
@@ -32289,10 +32320,14 @@ end
                 frame.BackgroundColor3 = tint_color
                 frame.Parent = slot
                 cd_state.active_frames[frame] = true
+                cd_state.frame_expiry[frame] = os.clock() + duration
 
                 local overlay = slot:FindFirstChild("Overlay")
-                if overlay and cd_type ~= "special" and is_indicator_enabled() then
-                    overlay.ImageColor3 = tint_color
+                if overlay then
+                    get_idle_color(overlay)
+                    if cd_type ~= "special" and is_indicator_enabled() then
+                        overlay.ImageColor3 = tint_color
+                    end
                 end
 
                 local tween_info = TweenInfo.new(duration, Enum.EasingStyle.Linear)
@@ -32306,15 +32341,14 @@ end
                     task.wait(duration)
                     cd_state.active_tweens[frame] = nil
                     cd_state.active_frames[frame] = nil
-                    if overlay then
-                        local has_other_frame = slot:FindFirstChild("SpellFrame") or slot:FindFirstChild("MeleeFrame")
-                        if not has_other_frame then
-                            overlay.ImageColor3 = cd_colors.idle
-                        end
-                    end
+                    cd_state.frame_expiry[frame] = nil
                     pcall(function()
+                        if tween and tween.Cancel then
+                            tween:Cancel()
+                        end
                         frame:Destroy()
                     end)
+                    reset_slot_overlay(slot)
                 end)
             end
 
@@ -32399,7 +32433,9 @@ end
                     toggle_indicator_frames(state)
                 end
                 if not state then
+                    table.clear(cd_state.on_cooldown)
                     clear_active_indicators()
+                    toggle_indicator_frames(false)
                     return
                 end
                 cd_state.painted = true
@@ -32419,9 +32455,9 @@ end
                     end
                 end
                 table.clear(cd_state.root_connections)
+                table.clear(cd_state.on_cooldown)
                 clear_active_indicators()
                 toggle_indicator_frames(false)
-                table.clear(cd_state.on_cooldown)
                 cd_state.current_tool = ""
                 cd_state.current_spell = ""
             end
@@ -32435,10 +32471,69 @@ end
             table.insert(cd_state.root_connections, plr.CharacterAdded:Connect(function(new_char)
                 table.clear(cd_state.on_cooldown)
                 cd_state.current_spell = ""
+                clear_active_indicators()
+                toggle_indicator_frames(false)
                 if is_indicator_enabled() then
                     bind_character(new_char)
                 end
             end))
+
+            task.spawn(function()
+                while true do
+                    task.wait(0.5)
+                    if not shared or shared.is_unloading or (getgenv and getgenv()._hx_unloaded) then
+                        break
+                    end
+                    local enabled = is_indicator_enabled()
+                    local now = os.clock()
+
+                    for frame, expiry in pairs(cd_state.frame_expiry) do
+                        if now >= expiry then
+                            cd_state.frame_expiry[frame] = nil
+                            cd_state.active_frames[frame] = nil
+                            local parent_slot = frame.Parent
+                            if cd_state.active_tweens[frame] then
+                                pcall(function()
+                                    cd_state.active_tweens[frame]:Cancel()
+                                end)
+                                cd_state.active_tweens[frame] = nil
+                            end
+                            pcall(function()
+                                frame:Destroy()
+                            end)
+                            if parent_slot then
+                                reset_slot_overlay(parent_slot)
+                            end
+                        end
+                    end
+
+                    local containers = get_slot_containers()
+                    for _, container in ipairs(containers) do
+                        if container then
+                            for _, child in ipairs(container:GetChildren()) do
+                                if child:IsA("TextButton") then
+                                    local overlay = child:FindFirstChild("Overlay")
+                                    if overlay then
+                                        local spell_frame = child:FindFirstChild("SpellFrame")
+                                        local melee_frame = child:FindFirstChild("MeleeFrame")
+                                        if not spell_frame and not melee_frame then
+                                            local idle_col = get_idle_color(overlay)
+                                            if overlay.ImageColor3 ~= idle_col then
+                                                overlay.ImageColor3 = idle_col
+                                            end
+                                        elseif not enabled then
+                                            local idle_col = get_idle_color(overlay)
+                                            if overlay.ImageColor3 ~= idle_col then
+                                                overlay.ImageColor3 = idle_col
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end)
 
             if is_indicator_enabled() then
                 update_indicator_state(true)
