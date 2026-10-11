@@ -10175,6 +10175,9 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 local mana_rainbow_active = false
                 local health_rainbow_active = false
 
+                local last_slider_search = 0
+                local last_health_slider_search = 0
+
                 local liquid_transparency = NumberSequence.new({
                     NumberSequenceKeypoint.new(0.0, 0.05),
                     NumberSequenceKeypoint.new(0.04, 0.0),
@@ -10216,14 +10219,54 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     cached_health_grad = nil
                 end
 
+                local function is_character_in_world()
+                    if game.PlaceId == 3541987450 then
+                        return false
+                    end
+                    local char = plr.Character
+                    if not char or not char.Parent then
+                        return false
+                    end
+                    local hum = char:FindFirstChildOfClass("Humanoid")
+                    if not hum or hum.Health <= 0 then
+                        return false
+                    end
+                    local hrp = char:FindFirstChild("HumanoidRootPart")
+                    if not hrp then
+                        return false
+                    end
+                    local live = ws:FindFirstChild("Live")
+                    if live and char.Parent ~= live then
+                        return false
+                    end
+                    return true
+                end
+
+                local function reset_slider_cache()
+                    cached_slider = nil
+                    cached_health_slider = nil
+                    cached_mana_grad = nil
+                    cached_health_grad = nil
+                    last_slider_search = 0
+                    last_health_slider_search = 0
+                end
+
+                utility:Connection(plr.CharacterAdded, reset_slider_cache)
+
                 local function get_slider()
                     if cached_slider and cached_slider.Parent then
                         return cached_slider
                     end
+                    cached_slider = nil
+                    local now = os.clock()
+                    if now - last_slider_search < 0.4 then
+                        return nil
+                    end
+                    last_slider_search = now
                     local pg = plr:FindFirstChild("PlayerGui")
                     if not pg then return nil end
                     local sg = pg:FindFirstChild("StatGui")
-                    if not sg then return nil end
+                    if not sg or (sg:IsA("ScreenGui") and not sg.Enabled) then return nil end
                     local lc = sg:FindFirstChild("LeftContainer") or sg:FindFirstChild("Container")
                     if not lc then return nil end
                     local mf = lc:FindFirstChild("Mana")
@@ -10247,10 +10290,16 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     if cached_health_slider and cached_health_slider.Parent then
                         return cached_health_slider
                     end
+                    cached_health_slider = nil
+                    local now = os.clock()
+                    if now - last_health_slider_search < 0.4 then
+                        return nil
+                    end
+                    last_health_slider_search = now
                     local pg = plr:FindFirstChild("PlayerGui")
                     if not pg then return nil end
                     local sg = pg:FindFirstChild("StatGui")
-                    if not sg then return nil end
+                    if not sg or (sg:IsA("ScreenGui") and not sg.Enabled) then return nil end
                     local c = sg:FindFirstChild("Container") or sg:FindFirstChild("LeftContainer")
                     if not c then return nil end
                     local hf = c:FindFirstChild("Health")
@@ -10274,8 +10323,8 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 local cached_seqs_time = 0
 
                 local function get_liquid_rainbow_seq(shift, span, now)
-                    span = span or 1
-                    local rounded_span = math.floor(span * 100 + 0.5) / 100
+                    span = span or 0.85
+                    local rounded_span = math.floor(span * 20 + 0.5) / 20
                     if now ~= cached_seqs_time then
                         table.clear(cached_seqs)
                         cached_seqs_time = now
@@ -10284,7 +10333,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     if cached then
                         return cached
                     end
-                    local steps = 8
+                    local steps = 5
                     local kps = table.create(steps + 1)
                     for i = 0, steps do
                         local t = i / steps
@@ -10347,9 +10396,16 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         return
                     end
 
+                    if not is_character_in_world() then
+                        cached_slider = nil
+                        cached_health_slider = nil
+                        cached_mana_grad = nil
+                        cached_health_grad = nil
+                        return
+                    end
+
                     local now = os.clock()
                     local shift = (now * 0.32) % 1
-                    local wave_osc = math.sin(now * 1.4) * 3.5 + math.cos(now * 2.1) * 1.5
 
                     if rainbow_on then
                         local slider = get_slider()
@@ -10359,12 +10415,15 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                                 if not cached_mana_grad then
                                     cached_mana_grad = Instance.new("UIGradient")
                                     cached_mana_grad.Name = "RainbowManaGradient"
+                                    cached_mana_grad.Transparency = liquid_transparency
+                                    cached_mana_grad.Rotation = 90
                                     cached_mana_grad.Parent = slider
+                                else
+                                    cached_mana_grad.Transparency = liquid_transparency
+                                    cached_mana_grad.Rotation = 90
                                 end
                             end
                             cached_mana_grad.Enabled = true
-                            cached_mana_grad.Transparency = liquid_transparency
-                            cached_mana_grad.Rotation = 90 + wave_osc
 
                             local charge_pct = 1
                             if slider.Size and slider.Size.Y and slider.Size.Y.Scale > 0 and slider.Size.Y.Scale <= 1 then
@@ -10405,17 +10464,18 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                                 if not cached_health_grad then
                                     cached_health_grad = Instance.new("UIGradient")
                                     cached_health_grad.Name = "RainbowHealthGradient"
+                                    cached_health_grad.Transparency = liquid_transparency
                                     cached_health_grad.Parent = hslider
+                                else
+                                    cached_health_grad.Transparency = liquid_transparency
                                 end
                             end
                             cached_health_grad.Enabled = true
-                            cached_health_grad.Transparency = liquid_transparency
 
                             local is_vert = hslider.AbsoluteSize.Y > hslider.AbsoluteSize.X and hslider.AbsoluteSize.X > 0
-                            if is_vert then
-                                cached_health_grad.Rotation = 90 + wave_osc
-                            else
-                                cached_health_grad.Rotation = wave_osc
+                            local target_rot = is_vert and 90 or 0
+                            if cached_health_grad.Rotation ~= target_rot then
+                                cached_health_grad.Rotation = target_rot
                             end
 
                             local charge_pct = 1
@@ -24468,6 +24528,9 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
         do
             local rainbow_accent_lines = cheat_client.tracked_accent_lines or {}
             cheat_client.tracked_accent_lines = rainbow_accent_lines
+            local last_line_scan = 0
+            local cached_accent_elements = {}
+            local last_registry_scan = 0
 
             local function collect_all_accent_lines()
                 local set = {}
@@ -24507,10 +24570,24 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 return res
             end
 
+            local function refresh_accent_elements()
+                table.clear(cached_accent_elements)
+                if library and library.Registry then
+                    for inst, props in pairs(library.Registry) do
+                        if inst and inst.Parent then
+                            for prop, col in pairs(props) do
+                                if col == "AccentColor" then
+                                    cached_accent_elements[#cached_accent_elements + 1] = {inst, prop}
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+
             local function cleanup_accent_lines()
                 local default_outline = (library and library.Scheme and library.Scheme.OutlineColor) or Color3.fromRGB(56, 56, 56)
-                local lines = collect_all_accent_lines()
-                for _, line in ipairs(lines) do
+                for _, line in ipairs(rainbow_accent_lines) do
                     if line and line.Parent then
                         local grad = line:FindFirstChild("RainbowAccentGradient")
                         if grad then
@@ -24540,9 +24617,9 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 local span = cheat_client.config.rainbow_accents_spread or 0.85
                 local seq = utility and utility.get_liquid_rainbow_seq and utility.get_liquid_rainbow_seq(shift, span, now)
                 if not seq then
-                    local kps = table.create(9)
-                    for i = 0, 8 do
-                        local t = i / 8
+                    local kps = table.create(6)
+                    for i = 0, 5 do
+                        local t = i / 5
                         local raw_h = (shift + t * span) % 1
                         kps[i + 1] = ColorSequenceKeypoint.new(t, Color3.fromHSV(raw_h, 0.9, 1))
                     end
@@ -24550,27 +24627,33 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 end
 
                 if cheat_client.config.rainbow_accents_lines ~= false then
-                    local lines = collect_all_accent_lines()
-                    for _, line in ipairs(lines) do
+                    if now - last_line_scan > 2.5 or #rainbow_accent_lines == 0 then
+                        last_line_scan = now
+                        collect_all_accent_lines()
+                    end
+                    for i = #rainbow_accent_lines, 1, -1 do
+                        local line = rainbow_accent_lines[i]
                         if line and line.Parent then
                             local grad = line:FindFirstChild("RainbowAccentGradient")
                             if not grad then
                                 grad = Instance.new("UIGradient")
                                 grad.Name = "RainbowAccentGradient"
+                                local is_vertical = false
+                                if line.AbsoluteSize and line.AbsoluteSize.Y > line.AbsoluteSize.X then
+                                    is_vertical = true
+                                elseif line.Size.X.Offset == 1 and line.Size.Y.Offset ~= 1 then
+                                    is_vertical = true
+                                end
+                                grad.Rotation = is_vertical and 90 or 0
                                 grad.Parent = line
                             end
                             grad.Enabled = true
-                            local is_vertical = false
-                            if line.AbsoluteSize and line.AbsoluteSize.Y > line.AbsoluteSize.X then
-                                is_vertical = true
-                            elseif line.Size.X.Offset == 1 and line.Size.Y.Offset ~= 1 then
-                                is_vertical = true
-                            end
-                            grad.Rotation = is_vertical and 90 or 0
                             grad.Color = seq
                             if line.BackgroundColor3 ~= Color3.new(1, 1, 1) then
                                 line.BackgroundColor3 = Color3.new(1, 1, 1)
                             end
+                        else
+                            table.remove(rainbow_accent_lines, i)
                         end
                     end
                 end
@@ -24579,16 +24662,18 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     local c3 = Color3.fromHSV(shift, 0.9, 1)
                     if library and library.Scheme then
                         library.Scheme.AccentColor = c3
-                        if library.Registry then
-                            for inst, props in pairs(library.Registry) do
-                                if inst and inst.Parent then
-                                    for prop, col in pairs(props) do
-                                        if col == "AccentColor" then
-                                            inst[prop] = c3
-                                        end
-                                    end
-                                end
-                            end
+                    end
+                    if now - last_registry_scan > 2.5 or #cached_accent_elements == 0 then
+                        last_registry_scan = now
+                        refresh_accent_elements()
+                    end
+                    for i = #cached_accent_elements, 1, -1 do
+                        local entry = cached_accent_elements[i]
+                        local inst = entry[1]
+                        if inst and inst.Parent then
+                            inst[entry[2]] = c3
+                        else
+                            table.remove(cached_accent_elements, i)
                         end
                     end
                 end
@@ -24601,11 +24686,18 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 end
                 cleanup_accent_lines()
                 restore_accent_elements()
+                table.clear(cached_accent_elements)
             end
 
             local function start_rainbow_accents()
                 if cheat_client.feature_connections.rainbow_accents then
                     return
+                end
+                last_line_scan = 0
+                last_registry_scan = 0
+                collect_all_accent_lines()
+                if cheat_client.config.rainbow_accents_elements then
+                    refresh_accent_elements()
                 end
                 cheat_client.feature_connections.rainbow_accents = utility:Connection(rs.RenderStepped, LPH_NO_VIRTUALIZE(function()
                     if shared and shared.is_unloading then
@@ -33911,6 +34003,7 @@ end
                 if not shared or shared.is_unloading or getgenv()._hx_unloaded then return end
                 local rainbow_vfx_on = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
                 if not rainbow_vfx_on then return end
+                if not plr.Character or not plr.Character.Parent then return end
 
                 local now = os.clock()
                 if now - last_vfx_scan > 0.35 then
@@ -33940,12 +34033,13 @@ end
 
                 local seq = get_synced_vfx_rainbow_seq()
                 local c3 = get_synced_vfx_rainbow_c3()
+                local c3_seq = ColorSequence.new(c3)
 
                 setting_rainbow_color = true
                 for emitter in pairs(tracked_seq_targets) do
                     if emitter.Parent then
                         if emitter:IsA("ParticleEmitter") and is_shield_or_orb_object(emitter) then
-                            pcall(safe_set_seq, emitter, ColorSequence.new(c3))
+                            pcall(safe_set_seq, emitter, c3_seq)
                         else
                             if not emitter:IsA("Beam") or emitter.Enabled then
                                 pcall(safe_set_seq, emitter, seq)
