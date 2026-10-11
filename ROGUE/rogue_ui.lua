@@ -29853,7 +29853,6 @@ end
                     local hittable   = dist <= 25 and not hasCooldown and not hasBlocking
 
                     if dist > 30 then
-                        -- beyond render range: hide but keep pooled
                         local addr2 = tostring(tc)
                         if highlight_pool[addr2] then
                             highlight_pool[addr2].Adornee = nil
@@ -29863,7 +29862,7 @@ end
                         local col = hittable and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 50, 50)
                         h.Color3        = col
                         h.SurfaceColor3 = col
-                        h.Adornee       = tc
+                        h.Adornee       = tRoot  -- tRoot is already resolved above
                     end
                 end
 
