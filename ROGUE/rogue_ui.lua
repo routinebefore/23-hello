@@ -563,6 +563,11 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             rainbow_health = false,
             rainbow_vfx = false,
             cooldown_indicator = false,
+            rainbow_accents = false,
+            rainbow_accents_lines = true,
+            rainbow_accents_elements = false,
+            rainbow_accents_speed = 1,
+            rainbow_accents_spread = 0.85,
     
             no_insane = false,
             instant_mine = false,
@@ -4560,6 +4565,20 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
     end
 
     shared.library = library
+
+    local tracked_accent_lines = {}
+    cheat_client.tracked_accent_lines = tracked_accent_lines
+    if type(library.MakeLine) == "function" then
+        local orig_MakeLine = library.MakeLine
+        library.MakeLine = function(self, Frame, Info)
+            local Line = orig_MakeLine(self, Frame, Info)
+            if Line and typeof(Line) == "Instance" then
+                Line.Name = "AccentLine"
+                table.insert(tracked_accent_lines, Line)
+            end
+            return Line
+        end
+    end
 
     getgenv().Toggles = library.Toggles or {}
     getgenv().Options = library.Options or {}
@@ -24447,6 +24466,245 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
         end)
 
         do
+            local rainbow_accent_lines = cheat_client.tracked_accent_lines or {}
+            cheat_client.tracked_accent_lines = rainbow_accent_lines
+
+            local function collect_all_accent_lines()
+                local set = {}
+                local res = {}
+                for i = #rainbow_accent_lines, 1, -1 do
+                    local l = rainbow_accent_lines[i]
+                    if l and l.Parent then
+                        if not set[l] then
+                            set[l] = true
+                            res[#res + 1] = l
+                        end
+                    else
+                        table.remove(rainbow_accent_lines, i)
+                    end
+                end
+                if library and library.ScreenGui then
+                    for _, obj in ipairs(library.ScreenGui:GetDescendants()) do
+                        if obj:IsA("Frame") and not set[obj] then
+                            local is_line = false
+                            if obj.Name == "AccentLine" then
+                                is_line = true
+                            elseif obj.Size.Y.Offset == 1 and obj.Size.X.Scale >= 0.8 then
+                                is_line = true
+                            elseif obj.Size.X.Offset == 1 and obj.Size.Y.Scale >= 0.5 then
+                                is_line = true
+                            elseif obj.Size.Y.Offset == 2 and obj.Size.X.Scale >= 0.8 and obj.Parent and obj.Parent.Name == "Container" then
+                                is_line = true
+                            end
+                            if is_line then
+                                set[obj] = true
+                                res[#res + 1] = obj
+                                rainbow_accent_lines[#rainbow_accent_lines + 1] = obj
+                            end
+                        end
+                    end
+                end
+                return res
+            end
+
+            local function cleanup_accent_lines()
+                local default_outline = (library and library.Scheme and library.Scheme.OutlineColor) or Color3.fromRGB(56, 56, 56)
+                local lines = collect_all_accent_lines()
+                for _, line in ipairs(lines) do
+                    if line and line.Parent then
+                        local grad = line:FindFirstChild("RainbowAccentGradient")
+                        if grad then
+                            grad:Destroy()
+                        end
+                        line.BackgroundColor3 = default_outline
+                    end
+                end
+            end
+
+            local function restore_accent_elements()
+                if library and library.Scheme and library.Options and library.Options.AccentColor then
+                    library.Scheme.AccentColor = library.Options.AccentColor.Value
+                    if library.UpdateColorsUsingRegistry then
+                        library:UpdateColorsUsingRegistry()
+                    end
+                end
+            end
+
+            local function update_rainbow_accents()
+                if not (cheat_client and cheat_client.config and cheat_client.config.rainbow_accents) then
+                    return
+                end
+                local now = os.clock()
+                local speed = cheat_client.config.rainbow_accents_speed or 1
+                local shift = (now * 0.32 * speed) % 1
+                local span = cheat_client.config.rainbow_accents_spread or 0.85
+                local seq = utility and utility.get_liquid_rainbow_seq and utility.get_liquid_rainbow_seq(shift, span, now)
+                if not seq then
+                    local kps = table.create(9)
+                    for i = 0, 8 do
+                        local t = i / 8
+                        local raw_h = (shift + t * span) % 1
+                        kps[i + 1] = ColorSequenceKeypoint.new(t, Color3.fromHSV(raw_h, 0.9, 1))
+                    end
+                    seq = ColorSequence.new(kps)
+                end
+
+                if cheat_client.config.rainbow_accents_lines ~= false then
+                    local lines = collect_all_accent_lines()
+                    for _, line in ipairs(lines) do
+                        if line and line.Parent then
+                            local grad = line:FindFirstChild("RainbowAccentGradient")
+                            if not grad then
+                                grad = Instance.new("UIGradient")
+                                grad.Name = "RainbowAccentGradient"
+                                grad.Parent = line
+                            end
+                            grad.Enabled = true
+                            local is_vertical = false
+                            if line.AbsoluteSize and line.AbsoluteSize.Y > line.AbsoluteSize.X then
+                                is_vertical = true
+                            elseif line.Size.X.Offset == 1 and line.Size.Y.Offset ~= 1 then
+                                is_vertical = true
+                            end
+                            grad.Rotation = is_vertical and 90 or 0
+                            grad.Color = seq
+                            if line.BackgroundColor3 ~= Color3.new(1, 1, 1) then
+                                line.BackgroundColor3 = Color3.new(1, 1, 1)
+                            end
+                        end
+                    end
+                end
+
+                if cheat_client.config.rainbow_accents_elements then
+                    local c3 = Color3.fromHSV(shift, 0.9, 1)
+                    if library and library.Scheme then
+                        library.Scheme.AccentColor = c3
+                        if library.Registry then
+                            for inst, props in pairs(library.Registry) do
+                                if inst and inst.Parent then
+                                    for prop, col in pairs(props) do
+                                        if col == "AccentColor" then
+                                            inst[prop] = c3
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+
+            local function stop_rainbow_accents()
+                if cheat_client.feature_connections.rainbow_accents then
+                    cheat_client.feature_connections.rainbow_accents:Disconnect()
+                    cheat_client.feature_connections.rainbow_accents = nil
+                end
+                cleanup_accent_lines()
+                restore_accent_elements()
+            end
+
+            local function start_rainbow_accents()
+                if cheat_client.feature_connections.rainbow_accents then
+                    return
+                end
+                cheat_client.feature_connections.rainbow_accents = utility:Connection(rs.RenderStepped, LPH_NO_VIRTUALIZE(function()
+                    if shared and shared.is_unloading then
+                        return
+                    end
+                    update_rainbow_accents()
+                end))
+            end
+
+            cheat_client.start_rainbow_accents = start_rainbow_accents
+            cheat_client.stop_rainbow_accents = stop_rainbow_accents
+            cheat_client.cleanup_accent_lines = cleanup_accent_lines
+            cheat_client.restore_accent_elements = restore_accent_elements
+
+            local group_rainbow_ui = Tabs.Interface:AddRightGroupbox("Rainbow Accents")
+
+            group_rainbow_ui:AddToggle("rainbow_accents", {
+                Text = "Rainbow Accents",
+                Default = cheat_client.config.rainbow_accents,
+                Tooltip = "Enables flowing rainbow on tab group lines and UI accents (synced with mana)",
+                Callback = function(state)
+                    cheat_client.config.rainbow_accents = state
+                    if Toggles and Toggles.rainbow_accents_cfg and Toggles.rainbow_accents_cfg.Value ~= state then
+                        Toggles.rainbow_accents_cfg:SetValue(state)
+                    end
+                    if state then
+                        start_rainbow_accents()
+                    else
+                        stop_rainbow_accents()
+                    end
+                end
+            })
+
+            group_rainbow_ui:AddToggle("rainbow_accents_lines", {
+                Text = "Flowing Separator Lines",
+                Default = cheat_client.config.rainbow_accents_lines,
+                Tooltip = "Applies flowing rainbow gradient to tab separators and groupbox lines",
+                Callback = function(state)
+                    cheat_client.config.rainbow_accents_lines = state
+                    if Toggles and Toggles.rainbow_accents_lines_cfg and Toggles.rainbow_accents_lines_cfg.Value ~= state then
+                        Toggles.rainbow_accents_lines_cfg:SetValue(state)
+                    end
+                    if not state then
+                        cleanup_accent_lines()
+                    end
+                end
+            })
+
+            group_rainbow_ui:AddToggle("rainbow_accents_elements", {
+                Text = "Rainbow UI Accents",
+                Default = cheat_client.config.rainbow_accents_elements,
+                Tooltip = "Cycles UI accent colors (sliders, active toggles, icons) with rainbow wave",
+                Callback = function(state)
+                    cheat_client.config.rainbow_accents_elements = state
+                    if Toggles and Toggles.rainbow_accents_elements_cfg and Toggles.rainbow_accents_elements_cfg.Value ~= state then
+                        Toggles.rainbow_accents_elements_cfg:SetValue(state)
+                    end
+                    if not state then
+                        restore_accent_elements()
+                    end
+                end
+            })
+
+            group_rainbow_ui:AddSlider("rainbow_accents_speed", {
+                Text = "Rainbow Flow Speed",
+                Min = 0.2,
+                Max = 3,
+                Rounding = 2,
+                Default = cheat_client.config.rainbow_accents_speed or 1,
+                Tooltip = "Flow speed multiplier (1.0 = perfectly synced with mana wave)",
+                Callback = function(value)
+                    cheat_client.config.rainbow_accents_speed = value
+                    if Options and Options.rainbow_accents_speed_cfg and Options.rainbow_accents_speed_cfg.Value ~= value then
+                        Options.rainbow_accents_speed_cfg:SetValue(value)
+                    end
+                end
+            })
+
+            group_rainbow_ui:AddSlider("rainbow_accents_spread", {
+                Text = "Rainbow Wave Spread",
+                Min = 0.2,
+                Max = 1.5,
+                Rounding = 2,
+                Default = cheat_client.config.rainbow_accents_spread or 0.85,
+                Tooltip = "Color wave spread across lines (0.85 matches liquid mana wave)",
+                Callback = function(value)
+                    cheat_client.config.rainbow_accents_spread = value
+                    if Options and Options.rainbow_accents_spread_cfg and Options.rainbow_accents_spread_cfg.Value ~= value then
+                        Options.rainbow_accents_spread_cfg:SetValue(value)
+                    end
+                end
+            })
+
+            if cheat_client.config.rainbow_accents then
+                start_rainbow_accents()
+            end
+        end
+
+        do
             if shared.SaveManager and shared.ThemeManager then
                 local config_folder = game.PlaceId == 14341521240 and "HYDROXIDE/rlp_configs" or "HYDROXIDE/configs"
                 shared.SaveManager:SetFolder(config_folder)
@@ -24518,6 +24776,85 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
                 shared.SaveManager:BuildConfigSection(Tabs.Config)
                 shared.ThemeManager:ApplyToTab(Tabs.Config)
+
+                local group_rainbow_cfg = Tabs.Config:AddRightGroupbox("Rainbow Accents")
+
+                group_rainbow_cfg:AddToggle("rainbow_accents_cfg", {
+                    Text = "Rainbow Accents",
+                    Default = cheat_client.config.rainbow_accents,
+                    Tooltip = "Enables flowing rainbow on tab group lines and UI accents (synced with mana)",
+                    Callback = function(state)
+                        cheat_client.config.rainbow_accents = state
+                        if Toggles and Toggles.rainbow_accents and Toggles.rainbow_accents.Value ~= state then
+                            Toggles.rainbow_accents:SetValue(state)
+                        end
+                        if state then
+                            if cheat_client.start_rainbow_accents then cheat_client.start_rainbow_accents() end
+                        else
+                            if cheat_client.stop_rainbow_accents then cheat_client.stop_rainbow_accents() end
+                        end
+                    end
+                })
+
+                group_rainbow_cfg:AddToggle("rainbow_accents_lines_cfg", {
+                    Text = "Flowing Separator Lines",
+                    Default = cheat_client.config.rainbow_accents_lines,
+                    Tooltip = "Applies flowing rainbow gradient to tab separators and groupbox lines",
+                    Callback = function(state)
+                        cheat_client.config.rainbow_accents_lines = state
+                        if Toggles and Toggles.rainbow_accents_lines and Toggles.rainbow_accents_lines.Value ~= state then
+                            Toggles.rainbow_accents_lines:SetValue(state)
+                        end
+                        if not state and cheat_client.cleanup_accent_lines then
+                            cheat_client.cleanup_accent_lines()
+                        end
+                    end
+                })
+
+                group_rainbow_cfg:AddToggle("rainbow_accents_elements_cfg", {
+                    Text = "Rainbow UI Accents",
+                    Default = cheat_client.config.rainbow_accents_elements,
+                    Tooltip = "Cycles UI accent colors (sliders, active toggles, icons) with rainbow wave",
+                    Callback = function(state)
+                        cheat_client.config.rainbow_accents_elements = state
+                        if Toggles and Toggles.rainbow_accents_elements and Toggles.rainbow_accents_elements.Value ~= state then
+                            Toggles.rainbow_accents_elements:SetValue(state)
+                        end
+                        if not state and cheat_client.restore_accent_elements then
+                            cheat_client.restore_accent_elements()
+                        end
+                    end
+                })
+
+                group_rainbow_cfg:AddSlider("rainbow_accents_speed_cfg", {
+                    Text = "Rainbow Flow Speed",
+                    Min = 0.2,
+                    Max = 3,
+                    Rounding = 2,
+                    Default = cheat_client.config.rainbow_accents_speed or 1,
+                    Tooltip = "Flow speed multiplier (1.0 = perfectly synced with mana wave)",
+                    Callback = function(value)
+                        cheat_client.config.rainbow_accents_speed = value
+                        if Options and Options.rainbow_accents_speed and Options.rainbow_accents_speed.Value ~= value then
+                            Options.rainbow_accents_speed:SetValue(value)
+                        end
+                    end
+                })
+
+                group_rainbow_cfg:AddSlider("rainbow_accents_spread_cfg", {
+                    Text = "Rainbow Wave Spread",
+                    Min = 0.2,
+                    Max = 1.5,
+                    Rounding = 2,
+                    Default = cheat_client.config.rainbow_accents_spread or 0.85,
+                    Tooltip = "Color wave spread across lines (0.85 matches liquid mana wave)",
+                    Callback = function(value)
+                        cheat_client.config.rainbow_accents_spread = value
+                        if Options and Options.rainbow_accents_spread and Options.rainbow_accents_spread.Value ~= value then
+                            Options.rainbow_accents_spread:SetValue(value)
+                        end
+                    end
+                })
 
                 local UtilityGroup = Tabs.Config:AddRightGroupbox("Utility")
                 UtilityGroup:AddButton({
