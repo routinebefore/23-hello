@@ -4694,6 +4694,21 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             end
         end
     
+        local friend_cache = {}
+        local friend_cache_time = {}
+
+        local function check_friend_status(userId)
+            local now = tick()
+            if friend_cache[userId] ~= nil and (now - (friend_cache_time[userId] or 0) < 60) then
+                return friend_cache[userId]
+            end
+            local ok, res = pcall(plr.IsFriendsWith, plr, userId)
+            local isF = ok and res or false
+            friend_cache[userId] = isF
+            friend_cache_time[userId] = now
+            return isF
+        end
+
         cheat_client.is_friendly = LPH_NO_VIRTUALIZE(function(self, player)
             local ignore_friendly = Toggles and Toggles.ignore_friendly
             if ignore_friendly and ignore_friendly.Value then
@@ -4708,7 +4723,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 local lastName2 = plr:GetAttribute("LastName")
 
                 local is_housemate = lastName1 and lastName1 ~= "" and lastName1 == lastName2
-                local is_friend = plr:IsFriendsWith(player.UserId)
+                local is_friend = check_friend_status(player.UserId)
                 local is_manual_friend = cheat_client and cheat_client.friends and table.find(cheat_client.friends, player.UserId) ~= nil
 
                 return (auto_housemate_ally and is_housemate) or
@@ -4725,7 +4740,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 local lastName2 = FindFirstChild(stats2, "LastName")
 
                 local is_housemate = lastName1 and lastName2 and lastName1.Value == lastName2.Value
-                local is_friend = plr:IsFriendsWith(player.UserId)
+                local is_friend = check_friend_status(player.UserId)
                 local is_manual_friend = table.find(cheat_client.friends, player.UserId) ~= nil
 
                 return (auto_housemate_ally and is_housemate) or
@@ -4733,7 +4748,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                        is_manual_friend
             end
 
-            local is_friend = plr:IsFriendsWith(player.UserId)
+            local is_friend = check_friend_status(player.UserId)
             local is_manual_friend = table.find(cheat_client.friends, player.UserId) ~= nil
 
             return (auto_friend_ally and is_friend) or is_manual_friend
@@ -6377,7 +6392,9 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     return false
                 end
                 
-                function cheat_client:identify_trinket(v)
+                local trinket_cache = setmetatable({}, { __mode = "k" })
+
+                local function raw_identify_trinket(v)
                     if (v.ClassName == 'UnionOperation' and gethiddenproperty(v, "AssetId"):gsub("%%20", ""):match("%d+") == "2765613127") then
                         return 'Idol of the Forgotten', cheat_client.trinket_colors.common.Color, cheat_client.trinket_colors.common.ZIndex
 
@@ -6468,6 +6485,16 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     end
 
                     return "Opal", cheat_client.trinket_colors.none.Color, cheat_client.trinket_colors.none.ZIndex
+                end
+
+                function cheat_client:identify_trinket(v)
+                    local cached = trinket_cache[v]
+                    if cached then
+                        return cached[1], cached[2], cached[3]
+                    end
+                    local n, c, z = raw_identify_trinket(v)
+                    trinket_cache[v] = { n, c, z }
+                    return n, c, z
                 end
         
                 function cheat_client:add_trinket_esp(trinket, name, color, zindex)
@@ -8243,55 +8270,151 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 }
             }
     
-            local stations = FindFirstChild(workspace, "Stations");
-    
+            local function normalize_ingredient_name(str)
+                return string.lower(string.gsub(tostring(str or ""), "%s+", ""))
+            end
+
+            local ingredient_aliases = {
+                ["glowshroom"] = "glowscroom",
+                ["glowscroom"] = "glowscroom",
+                ["freeleaf"] = "freeleaf",
+                ["snowscroom"] = "snowscroom",
+                ["snowshroom"] = "snowscroom",
+                ["petriiflower"] = "petriflower",
+                ["petriflower"] = "petriflower",
+            }
+
+            local function getStationPos(v)
+                if not v then return nil end
+                local timer = FindFirstChild(v, "Timer")
+                if timer and timer:IsA("BasePart") then return timer.Position end
+                local water = FindFirstChild(v, "Water")
+                if water and water:IsA("BasePart") then return water.Position end
+                local mat = FindFirstChild(v, "Material")
+                if mat and mat:IsA("BasePart") then return mat.Position end
+                if v.PrimaryPart then return v.PrimaryPart.Position end
+                local bp = FindFirstChildWhichIsA(v, "BasePart")
+                if bp then return bp.Position end
+                return nil
+            end
+
+            local function isStationType(station, targetType)
+                if not station or not station.Name then return false end
+                local name = string.lower(station.Name)
+                if targetType == "Alchemy" then
+                    return string.find(name, "alchemy") ~= nil or string.find(name, "cauldron") ~= nil or string.find(name, "brew") ~= nil or FindFirstChild(station, "Ladle") ~= nil or FindFirstChild(station, "Water") ~= nil
+                elseif targetType == "Smithing" then
+                    return string.find(name, "smith") ~= nil or string.find(name, "furnace") ~= nil or string.find(name, "forge") ~= nil or FindFirstChild(station, "Hammer") ~= nil or FindFirstChild(station, "Anvil") ~= nil
+                else
+                    return string.find(name, string.lower(targetType)) ~= nil
+                end
+            end
+
             local function GrabStation(type)
-                if plr.Character and FindFirstChild(plr.Character, "HumanoidRootPart") then
-                    if typeof(type) ~= "string" then
-                        return warn(string.format("Expected type string got <%s>",typeof(type)))
-                    elseif(not stations) then
-                        return warn('[Auto Potion] No Stations');
+                if not plr.Character or not FindFirstChild(plr.Character, "HumanoidRootPart") then return nil end
+                if typeof(type) ~= "string" then
+                    warn(string.format("Expected type string got <%s>", typeof(type)))
+                    return nil
+                end
+
+                local myPos = plr.Character.HumanoidRootPart.Position
+                local stationsFolder = FindFirstChild(workspace, "Stations") or FindFirstChild(workspace, "Cauldrons")
+                if not stationsFolder and FindFirstChild(workspace, "Map") then
+                    stationsFolder = FindFirstChild(workspace.Map, "Stations") or FindFirstChild(workspace.Map, "Cauldrons")
+                end
+
+                local candidates = {}
+                if stationsFolder then
+                    for _, v in next, stationsFolder:GetChildren() do
+                        table.insert(candidates, v)
                     end
-        
-                    for i,v in next, stations:GetChildren() do
-                        if (v.Timer.Position-plr.Character.HumanoidRootPart.Position).Magnitude <= 15 and string.find(v.Name, type) then
-                            return v
+                end
+                if #candidates == 0 then
+                    for _, v in next, workspace:GetChildren() do
+                        if v:IsA("Model") and isStationType(v, type) then
+                            table.insert(candidates, v)
                         end
                     end
                 end
+
+                local bestStation = nil
+                local bestDist = 35
+
+                for _, v in next, candidates do
+                    if isStationType(v, type) then
+                        local pos = getStationPos(v)
+                        if pos then
+                            local d = (pos - myPos).Magnitude
+                            if d <= bestDist then
+                                bestDist = d
+                                bestStation = v
+                            end
+                        end
+                    end
+                end
+
+                return bestStation
             end
-    
+
             local function hasMaterials(items, item)
-                local recipe = items[item];
-                local count = setmetatable({}, {__index = function() return 0 end});
+                local recipe = items[item]
+                if not recipe then return false end
 
-                assert(recipe);
+                local counts = {}
+                local function add_from(container)
+                    if not container then return end
+                    for _, v in next, container:GetChildren() do
+                        if v:IsA("Tool") or v:IsA("Model") or v:IsA("Part") then
+                            local norm = normalize_ingredient_name(v.Name)
+                            local alias = ingredient_aliases[norm] or norm
+                            local quantity = FindFirstChild(v, "Quantity")
+                            local q = (quantity and tonumber(quantity.Value)) or 1
+                            counts[norm] = (counts[norm] or 0) + q
+                            if alias ~= norm then
+                                counts[alias] = (counts[alias] or 0) + q
+                            end
+                        end
+                    end
+                end
 
-                if not plr.Backpack then return false end
-                for i, v in next, plr.Backpack:GetChildren() do
-                    if(recipe[v.Name]) then
-                        local quantity = FindFirstChild(v, 'Quantity');
-                        quantity = quantity and quantity.Value or 1;
-    
-                        count[v.Name] = count[v.Name] + quantity;
-                    end;
-                end;
-    
-                for i, v in next, recipe do
-                    if(count[i] < v) then
-                        return false;
-                    end;
-                end;
-    
-                return recipe;
-            end;
-            
-    
+                add_from(plr.Backpack)
+                add_from(plr.Character)
+
+                for ingName, reqCount in next, recipe do
+                    local norm = normalize_ingredient_name(ingName)
+                    local alias = ingredient_aliases[norm] or norm
+                    local have = math.max(counts[norm] or 0, counts[alias] or 0)
+                    if have < reqCount then
+                        return false
+                    end
+                end
+
+                return recipe
+            end
+
             autoCraftUtils.hasMaterials = function(craftType, item)
-                return hasMaterials(craftType == 'Alchemy' and potions or swords, item);
-            end;
-            
-    
+                return hasMaterials(craftType == 'Alchemy' and potions or swords, item)
+            end
+
+            local function findIngredientTool(name)
+                local normTarget = normalize_ingredient_name(name)
+                local aliasTarget = ingredient_aliases[normTarget] or normTarget
+                local function check(container)
+                    if not container then return nil end
+                    for _, child in next, container:GetChildren() do
+                        if child:IsA("Tool") then
+                            local norm = normalize_ingredient_name(child.Name)
+                            local alias = ingredient_aliases[norm] or norm
+                            if norm == normTarget or alias == aliasTarget or norm == aliasTarget or alias == normTarget then
+                                return child
+                            end
+                        end
+                    end
+                    return nil
+                end
+                return check(plr.Character) or check(plr.Backpack)
+            end
+
             local function addItemsToStation(items, station, part, partToClick, partToClean, should_continue)
                 local function can_continue()
                     if should_continue then
@@ -8302,82 +8425,89 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     return true
                 end
 
-                if(station.Contents.Value ~= '[]') then
+                local cleanPart = FindFirstChild(station, partToClean) or FindFirstChild(station, "Bucket") or FindFirstChild(station, "Trash")
+                local cleanDetector = cleanPart and (FindFirstChild(cleanPart, "ClickEmpty") or FindFirstChildWhichIsA(cleanPart, "ClickDetector"))
+                local contentsObj = FindFirstChild(station, "Contents")
+
+                if contentsObj and contentsObj.Value ~= "[]" and cleanDetector then
+                    local emptyAttempts = 0
                     repeat
+                        emptyAttempts = emptyAttempts + 1
                         if not can_continue() then return false end
-                        fireclickdetector(station[partToClean].ClickEmpty);
-                        task.wait(utility:random_wait(true));
-                    until station.Contents.Value == '[]' or not can_continue();
+                        fireclickdetector(cleanDetector)
+                        task.wait(utility:random_wait(true))
+                    until emptyAttempts >= 10 or contentsObj.Value == "[]" or not can_continue()
 
                     if not can_continue() then return false end
-            
                     task.wait(utility:random_wait(true))
-                end;
+                end
 
                 for name, count in next, items do
                     for i = 1, count do
                         if not can_continue() then return false end
-                        if not plr.Backpack then
-                            warn("[auto stuff] Backpack not found")
-                            return false
-                        end
-                        local k = FindFirstChild(plr.Backpack, name);
-            
-                        if not k then 
-                            warn(string.format("[auto stuff] missing ingredient: %s", name)) 
-                            return false
-                        end 
-            
-                        if k.Parent == nil then 
-                            warn(string.format("[auto stuff] cannot move %s, its parent is NULL", name))
-                            return false
-                        end
-            
-                        task.wait(utility:random_wait(true))
-                        k.Parent = plr.Character;
+                        local k = findIngredientTool(name)
 
-                        if k.Parent ~= plr.Character then
-                            warn("[auto stuff] Failed to move " .. name .. " to character")
+                        if not k then
+                            warn(string.format("[auto stuff] missing ingredient: %s", name))
                             return false
                         end
 
-
-                        local remote = FindFirstChildWhichIsA(k, 'RemoteEvent');
-                        if(remote) then
-                            local content = station.Contents.Value;
-
-                            repeat
-                                if not can_continue() then return false end
-                                remote:FireServer(station[part].CFrame, station[part]);
-                                task.wait(utility:random_wait(true))
-                            until station.Contents.Value ~= content or not can_continue();
-
-                            if not can_continue() then return false end
-
-                            if k.Parent and plr.Backpack then
-                                k.Parent = plr.Backpack;
+                        if k.Parent ~= plr.Character and plr.Character then
+                            local hum = FindFirstChildOfClass(plr.Character, "Humanoid")
+                            if hum then
+                                hum:EquipTool(k)
+                            else
+                                k.Parent = plr.Character
                             end
-                            task.wait(0.1);
-                        else
-                            k:Activate();
-            
+                            task.wait(utility:random_wait(true))
+                        end
+
+                        local remote = FindFirstChildWhichIsA(k, "RemoteEvent") or FindFirstChild(k, "RemoteEvent")
+                        local targetPart = FindFirstChild(station, part) or FindFirstChild(station, "Water") or FindFirstChild(station, "Material") or station.PrimaryPart or FindFirstChildWhichIsA(station, "BasePart")
+
+                        if remote and targetPart then
+                            local content = contentsObj and contentsObj.Value or ""
+                            local attempts = 0
                             repeat
+                                attempts = attempts + 1
+                                if not can_continue() then return false end
+                                remote:FireServer(targetPart.CFrame, targetPart)
                                 task.wait(utility:random_wait(true))
-                            until not k.Parent or not can_continue();
+                            until attempts >= 15 or not contentsObj or contentsObj.Value ~= content or not can_continue()
 
                             if not can_continue() then return false end
-                        end;
-                    end;
-                end;
-            
-                repeat
-                    if not can_continue() then return false end
-                    fireclickdetector(station[partToClick].ClickConcoct);
-                    task.wait(utility:random_wait(true))
-                until station.Contents.Value == '[]' or not can_continue();
+
+                            if k.Parent == plr.Character and plr.Backpack then
+                                k.Parent = plr.Backpack
+                            end
+                            task.wait(0.1)
+                        else
+                            k:Activate()
+                            local attempts = 0
+                            repeat
+                                attempts = attempts + 1
+                                task.wait(utility:random_wait(true))
+                            until attempts >= 15 or not k.Parent or not can_continue()
+
+                            if not can_continue() then return false end
+                        end
+                    end
+                end
+
+                local clickPart = FindFirstChild(station, partToClick) or FindFirstChild(station, "Ladle") or FindFirstChild(station, "Hammer")
+                local clickDetector = clickPart and (FindFirstChild(clickPart, "ClickConcoct") or FindFirstChildWhichIsA(clickPart, "ClickDetector"))
+                if clickDetector then
+                    local concoctAttempts = 0
+                    repeat
+                        concoctAttempts = concoctAttempts + 1
+                        if not can_continue() then return false end
+                        fireclickdetector(clickDetector)
+                        task.wait(utility:random_wait(true))
+                    until concoctAttempts >= 12 or (contentsObj and contentsObj.Value == "[]") or not can_continue()
+                end
 
                 return can_continue()
-            end;
+            end
             
     
             function utility:craft(stationType, itemToCraft, craft_options)
@@ -16042,8 +16172,13 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
                 local currentPos = root.Position
                 while #trinkets > 0 and trinket_bot.path_running and not shared.is_unloading and not emergency_gate_requested and not trinket_bot.moderator_detected do
+                    local cx, cy, cz = currentPos.X, currentPos.Y, currentPos.Z
                     table.sort(trinkets, function(a, b)
-                        return (a.object.Position - currentPos).Magnitude < (b.object.Position - currentPos).Magnitude
+                        local pa = a.object.Position
+                        local pb = b.object.Position
+                        local dax, day, daz = pa.X - cx, pa.Y - cy, pa.Z - cz
+                        local dbx, dby, dbz = pb.X - cx, pb.Y - cy, pb.Z - cz
+                        return (dax * dax + day * day + daz * daz) < (dbx * dbx + dby * dby + dbz * dbz)
                     end)
 
                     local trinketData = table.remove(trinkets, 1)
@@ -17673,7 +17808,10 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     table.insert(gnav_connections, player_added_conn)
                 end
 
+                local prox_counter = 0
                 proximity_connection = track_connection("proximity", utility:Connection(rs.Heartbeat, LPH_NO_VIRTUALIZE(function()
+                    prox_counter = prox_counter + 1
+                    if prox_counter % 3 ~= 0 then return end
                     if menu_on_non_23_enabled() then
                         local now = tick()
                         if now - last_non_23_check >= 0.25 then
@@ -24726,10 +24864,9 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     local camera_pos = ws.CurrentCamera.CFrame.Position
                     local distance = (camera_pos - hrp.Position).Magnitude
 
-                    if distance < range then
-                        ts:Create(display, TweenInfo.new(0.25), {TextTransparency = 0}):Play()
-                    else
-                        ts:Create(display, TweenInfo.new(0.25), {TextTransparency = 1}):Play()
+                    local target_trans = distance < range and 0 or 1
+                    if display.TextTransparency ~= target_trans then
+                        ts:Create(display, TweenInfo.new(0.25), {TextTransparency = target_trans}):Play()
                     end
                 else
                     eye:Destroy()
@@ -29044,8 +29181,11 @@ end
                     end
                 end
 
+                local auto_trinket_counter = 0
                 cheat_client.feature_connections.auto_trinket = utility:Connection(rs.Heartbeat, LPH_NO_VIRTUALIZE(function(delta_time)
                     if not plr.Character then return end
+                    auto_trinket_counter = auto_trinket_counter + 1
+                    if auto_trinket_counter % 2 ~= 0 then return end
                     if not cheat_client or not cheat_client.identify_trinket then return end
                     if shared and shared.is_unloading then return end
 
@@ -29626,19 +29766,15 @@ end
                     if d < bestDist then bestDist = d; bestHRP = hrp end
                 end
 
-                for _, obj in next, ws:GetChildren() do
-                    if obj == plr.Character then continue end
-                    local ok, children = pcall(function() return obj:GetChildren() end)
-                    if not ok then continue end
-                    local hrp, hasHum = nil, false
-                    for _, child in next, children do
-                        local cn = safeRead(function() return child.ClassName end)
-                        if cn == "Humanoid"         then hasHum = true end
-                        if cn == "HumanoidRootPart" then hrp = child end
-                    end
-                    if hasHum and hrp then
-                        local d = (hrp.Position - myPos).Magnitude
-                        if d < bestDist then bestDist = d; bestHRP = hrp end
+                if ws:FindFirstChild("Live") then
+                    for _, obj in next, ws.Live:GetChildren() do
+                        if obj == plr.Character then continue end
+                        local hrp = FindFirstChild(obj, "HumanoidRootPart")
+                        local hum = FindFirstChildOfClass(obj, "Humanoid")
+                        if hum and hrp then
+                            local d = (hrp.Position - myPos).Magnitude
+                            if d < bestDist then bestDist = d; bestHRP = hrp end
+                        end
                     end
                 end
 
@@ -32103,11 +32239,18 @@ end
                             end
 
                             if not is_dead and other_hum and other_hrp then
-                                tracked_targets[other] = {
-                                    last_hp = cur_hp,
-                                    last_pos = other_hrp.Position,
-                                    name = other_name
-                                }
+                                local t = tracked_targets[other]
+                                if t then
+                                    t.last_hp = cur_hp
+                                    t.last_pos = other_hrp.Position
+                                    t.name = other_name
+                                else
+                                    tracked_targets[other] = {
+                                        last_hp = cur_hp,
+                                        last_pos = other_hrp.Position,
+                                        name = other_name
+                                    }
+                                end
                             else
                                 tracked_targets[other] = nil
                             end
@@ -32116,8 +32259,11 @@ end
                 end
             end
 
+            local grip_frame = 0
             utility:Connection(rs.Heartbeat, LPH_NO_VIRTUALIZE(function()
                 if not shared or shared.is_unloading then return end
+                grip_frame = grip_frame + 1
+                if grip_frame % 4 ~= 0 then return end
                 check_grips_and_lives()
             end))
 
