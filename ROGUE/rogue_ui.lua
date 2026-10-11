@@ -29515,11 +29515,19 @@ end
                     local hasBlocking = tc:FindFirstChild("Blocking") ~= nil
                     local hittable   = dist <= 25 and not hasCooldown and not hasBlocking
 
-                    local h = get_or_make_highlight(tc)
-                    local col = hittable and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 50, 50)
-                    h.Color3        = col
-                    h.SurfaceColor3 = col
-                    h.Adornee       = tc
+                    if dist > 30 then
+                        -- beyond render range: hide but keep pooled
+                        local addr2 = tostring(tc)
+                        if highlight_pool[addr2] then
+                            highlight_pool[addr2].Adornee = nil
+                        end
+                    else
+                        local h = get_or_make_highlight(tc)
+                        local col = hittable and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 50, 50)
+                        h.Color3        = col
+                        h.SurfaceColor3 = col
+                        h.Adornee       = tc
+                    end
                 end
 
                 -- remove highlights for players no longer relevant
