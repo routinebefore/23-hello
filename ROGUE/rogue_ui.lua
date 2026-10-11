@@ -465,6 +465,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             anti_confusion = false,
 			hold_carry = false,
             verdien_highlight = false,
+            auto_verdien = false,
 
             auto_perfect_block = false,
             parry_viribus = false,
@@ -8177,7 +8178,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
     
                 ['Slateskin'] = {
                     ['Petrii Flower'] = 1,
-                    ['Stone Scroom'] = 1,
+                    ['Stone Scroom'] = 2,
                     ['Coconut'] = 1
                 },
     
@@ -8301,6 +8302,14 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 ["snowshroom"] = "snowscroom",
                 ["petriiflower"] = "petriflower",
                 ["petriflower"] = "petriflower",
+                ["stonescroom"] = "stonescroom",
+                ["stoneshroom"] = "stonescroom",
+                ["periashroom"] = "periascroom",
+                ["periascroom"] = "periascroom",
+                ["scroom"] = "scroom",
+                ["shroom"] = "scroom",
+                ["brownscroom"] = "scroom",
+                ["brownshroom"] = "scroom",
             }
 
             local function getStationPos(v)
@@ -8321,7 +8330,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 if not station or not station.Name then return false end
                 local name = string.lower(station.Name)
                 if targetType == "Alchemy" then
-                    return string.find(name, "alchemy") ~= nil or string.find(name, "cauldron") ~= nil or string.find(name, "brew") ~= nil or FindFirstChild(station, "Ladle") ~= nil or FindFirstChild(station, "Water") ~= nil
+                    return string.find(name, "alchemy") ~= nil or string.find(name, "cauldron") ~= nil or string.find(name, "brew") ~= nil or FindFirstChild(station, "Ladle") ~= nil or FindFirstChild(station, "Water") ~= nil or FindFirstChild(station, "ClickConcoct", true) ~= nil
                 elseif targetType == "Smithing" then
                     return string.find(name, "smith") ~= nil or string.find(name, "furnace") ~= nil or string.find(name, "forge") ~= nil or FindFirstChild(station, "Hammer") ~= nil or FindFirstChild(station, "Anvil") ~= nil
                 else
@@ -8337,19 +8346,30 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 end
 
                 local myPos = plr.Character.HumanoidRootPart.Position
-                local stationsFolder = FindFirstChild(workspace, "Stations") or FindFirstChild(workspace, "Cauldrons")
-                if not stationsFolder and FindFirstChild(workspace, "Map") then
-                    stationsFolder = FindFirstChild(workspace.Map, "Stations") or FindFirstChild(workspace.Map, "Cauldrons")
-                end
-
                 local candidates = {}
+
+                local stationsFolder = FindFirstChild(workspace, "Stations") or FindFirstChild(workspace, "Cauldrons")
                 if stationsFolder then
                     for _, v in next, stationsFolder:GetChildren() do
                         table.insert(candidates, v)
                     end
                 end
-                if #candidates == 0 then
-                    for _, v in next, workspace:GetChildren() do
+
+                for _, v in next, workspace:GetChildren() do
+                    if v:IsA("Model") and isStationType(v, type) then
+                        table.insert(candidates, v)
+                    end
+                end
+
+                local mapFolder = FindFirstChild(workspace, "Map")
+                if mapFolder then
+                    local mapStations = FindFirstChild(mapFolder, "Stations") or FindFirstChild(mapFolder, "Cauldrons")
+                    if mapStations then
+                        for _, v in next, mapStations:GetChildren() do
+                            table.insert(candidates, v)
+                        end
+                    end
+                    for _, v in next, mapFolder:GetChildren() do
                         if v:IsA("Model") and isStationType(v, type) then
                             table.insert(candidates, v)
                         end
@@ -8357,7 +8377,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 end
 
                 local bestStation = nil
-                local bestDist = 35
+                local bestDist = 45
 
                 for _, v in next, candidates do
                     if isStationType(v, type) then
@@ -8424,7 +8444,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         if child:IsA("Tool") then
                             local norm = normalize_ingredient_name(child.Name)
                             local alias = ingredient_aliases[norm] or norm
-                            if norm == normTarget or alias == aliasTarget or norm == aliasTarget or alias == normTarget then
+                            if norm == normTarget or alias == aliasTarget or norm == aliasTarget or alias == normTarget or string.find(norm, normTarget, 1, true) or string.find(normTarget, norm, 1, true) then
                                 return child
                             end
                         end
@@ -8446,6 +8466,9 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
                 local cleanPart = FindFirstChild(station, partToClean) or FindFirstChild(station, "Bucket") or FindFirstChild(station, "Trash")
                 local cleanDetector = cleanPart and (FindFirstChild(cleanPart, "ClickEmpty") or FindFirstChildWhichIsA(cleanPart, "ClickDetector"))
+                if not cleanDetector then
+                    cleanDetector = FindFirstChild(station, "ClickEmpty", true)
+                end
                 local contentsObj = FindFirstChild(station, "Contents")
 
                 if contentsObj and contentsObj.Value ~= "[]" and cleanDetector then
@@ -8454,11 +8477,11 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         emptyAttempts = emptyAttempts + 1
                         if not can_continue() then return false end
                         fireclickdetector(cleanDetector)
-                        task.wait(utility:random_wait(true))
-                    until emptyAttempts >= 10 or contentsObj.Value == "[]" or not can_continue()
+                        task.wait(0.25)
+                    until emptyAttempts >= 6 or contentsObj.Value == "[]" or not can_continue()
 
                     if not can_continue() then return false end
-                    task.wait(utility:random_wait(true))
+                    task.wait(0.15)
                 end
 
                 for name, count in next, items do
@@ -8478,7 +8501,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                             else
                                 k.Parent = plr.Character
                             end
-                            task.wait(utility:random_wait(true))
+                            task.wait(0.15)
                         end
 
                         local remote = FindFirstChildWhichIsA(k, "RemoteEvent") or FindFirstChild(k, "RemoteEvent")
@@ -8491,38 +8514,55 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                                 attempts = attempts + 1
                                 if not can_continue() then return false end
                                 remote:FireServer(targetPart.CFrame, targetPart)
-                                task.wait(utility:random_wait(true))
-                            until attempts >= 15 or not contentsObj or contentsObj.Value ~= content or not can_continue()
+                                pcall(function() k:Activate() end)
+                                task.wait(0.2)
+                            until attempts >= 10 or (contentsObj and contentsObj.Value ~= content) or not k.Parent or not can_continue()
 
                             if not can_continue() then return false end
-
-                            if k.Parent == plr.Character and plr.Backpack then
-                                k.Parent = plr.Backpack
-                            end
                             task.wait(0.1)
                         else
                             k:Activate()
                             local attempts = 0
                             repeat
                                 attempts = attempts + 1
-                                task.wait(utility:random_wait(true))
-                            until attempts >= 15 or not k.Parent or not can_continue()
+                                task.wait(0.2)
+                            until attempts >= 10 or not k.Parent or not can_continue()
 
                             if not can_continue() then return false end
                         end
                     end
                 end
 
+                local clickDetector = nil
                 local clickPart = FindFirstChild(station, partToClick) or FindFirstChild(station, "Ladle") or FindFirstChild(station, "Hammer")
-                local clickDetector = clickPart and (FindFirstChild(clickPart, "ClickConcoct") or FindFirstChildWhichIsA(clickPart, "ClickDetector"))
+                if clickPart then
+                    clickDetector = FindFirstChild(clickPart, "ClickConcoct") or FindFirstChildWhichIsA(clickPart, "ClickDetector")
+                end
+                if not clickDetector then
+                    clickDetector = FindFirstChild(station, "ClickConcoct", true)
+                end
+                if not clickDetector then
+                    for _, desc in ipairs(station:GetDescendants()) do
+                        if desc:IsA("ClickDetector") and (string.find(string.lower(desc.Name), "concoct") or string.find(string.lower(desc.Parent.Name), "ladle")) then
+                            clickDetector = desc
+                            break
+                        end
+                    end
+                end
+
                 if clickDetector then
                     local concoctAttempts = 0
                     repeat
                         concoctAttempts = concoctAttempts + 1
                         if not can_continue() then return false end
                         fireclickdetector(clickDetector)
-                        task.wait(utility:random_wait(true))
-                    until concoctAttempts >= 12 or (contentsObj and contentsObj.Value == "[]") or not can_continue()
+                        task.wait(0.25)
+                    until concoctAttempts >= 4 or (contentsObj and contentsObj.Value == "[]") or not can_continue()
+
+                    local concoct_start = tick()
+                    while contentsObj and contentsObj.Value ~= "[]" and tick() - concoct_start < 4.5 and can_continue() do
+                        task.wait(0.2)
+                    end
                 end
 
                 return can_continue()
@@ -9440,6 +9480,15 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     if not value then
                         if cheat_client.clear_verdien_highlights then cheat_client.clear_verdien_highlights() end
                     end
+                end
+            })
+
+            group_combat_utils:AddToggle("AutoVerdien", {
+                Text = "Auto Verdien",
+                Default = cheat_client.config.auto_verdien,
+                Tooltip = "Automatically casts Verdien when a valid target is in range and hittable",
+                Callback = function(value)
+                    cheat_client.config.auto_verdien = value
                 end
             })
 
@@ -15978,7 +16027,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     return false
                 end
 
-                local verdien = FindFirstChild(character, "Verdien") or (plr.Backpack and FindFirstChild(plr.Backpack, "Verdien"))
+                local verdien = FindFirstChild(character, "Verdien") or FindFirstChild(character, "New Verdien") or (plr.Backpack and (FindFirstChild(plr.Backpack, "Verdien") or FindFirstChild(plr.Backpack, "New Verdien")))
                 if not verdien then
                     library:Notify("Verdien point failed: Verdien not found")
                     return false
@@ -15999,7 +16048,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     local equip_started = tick()
                     repeat
                         character = plr.Character
-                        verdien = character and FindFirstChild(character, "Verdien") or verdien
+                        verdien = character and (FindFirstChild(character, "Verdien") or FindFirstChild(character, "New Verdien")) or verdien
                         if verdien and character and verdien.Parent == character then
                             break
                         end
@@ -16010,38 +16059,30 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 character = plr.Character
                 humanoid = character and FindFirstChildOfClass(character, "Humanoid")
                 mana = character and FindFirstChild(character, "Mana")
-                verdien = character and FindFirstChild(character, "Verdien") or verdien
+                verdien = character and (FindFirstChild(character, "Verdien") or FindFirstChild(character, "New Verdien")) or verdien
 
                 if not character or not humanoid or not mana or not verdien or verdien.Parent ~= character then
                     library:Notify("Verdien point failed: could not equip Verdien")
                     return finish(false)
                 end
 
-                if mana.Value > 85 then
+                if mana.Value > 95 then
                     utility:decharge_mana()
                     local mana_wait_started = tick()
-                    while mana.Value > 85 and tick() - mana_wait_started < 8 and trinket_bot.path_running and not shared.is_unloading and not emergency_gate_requested and not trinket_bot.moderator_detected do
+                    while mana.Value > 95 and tick() - mana_wait_started < 4 and trinket_bot.path_running and not shared.is_unloading and not emergency_gate_requested and not trinket_bot.moderator_detected do
                         task.wait(0.05)
                     end
                 end
 
-                if mana.Value < 85 then
-                    utility:charge_mana_until(85)
-                end
-
-                if mana.Value > 85 then
-                    utility:decharge_mana()
-                    local mana_wait_started = tick()
-                    while mana.Value > 85 and tick() - mana_wait_started < 8 and trinket_bot.path_running and not shared.is_unloading and not emergency_gate_requested and not trinket_bot.moderator_detected do
-                        task.wait(0.05)
-                    end
+                if mana.Value < 75 then
+                    utility:charge_mana_until(80)
                 end
 
                 if not trinket_bot.path_running or shared.is_unloading or emergency_gate_requested or trinket_bot.moderator_detected then
                     return finish(false)
                 end
 
-                task.wait(0.05)
+                task.wait(0.1)
                 pcall(function()
                     verdien:Activate()
                 end)
@@ -16050,7 +16091,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 end)
 
                 local verdien_wait_started = tick()
-                while tick() - verdien_wait_started < 6.5 and trinket_bot.path_running and not shared.is_unloading and not emergency_gate_requested and not trinket_bot.moderator_detected do
+                while tick() - verdien_wait_started < 4.0 and trinket_bot.path_running and not shared.is_unloading and not emergency_gate_requested and not trinket_bot.moderator_detected do
                     task.wait(0.1)
                 end
 
@@ -29872,26 +29913,25 @@ end
             end
         end
 
-        -- ── Verdien Highlight ───────────────────────────────────────────
         do
             local highlight_pool = {}
+            local last_auto_verdien = 0
 
             local function get_or_make_highlight(char)
                 local addr = tostring(char)
                 if highlight_pool[addr] and highlight_pool[addr].Parent then
                     return highlight_pool[addr]
                 end
-                -- clean up stale
                 if highlight_pool[addr] then
                     pcall(function() highlight_pool[addr]:Destroy() end)
                 end
                 local h = Instance.new("SelectionBox")
-                h.LineThickness   = 0.05
+                h.LineThickness = 0.05
                 h.SurfaceTransparency = 0.6
-                h.Color3          = Color3.fromRGB(0, 255, 0)
-                h.SurfaceColor3   = Color3.fromRGB(0, 255, 0)
-                h.Adornee         = char
-                h.Parent          = game:GetService("CoreGui")
+                h.Color3 = Color3.fromRGB(0, 255, 0)
+                h.SurfaceColor3 = Color3.fromRGB(0, 255, 0)
+                h.Adornee = char
+                h.Parent = game:GetService("CoreGui")
                 highlight_pool[addr] = h
                 return h
             end
@@ -29906,20 +29946,24 @@ end
             cheat_client.clear_verdien_highlights = clear_highlights
 
             utility:Connection(rs.RenderStepped, function()
-                if not (Toggles and Toggles.VerdienHighlight and Toggles.VerdienHighlight.Value) then
+                local hl_enabled = Toggles and Toggles.VerdienHighlight and Toggles.VerdienHighlight.Value
+                local auto_v_enabled = Toggles and Toggles.AutoVerdien and Toggles.AutoVerdien.Value or cheat_client.config.auto_verdien
+                if not hl_enabled and not auto_v_enabled then
                     clear_highlights()
                     return
                 end
 
-                -- check local player has Verdien equipped
                 local char = plr.Character
                 if not char then clear_highlights(); return end
 
-                local hasVerdien = false
+                local verdien_tool = nil
                 for _, v in next, char:GetChildren() do
-                    if v.ClassName == "Tool" and v.Name == "Verdien" then hasVerdien = true; break end
+                    if v.ClassName == "Tool" and (v.Name == "Verdien" or v.Name == "New Verdien") then
+                        verdien_tool = v
+                        break
+                    end
                 end
-                if not hasVerdien then clear_highlights(); return end
+                if not verdien_tool then clear_highlights(); return end
 
                 local myRoot = char:FindFirstChild("HumanoidRootPart")
                 if not myRoot then clear_highlights(); return end
@@ -29939,26 +29983,43 @@ end
                     local addr = tostring(tc)
                     seen[addr] = true
 
-                    local dist       = (tRoot.Position - myPos).Magnitude
+                    local dist = (tRoot.Position - myPos).Magnitude
                     local hasCooldown = tc:FindFirstChild("VerdienCooldown") ~= nil
                     local hasBlocking = tc:FindFirstChild("Blocking") ~= nil
-                    local hittable   = dist <= 25 and not hasCooldown and not hasBlocking
+                    local hittable = dist <= 25 and not hasCooldown and not hasBlocking
 
-                    if dist > 30 then
-                        local addr2 = tostring(tc)
-                        if highlight_pool[addr2] then
-                            highlight_pool[addr2].Adornee = nil
+                    if auto_v_enabled and hittable then
+                        local now = os.clock()
+                        if now - last_auto_verdien > 1.2 then
+                            local mana = char:FindFirstChild("Mana")
+                            if not mana or mana.Value >= 75 then
+                                last_auto_verdien = now
+                                pcall(function() verdien_tool:Activate() end)
+                                pcall(function() utility:LeftClick() end)
+                            end
                         end
-                    else
-                        local h = get_or_make_highlight(tc)
-                        local col = hittable and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 50, 50)
-                        h.Color3        = col
-                        h.SurfaceColor3 = col
-                        h.Adornee       = tRoot  -- tRoot is already resolved above
+                    end
+
+                    if hl_enabled then
+                        if dist > 30 then
+                            local addr2 = tostring(tc)
+                            if highlight_pool[addr2] then
+                                highlight_pool[addr2].Adornee = nil
+                            end
+                        else
+                            local h = get_or_make_highlight(tc)
+                            local col = hittable and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 50, 50)
+                            if h.Color3 ~= col then
+                                h.Color3 = col
+                                h.SurfaceColor3 = col
+                            end
+                            if h.Adornee ~= tRoot then
+                                h.Adornee = tRoot
+                            end
+                        end
                     end
                 end
 
-                -- remove highlights for players no longer relevant
                 for addr, h in next, highlight_pool do
                     if not seen[addr] then
                         pcall(function() h:Destroy() end)
@@ -33419,13 +33480,13 @@ end
 
             local function get_synced_vfx_rainbow_seq()
                 local now = os.clock()
-                local shift = (now * 0.32) % 1
+                local shift = (now * 0.20) % 1
                 if utility.get_liquid_rainbow_seq then
                     return utility.get_liquid_rainbow_seq(shift, 0.85, now)
                 end
                 local kps = {}
-                for i = 0, 8 do
-                    local t = i / 8
+                for i = 0, 5 do
+                    local t = i / 5
                     local raw_h = (shift + t * 0.85) % 1
                     table.insert(kps, ColorSequenceKeypoint.new(t, Color3.fromHSV(raw_h, 0.9, 1)))
                 end
@@ -33437,7 +33498,7 @@ end
                 if now == last_c3_time and last_c3_res then
                     return last_c3_res
                 end
-                local shift = (now * 0.32) % 1
+                local shift = (now * 0.20) % 1
                 local c3 = Color3.fromHSV(shift, 0.9, 1)
                 last_c3_time = now
                 last_c3_res = c3
@@ -33999,6 +34060,8 @@ end
                 end)
             end
 
+            local last_vfx_update = 0
+
             utility:Connection(rs.RenderStepped, LPH_NO_VIRTUALIZE(function()
                 if not shared or shared.is_unloading or getgenv()._hx_unloaded then return end
                 local rainbow_vfx_on = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
@@ -34006,7 +34069,12 @@ end
                 if not plr.Character or not plr.Character.Parent then return end
 
                 local now = os.clock()
-                if now - last_vfx_scan > 0.35 then
+                if now - last_vfx_update < 0.033 then
+                    return
+                end
+                last_vfx_update = now
+
+                if now - last_vfx_scan > 0.4 then
                     last_vfx_scan = now
                     local char = get_local_char()
                     if char then
@@ -34038,12 +34106,20 @@ end
                 setting_rainbow_color = true
                 for emitter in pairs(tracked_seq_targets) do
                     if emitter.Parent then
-                        if emitter:IsA("ParticleEmitter") and is_shield_or_orb_object(emitter) then
-                            pcall(safe_set_seq, emitter, c3_seq)
-                        else
-                            if not emitter:IsA("Beam") or emitter.Enabled then
+                        if emitter:IsA("ParticleEmitter") then
+                            if emitter.Enabled then
+                                if is_shield_or_orb_object(emitter) then
+                                    pcall(safe_set_seq, emitter, c3_seq)
+                                else
+                                    pcall(safe_set_seq, emitter, seq)
+                                end
+                            end
+                        elseif emitter:IsA("Beam") then
+                            if emitter.Enabled then
                                 pcall(safe_set_seq, emitter, seq)
                             end
+                        else
+                            pcall(safe_set_seq, emitter, seq)
                         end
                     else
                         tracked_seq_targets[emitter] = nil
@@ -34054,7 +34130,9 @@ end
                 for inst, props in pairs(tracked_c3_targets) do
                     if inst.Parent then
                         for prop_name in pairs(props) do
-                            pcall(safe_set_c3, inst, prop_name, c3)
+                            if inst[prop_name] ~= c3 then
+                                pcall(safe_set_c3, inst, prop_name, c3)
+                            end
                         end
                     else
                         tracked_c3_targets[inst] = nil
