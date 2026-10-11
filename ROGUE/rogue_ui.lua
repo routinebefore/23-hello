@@ -560,6 +560,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             rainbow_mana = false,
             rainbow_health = false,
             rainbow_vfx = false,
+            cooldown_indicator = false,
     
             no_insane = false,
             instant_mine = false,
@@ -3377,6 +3378,11 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         for _, hook_fn in ipairs(cheat_client.unload_hooks) do
                             pcall(hook_fn)
                         end
+                    end
+                end)
+                pcall(function()
+                    if cheat_client and cheat_client.cleanup_cooldown_indicator then
+                        cheat_client.cleanup_cooldown_indicator()
                     end
                 end)
                 pcall(function()
@@ -10284,6 +10290,18 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     cheat_client.config.rainbow_vfx = state
                     if cheat_client.update_rainbow_vfx then
                         cheat_client.update_rainbow_vfx(state)
+                    end
+                end
+            })
+
+            group_overlays:AddToggle("CooldownIndicator", {
+                Text = "Cooldown Indicator",
+                Default = cheat_client.config.cooldown_indicator,
+                Tooltip = "Shades hotbar slots on cooldown",
+                Callback = function(state)
+                    cheat_client.config.cooldown_indicator = state
+                    if cheat_client.update_cooldown_indicator then
+                        cheat_client.update_cooldown_indicator(state)
                     end
                 end
             })
@@ -31912,6 +31930,519 @@ end
                 end)
             end
             utility:Connection(plr.CharacterAdded, on_char_added)
+        end
+
+        do
+            local cd_skills = {
+                ["Spear Crusher"] = 10,
+                ["Wing Soar"] = 15,
+                ["Thunder Spear Crash"] = 15,
+                ["Dragon Roar"] = 15,
+                ["Ensnaring Strikes"] = 21,
+                ["Heroic Volley"] = 11,
+                ["Justice Spears"] = 1,
+                ["Triple Strike"] = 15,
+                ["Serpent Strike"] = 15,
+                ["Great Cyclone"] = 10,
+                ["Void Slicer"] = 10,
+                ["Deflecting Spin"] = 17,
+                ["Spinning Soul"] = 30,
+                ["Wrathful Leap"] = 11,
+                ["Shoulder Bash"] = 15,
+                ["Abyssal Scream"] = 15,
+                ["Demon Flip"] = 10,
+                ["Rising Dragon"] = 10,
+                ["Augimas"] = 4,
+                ["Augimas 2"] = 6.5,
+                ["Rampage"] = 20,
+                ["Leg Breaker"] = 10,
+                ["Spin Kick"] = 10,
+                ["Axe Kick"] = 10,
+                ["Bomb Jump"] = 15,
+                ["Duelist Dash"] = 15,
+                ["Mana Grenade"] = 10,
+                ["Bullseye"] = 15,
+                ["Auto Reload"] = 20,
+                ["Needle's Eye"] = 10,
+                ["The Wraith"] = 2.5,
+                ["Elegant Slash"] = 10,
+                ["Sapphire Shard"] = 15,
+                ["Ruby Shard"] = 15,
+                ["Opal Shard"] = 15,
+                ["Bane"] = 40,
+                ["Grapple"] = 4,
+                ["Rising Cloud"] = 4,
+                ["Cruel Wind"] = 4,
+                ["Owl Slash"] = 8,
+                ["Shadowrush"] = 8,
+                ["Soul Siphon"] = 15,
+                ["Light Piercer"] = 8.5,
+                ["Tethering Lance"] = 1,
+                ["Deep Sacrifice"] = 15,
+                ["Void Spear"] = 10,
+                ["Leviathan Plunge"] = 80,
+                ["Impale"] = 15,
+                ["Chain Pull"] = 15,
+                ["Action Surge"] = 22,
+                ["Pommel Strike"] = 15,
+                ["Disarming Strike"] = 30,
+                ["Hyper Body"] = 120,
+                ["Rod of Narsa"] = 5,
+                ["Chain of Fate"] = 15,
+                ["Parmarktini"] = 5,
+                ["Counter"] = 10,
+                ["Dominus"] = 20,
+                ["Custos"] = 25,
+                ["Compress"] = 8,
+                ["Duobe"] = 18,
+                ["Terra Rebus"] = 10,
+                ["Command Monsters"] = 2,
+                ["Mirgeti"] = 5,
+                ["Spindylus"] = 5,
+                ["Krusa"] = 10,
+                ["Shadow Fan"] = 10,
+                ["Ethereal Strike"] = 15,
+                ["Dagger Throw"] = 10,
+                ["Lethality"] = 30,
+                ["Triple Dagger Throw"] = 10,
+                ["Falling Darkness"] = 25,
+                ["Flash of Darkness"] = 25,
+                ["Lightning Drop"] = 6,
+                ["Lightning Elbow"] = 10,
+                ["Monastic Stance"] = 30,
+                ["Seismic Toss"] = 10,
+                ["Lightning Smite"] = 15,
+                ["Thundering Leap"] = 15,
+                ["Dark Eruption"] = 15,
+                ["Hunt"] = 20,
+                ["Mirror"] = 10,
+                ["Soul Burst"] = 10,
+                ["Chase"] = 10,
+                ["Flock"] = 20,
+                ["Shift"] = 2.5,
+                ["Trinket Shift"] = 1,
+                ["Exhaust"] = 30,
+                ["Swiftfoot"] = 45,
+                ["Fury"] = 300,
+                ["Subzero Strike"] = 15,
+                ["Pickpocket"] = 3,
+                ["Agility"] = 40,
+                ["Stealth"] = 25
+            }
+
+            local cd_spells = {
+                ["Armis"] = 10,
+                ["Celeritas"] = 3,
+                ["Gate"] = 1,
+                ["Gelidus"] = 3,
+                ["Ignis"] = 10,
+                ["Nocere"] = 7,
+                ["Sagitta Sol"] = 3,
+                ["Snarvindur"] = 5,
+                ["Telorum"] = 4.5,
+                ["Trickstus"] = 3,
+                ["Velo"] = 1,
+                ["Viribus"] = 3,
+                ["Contrarium"] = 10,
+                ["Hoppa"] = 5,
+                ["Percutiens"] = 4,
+                ["Hystericus"] = 3,
+                ["Verdien"] = 3,
+                ["Fons Vitae"] = 6.5,
+                ["Floresco"] = 3
+            }
+
+            local cd_special = {
+                ["Floresco"] = 5
+            }
+
+            local cd_casts = {
+                ["rbxassetid://2960432568"] = true,
+                ["rbxassetid://2818022247"] = true
+            }
+
+            local cd_invisible = {
+                ["Agility"] = true,
+                ["Bane"] = true,
+                ["Ethereal Strike"] = true
+            }
+
+            local cd_blockers = {
+                "Blocking",
+                "Climbing",
+                "Stun",
+                "NoDash",
+                "NoDam",
+                "BeingExecuted"
+            }
+
+            local cd_colors = {
+                melee = Color3.fromRGB(255, 80, 80),
+                spell = Color3.fromRGB(80, 80, 255),
+                special = Color3.fromRGB(80, 255, 80),
+                idle = Color3.fromRGB(245, 197, 130),
+                meleeShown = Color3.fromRGB(255, 80, 255)
+            }
+
+            local cd_state = {
+                on_cooldown = {},
+                active_frames = {},
+                active_tweens = {},
+                current_tool = "",
+                current_spell = "",
+                painted = false,
+                char_connections = {},
+                tool_connections = {},
+                root_connections = {}
+            }
+
+            local function is_indicator_enabled()
+                return (Toggles and Toggles.CooldownIndicator and Toggles.CooldownIndicator.Value == true) or cheat_client.config.cooldown_indicator == true
+            end
+
+            local function get_slot_containers()
+                local player_gui = plr:FindFirstChildOfClass("PlayerGui")
+                local backpack_gui = player_gui and player_gui:FindFirstChild("BackpackGui")
+                local backpack_frame = backpack_gui and backpack_gui:FindFirstChild("BackpackFrame")
+                return {
+                    backpack_gui and backpack_gui:FindFirstChild("MainFrame"),
+                    backpack_frame and backpack_frame:FindFirstChild("ScrollingFrame")
+                }
+            end
+
+            local function get_slot_button(name)
+                local containers = get_slot_containers()
+                for _, container in ipairs(containers) do
+                    if container then
+                        for _, child in ipairs(container:GetChildren()) do
+                            if child:IsA("TextButton") then
+                                if child.Text == name or child.Name == name then
+                                    return child
+                                end
+                                local tool_val = child:FindFirstChild("Tool")
+                                if tool_val and tool_val.Value and tool_val.Value.Name == name then
+                                    return child
+                                end
+                            end
+                        end
+                    end
+                end
+                return nil
+            end
+
+            local function toggle_indicator_frames(visible)
+                local containers = get_slot_containers()
+                for _, container in ipairs(containers) do
+                    if container then
+                        for _, child in ipairs(container:GetChildren()) do
+                            local spell_frame = child:FindFirstChild("SpellFrame")
+                            local melee_frame = child:FindFirstChild("MeleeFrame")
+                            local overlay = child:FindFirstChild("Overlay")
+                            if visible then
+                                if spell_frame then
+                                    spell_frame.Visible = true
+                                    if overlay then
+                                        overlay.ImageColor3 = cd_colors.spell
+                                    end
+                                end
+                                if melee_frame then
+                                    melee_frame.Visible = true
+                                    if overlay then
+                                        overlay.ImageColor3 = cd_colors.meleeShown
+                                    end
+                                end
+                            else
+                                if spell_frame then
+                                    spell_frame.Visible = false
+                                end
+                                if melee_frame then
+                                    melee_frame.Visible = false
+                                end
+                                if overlay then
+                                    overlay.ImageColor3 = cd_colors.idle
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+
+            local function can_use_ability(character, ability_name, is_spell)
+                if not character then
+                    return false
+                end
+                local head = character:FindFirstChild("Head")
+                if not head or (head.Transparency == 1 and not cd_invisible[ability_name]) then
+                    return false
+                end
+                if character:FindFirstChild("SpellBlocking") and not is_spell then
+                    return false
+                end
+                for _, blocker_name in ipairs(cd_blockers) do
+                    if character:FindFirstChild(blocker_name) then
+                        return false
+                    end
+                end
+                local live = ws:FindFirstChild("Live")
+                return head:FindFirstChild("Bone") == nil and live ~= nil and live:FindFirstChild(character.Name) ~= nil
+            end
+
+            local function disconnect_tool_conns()
+                for _, conn in ipairs(cd_state.tool_connections) do
+                    if conn and conn.Disconnect then
+                        pcall(function()
+                            conn:Disconnect()
+                        end)
+                    end
+                end
+                table.clear(cd_state.tool_connections)
+            end
+
+            local function disconnect_char_conns()
+                for _, conn in ipairs(cd_state.char_connections) do
+                    if conn and conn.Disconnect then
+                        pcall(function()
+                            conn:Disconnect()
+                        end)
+                    end
+                end
+                table.clear(cd_state.char_connections)
+            end
+
+            local function clear_active_indicators()
+                for frame, tween in pairs(cd_state.active_tweens) do
+                    pcall(function()
+                        if tween and tween.Cancel then
+                            tween:Cancel()
+                        end
+                    end)
+                end
+                table.clear(cd_state.active_tweens)
+                for frame in pairs(cd_state.active_frames) do
+                    pcall(function()
+                        if frame and frame.Destroy then
+                            frame:Destroy()
+                        end
+                    end)
+                end
+                table.clear(cd_state.active_frames)
+            end
+
+            local function trigger_cooldown(cd_type, tool_or_skill_name)
+                local is_spell = cd_type ~= "melee"
+                local char = plr.Character
+                if not can_use_ability(char, tool_or_skill_name, is_spell) then
+                    return
+                end
+                local spell_name = cd_state.current_spell
+                local duration
+                if cd_type == "melee" then
+                    duration = cd_skills[tool_or_skill_name]
+                    if tool_or_skill_name == "Bane" and type(duration) == "number" then
+                        local backpack = plr:FindFirstChildOfClass("Backpack")
+                        duration = duration + ((backpack and backpack:FindFirstChild("UpgradedBane")) and 5 or -5)
+                    end
+                    cd_state.on_cooldown[tool_or_skill_name] = true
+                elseif cd_type == "spell" then
+                    duration = cd_spells[spell_name]
+                else
+                    duration = cd_special[spell_name]
+                end
+                if type(duration) ~= "number" then
+                    cd_state.on_cooldown[tool_or_skill_name] = nil
+                    return
+                end
+                task.spawn(function()
+                    task.wait(duration)
+                    if cd_type == "melee" then
+                        cd_state.on_cooldown[tool_or_skill_name] = nil
+                    end
+                end)
+                local target_name = is_spell and spell_name or tool_or_skill_name
+                local slot = get_slot_button(target_name)
+                if not slot then
+                    return
+                end
+                local tint_color = cd_colors[cd_type]
+                local frame_name = is_spell and "SpellFrame" or "MeleeFrame"
+                local existing = slot:FindFirstChild(frame_name)
+                if existing then
+                    if cd_state.active_tweens[existing] then
+                        pcall(function()
+                            cd_state.active_tweens[existing]:Cancel()
+                        end)
+                        cd_state.active_tweens[existing] = nil
+                    end
+                    cd_state.active_frames[existing] = nil
+                    pcall(function()
+                        existing:Destroy()
+                    end)
+                end
+                local frame = Instance.new("Frame")
+                frame.Name = frame_name
+                frame.BorderSizePixel = 0
+                frame.AnchorPoint = Vector2.new(0, 1)
+                frame.Position = UDim2.new(0, 0, 1, 0)
+                frame.Size = UDim2.new(1, 0, 1, 0)
+                frame.BackgroundTransparency = 0.7
+                frame.ZIndex = 1
+                frame.BackgroundColor3 = tint_color
+                frame.Parent = slot
+                cd_state.active_frames[frame] = true
+
+                local overlay = slot:FindFirstChild("Overlay")
+                if overlay and cd_type ~= "special" and is_indicator_enabled() then
+                    overlay.ImageColor3 = tint_color
+                end
+
+                local tween_info = TweenInfo.new(duration, Enum.EasingStyle.Linear)
+                local tween = ts:Create(frame, tween_info, {
+                    Size = UDim2.new(1, 0, 0, 0)
+                })
+                cd_state.active_tweens[frame] = tween
+                tween:Play()
+
+                task.spawn(function()
+                    task.wait(duration)
+                    cd_state.active_tweens[frame] = nil
+                    cd_state.active_frames[frame] = nil
+                    if overlay then
+                        local has_other_frame = slot:FindFirstChild("SpellFrame") or slot:FindFirstChild("MeleeFrame")
+                        if not has_other_frame then
+                            overlay.ImageColor3 = cd_colors.idle
+                        end
+                    end
+                    pcall(function()
+                        frame:Destroy()
+                    end)
+                end)
+            end
+
+            local function on_tool_equipped(tool)
+                if not tool or not tool:IsA("Tool") then
+                    return
+                end
+                local tool_name = tool.Name
+                if cd_state.current_tool ~= "" then
+                    return
+                end
+                if cd_skills[tool_name] == nil and cd_spells[tool_name] == nil then
+                    return
+                end
+                cd_state.current_tool = tool_name
+                disconnect_tool_conns()
+
+                local mouse_obj = plr:GetMouse()
+                table.insert(cd_state.tool_connections, mouse_obj.Button1Down:Connect(function()
+                    if is_indicator_enabled() and cd_skills[tool_name] and not cd_state.on_cooldown[tool_name] then
+                        trigger_cooldown("melee", tool_name)
+                    end
+                end))
+
+                table.insert(cd_state.tool_connections, mouse_obj.Button2Down:Connect(function()
+                    if is_indicator_enabled() and (tool:FindFirstChild("Spell") or tool:FindFirstChild("GodSpell") or tool:FindFirstChild("SkillSpell")) then
+                        cd_state.current_spell = tool_name
+                    end
+                end))
+
+                local char = plr.Character
+                local hum = char and char:FindFirstChildOfClass("Humanoid")
+                if hum then
+                    table.insert(cd_state.tool_connections, hum.AnimationPlayed:Connect(function(anim_track)
+                        if not is_indicator_enabled() then
+                            return
+                        end
+                        if not anim_track or not anim_track.Animation then
+                            return
+                        end
+                        local anim_id = anim_track.Animation.AnimationId
+                        local is_cast = cd_casts[anim_id] or string.find(anim_id, "2960432568", 1, true) or string.find(anim_id, "2818022247", 1, true)
+                        if is_cast and type(cd_spells[cd_state.current_spell]) == "number" then
+                            if cd_special[cd_state.current_spell] then
+                                task.spawn(trigger_cooldown, "special", tool_name)
+                            end
+                            trigger_cooldown("spell", tool_name)
+                        end
+                    end))
+                end
+            end
+
+            local function on_tool_unequipped(tool)
+                if tool and tool.Name == cd_state.current_tool then
+                    cd_state.current_tool = ""
+                    disconnect_tool_conns()
+                end
+            end
+
+            local function bind_character(char)
+                cd_state.current_tool = ""
+                disconnect_tool_conns()
+                disconnect_char_conns()
+                if not char then
+                    return
+                end
+                table.insert(cd_state.char_connections, char.ChildAdded:Connect(on_tool_equipped))
+                table.insert(cd_state.char_connections, char.ChildRemoved:Connect(on_tool_unequipped))
+                for _, child in ipairs(char:GetChildren()) do
+                    if child:IsA("Tool") then
+                        on_tool_equipped(child)
+                        break
+                    end
+                end
+            end
+
+            local function update_indicator_state(state)
+                disconnect_tool_conns()
+                disconnect_char_conns()
+                cd_state.current_tool = ""
+                if state or cd_state.painted then
+                    toggle_indicator_frames(state)
+                end
+                if not state then
+                    clear_active_indicators()
+                    return
+                end
+                cd_state.painted = true
+                bind_character(plr.Character)
+            end
+
+            cheat_client.update_cooldown_indicator = update_indicator_state
+
+            local function full_cleanup()
+                disconnect_tool_conns()
+                disconnect_char_conns()
+                for _, conn in ipairs(cd_state.root_connections) do
+                    if conn and conn.Disconnect then
+                        pcall(function()
+                            conn:Disconnect()
+                        end)
+                    end
+                end
+                table.clear(cd_state.root_connections)
+                clear_active_indicators()
+                toggle_indicator_frames(false)
+                table.clear(cd_state.on_cooldown)
+                cd_state.current_tool = ""
+                cd_state.current_spell = ""
+            end
+
+            cheat_client.cleanup_cooldown_indicator = full_cleanup
+
+            if cheat_client.register_unload_hook then
+                cheat_client.register_unload_hook(full_cleanup)
+            end
+
+            table.insert(cd_state.root_connections, plr.CharacterAdded:Connect(function(new_char)
+                table.clear(cd_state.on_cooldown)
+                cd_state.current_spell = ""
+                if is_indicator_enabled() then
+                    bind_character(new_char)
+                end
+            end))
+
+            if is_indicator_enabled() then
+                update_indicator_state(true)
+            end
         end
 
         do
