@@ -2395,7 +2395,9 @@ if game.PlaceId == 100010170789226 then
     end
     
     local repo_candidates = {
+        "https://raw.githubusercontent.com/routinebefore/23-hello/main/",
         "https://raw.githubusercontent.com/routinebefore/23-hello/refs/heads/main/",
+        "https://raw.githubusercontent.com/themike-fart/HYDROXIDE/main/",
         "https://raw.githubusercontent.com/themike-fart/HYDROXIDE/refs/heads/main/",
     }
 
