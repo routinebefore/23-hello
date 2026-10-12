@@ -564,6 +564,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             rainbow_health = false,
             rainbow_vfx = false,
             cooldown_indicator = false,
+            rainbow_hotbar = false,
             rainbow_accents = false,
             rainbow_accents_lines = true,
             rainbow_accents_elements = false,
@@ -10679,6 +10680,18 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     cheat_client.config.cooldown_indicator = state
                     if cheat_client.update_cooldown_indicator then
                         cheat_client.update_cooldown_indicator(state)
+                    end
+                end
+            })
+
+            group_overlays:AddToggle("RainbowHotbar", {
+                Text = "Rainbow Hotbar",
+                Default = cheat_client.config.rainbow_hotbar,
+                Tooltip = "Cycles hotbar slot frames in rainbow colors",
+                Callback = function(state)
+                    cheat_client.config.rainbow_hotbar = state
+                    if cheat_client.update_rainbow_hotbar then
+                        cheat_client.update_rainbow_hotbar(state)
                     end
                 end
             })
@@ -33047,11 +33060,24 @@ end
                 return (Toggles and Toggles.CooldownIndicator and Toggles.CooldownIndicator.Value == true) or cheat_client.config.cooldown_indicator == true
             end
 
+            local function is_rainbow_hotbar_enabled()
+                if library and library.Toggles and library.Toggles.RainbowHotbar then
+                    return library.Toggles.RainbowHotbar.Value == true
+                elseif Toggles and Toggles.RainbowHotbar then
+                    return Toggles.RainbowHotbar.Value == true
+                elseif cheat_client.config then
+                    return cheat_client.config.rainbow_hotbar == true
+                end
+                return false
+            end
+
             local function get_idle_color(overlay)
                 if overlay and not cd_state.original_overlay_colors[overlay] then
                     local current_col = overlay.ImageColor3
-                    if current_col ~= cd_colors.melee and current_col ~= cd_colors.spell and current_col ~= cd_colors.special and current_col ~= cd_colors.meleeShown then
+                    if current_col ~= cd_colors.melee and current_col ~= cd_colors.spell and current_col ~= cd_colors.special and current_col ~= cd_colors.meleeShown and not is_rainbow_hotbar_enabled() then
                         cd_state.original_overlay_colors[overlay] = current_col
+                    else
+                        cd_state.original_overlay_colors[overlay] = cd_colors.idle
                     end
                 end
                 return (overlay and cd_state.original_overlay_colors[overlay]) or cd_colors.idle
@@ -33073,7 +33099,7 @@ end
                     if container then
                         for _, child in ipairs(container:GetChildren()) do
                             if child:IsA("TextButton") then
-                                if child.Text == name or child.Name == name then
+                                if child.Text == name or child.Name == name or string.sub(child.Name, 2) == name then
                                     return child
                                 end
                                 local tool_val = child:FindFirstChild("Tool")
@@ -33095,7 +33121,13 @@ end
                 if overlay then
                     local remaining = slot:FindFirstChild("SpellFrame") or slot:FindFirstChild("MeleeFrame")
                     if not remaining then
-                        overlay.ImageColor3 = get_idle_color(overlay)
+                        if not is_rainbow_hotbar_enabled() then
+                            overlay.ImageColor3 = get_idle_color(overlay)
+                            local type_outline = overlay:FindFirstChild("TypeOutline")
+                            if type_outline then
+                                type_outline.ImageColor3 = get_idle_color(type_outline)
+                            end
+                        end
                     end
                 end
             end
@@ -33129,7 +33161,13 @@ end
                                     melee_frame.Visible = false
                                 end
                                 if overlay then
-                                    overlay.ImageColor3 = get_idle_color(overlay)
+                                    if not is_rainbow_hotbar_enabled() then
+                                        overlay.ImageColor3 = get_idle_color(overlay)
+                                        local type_outline = overlay:FindFirstChild("TypeOutline")
+                                        if type_outline then
+                                            type_outline.ImageColor3 = get_idle_color(type_outline)
+                                        end
+                                    end
                                 end
                             end
                         end
@@ -33370,6 +33408,124 @@ end
                 end
             end
 
+            local rainbow_hotbar_conn = nil
+
+            local function restore_hotbar_slots()
+                local containers = get_slot_containers()
+                local indicator_on = is_indicator_enabled()
+                for _, container in ipairs(containers) do
+                    if container then
+                        for _, child in ipairs(container:GetChildren()) do
+                            if child:IsA("TextButton") then
+                                local overlay = child:FindFirstChild("Overlay")
+                                if overlay then
+                                    local spell_frame = child:FindFirstChild("SpellFrame")
+                                    local melee_frame = child:FindFirstChild("MeleeFrame")
+                                    if spell_frame and indicator_on then
+                                        overlay.ImageColor3 = cd_colors.spell
+                                    elseif melee_frame and indicator_on then
+                                        overlay.ImageColor3 = cd_colors.melee
+                                    else
+                                        overlay.ImageColor3 = get_idle_color(overlay)
+                                    end
+                                    local type_outline = overlay:FindFirstChild("TypeOutline")
+                                    if type_outline then
+                                        type_outline.ImageColor3 = get_idle_color(type_outline)
+                                    end
+                                end
+                            elseif child:IsA("ImageLabel") and child.Name == "SlotMarker" then
+                                child.ImageColor3 = get_idle_color(child)
+                            end
+                        end
+                    end
+                end
+            end
+
+            local last_rainbow_hotbar_step = 0
+            local function update_rainbow_hotbar_step()
+                if not is_rainbow_hotbar_enabled() then
+                    return
+                end
+                local now = os.clock()
+                if now - last_rainbow_hotbar_step < 0.02 then
+                    return
+                end
+                last_rainbow_hotbar_step = now
+
+                local containers = get_slot_containers()
+                local indicator_on = is_indicator_enabled()
+
+                for _, container in ipairs(containers) do
+                    if container then
+                        for _, child in ipairs(container:GetChildren()) do
+                            if child:IsA("TextButton") then
+                                local overlay = child:FindFirstChild("Overlay")
+                                if overlay then
+                                    local is_on_cooldown = false
+                                    if indicator_on then
+                                        if child:FindFirstChild("SpellFrame") or child:FindFirstChild("MeleeFrame") then
+                                            is_on_cooldown = true
+                                        end
+                                    end
+                                    if not is_on_cooldown then
+                                        get_idle_color(overlay)
+                                        local abs_x = overlay.AbsolutePosition.X
+                                        local hue = (now * 0.32 + abs_x * 0.0014) % 1
+                                        local color = Color3.fromHSV(hue, 0.85, 1)
+                                        if overlay.ImageColor3 ~= color then
+                                            overlay.ImageColor3 = color
+                                        end
+                                        local type_outline = overlay:FindFirstChild("TypeOutline")
+                                        if type_outline then
+                                            get_idle_color(type_outline)
+                                            if type_outline.ImageColor3 ~= color then
+                                                type_outline.ImageColor3 = color
+                                            end
+                                        end
+                                    end
+                                end
+                            elseif child:IsA("ImageLabel") and child.Name == "SlotMarker" and child.Visible then
+                                get_idle_color(child)
+                                local abs_x = child.AbsolutePosition.X
+                                local hue = (now * 0.32 + abs_x * 0.0014) % 1
+                                local color = Color3.fromHSV(hue, 0.85, 1)
+                                if child.ImageColor3 ~= color then
+                                    child.ImageColor3 = color
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+
+            local function update_rainbow_hotbar_state(state)
+                if state then
+                    if not rainbow_hotbar_conn then
+                        rainbow_hotbar_conn = utility:Connection(rs.RenderStepped, LPH_NO_VIRTUALIZE(function()
+                            if not shared or shared.is_unloading or (getgenv and getgenv()._hx_unloaded) then
+                                return
+                            end
+                            update_rainbow_hotbar_step()
+                        end))
+                        if cheat_client.feature_connections then
+                            cheat_client.feature_connections.rainbow_hotbar = rainbow_hotbar_conn
+                        end
+                    end
+                else
+                    if rainbow_hotbar_conn then
+                        rainbow_hotbar_conn:Disconnect()
+                        rainbow_hotbar_conn = nil
+                        if cheat_client.feature_connections then
+                            cheat_client.feature_connections.rainbow_hotbar = nil
+                        end
+                    end
+                    restore_hotbar_slots()
+                end
+            end
+
+            cheat_client.update_rainbow_hotbar = update_rainbow_hotbar_state
+            cheat_client.restore_hotbar_slots = restore_hotbar_slots
+
             local function update_indicator_state(state)
                 disconnect_tool_conns()
                 disconnect_char_conns()
@@ -33390,6 +33546,14 @@ end
             cheat_client.update_cooldown_indicator = update_indicator_state
 
             local function full_cleanup()
+                if rainbow_hotbar_conn then
+                    rainbow_hotbar_conn:Disconnect()
+                    rainbow_hotbar_conn = nil
+                    if cheat_client.feature_connections then
+                        cheat_client.feature_connections.rainbow_hotbar = nil
+                    end
+                end
+                restore_hotbar_slots()
                 disconnect_tool_conns()
                 disconnect_char_conns()
                 for _, conn in ipairs(cd_state.root_connections) do
@@ -33462,14 +33626,26 @@ end
                                         local spell_frame = child:FindFirstChild("SpellFrame")
                                         local melee_frame = child:FindFirstChild("MeleeFrame")
                                         if not spell_frame and not melee_frame then
-                                            local idle_col = get_idle_color(overlay)
-                                            if overlay.ImageColor3 ~= idle_col then
-                                                overlay.ImageColor3 = idle_col
+                                            if not is_rainbow_hotbar_enabled() then
+                                                local idle_col = get_idle_color(overlay)
+                                                if overlay.ImageColor3 ~= idle_col then
+                                                    overlay.ImageColor3 = idle_col
+                                                end
+                                                local type_outline = overlay:FindFirstChild("TypeOutline")
+                                                if type_outline and type_outline.ImageColor3 ~= idle_col then
+                                                    type_outline.ImageColor3 = idle_col
+                                                end
                                             end
                                         elseif not enabled then
-                                            local idle_col = get_idle_color(overlay)
-                                            if overlay.ImageColor3 ~= idle_col then
-                                                overlay.ImageColor3 = idle_col
+                                            if not is_rainbow_hotbar_enabled() then
+                                                local idle_col = get_idle_color(overlay)
+                                                if overlay.ImageColor3 ~= idle_col then
+                                                    overlay.ImageColor3 = idle_col
+                                                end
+                                                local type_outline = overlay:FindFirstChild("TypeOutline")
+                                                if type_outline and type_outline.ImageColor3 ~= idle_col then
+                                                    type_outline.ImageColor3 = idle_col
+                                                end
                                             end
                                         end
                                     end
@@ -33482,6 +33658,9 @@ end
 
             if is_indicator_enabled() then
                 update_indicator_state(true)
+            end
+            if is_rainbow_hotbar_enabled() then
+                update_rainbow_hotbar_state(true)
             end
         end
 
