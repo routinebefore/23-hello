@@ -33553,7 +33553,7 @@ end
                     local d_to = torso and (check_pos - torso.Position).Magnitude or 999
                     local d_ra = right_arm and (check_pos - right_arm.Position).Magnitude or 999
                     local d_la = left_arm and (check_pos - left_arm.Position).Magnitude or 999
-                    if math.min(d_rt, d_to, d_ra, d_la) < 14 then
+                    if math.min(d_rt, d_to, d_ra, d_la) < 30 then
                         return true
                     end
                 end
@@ -33587,12 +33587,12 @@ end
                     local char_pos = root.Position
                     if ok0 and a0 then
                         local ok_pos, pos = pcall(function() return a0.WorldPosition end)
-                        if ok_pos and pos and (pos - char_pos).Magnitude < 14 then
+                        if ok_pos and pos and (pos - char_pos).Magnitude < 30 then
                             return true
                         end
                     end
                     if p and p:IsA("BasePart") then
-                        if (p.Position - char_pos).Magnitude < 14 then
+                        if (p.Position - char_pos).Magnitude < 30 then
                             return true
                         end
                     end
@@ -33610,63 +33610,19 @@ end
                 local ok, col = pcall(function() return emitter.Color end)
                 if not ok or not col then return end
                 original_colors[emitter] = col
-                tracked_emitters[emitter] = true
+                local is_seq = typeof(col) == "ColorSequence"
+                tracked_emitters[emitter] = is_seq
 
                 local is_enabled = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
                 if is_enabled then
-                    setting_rainbow_color = true
                     pcall(function()
-                        if typeof(emitter.Color) == "ColorSequence" then
+                        if is_seq then
                             emitter.Color = get_synced_vfx_rainbow_seq()
-                        elseif typeof(emitter.Color) == "Color3" then
+                        else
                             emitter.Color = get_synced_vfx_rainbow_c3()
                         end
                     end)
-                    setting_rainbow_color = false
                 end
-
-                local conn_enabled = track_vfx_conn(emitter:GetPropertyChangedSignal("Enabled"):Connect(function()
-                    local active = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
-                    if active and emitter.Enabled and not setting_rainbow_color then
-                        setting_rainbow_color = true
-                        pcall(function()
-                            if typeof(emitter.Color) == "ColorSequence" then
-                                emitter.Color = get_synced_vfx_rainbow_seq()
-                            elseif typeof(emitter.Color) == "Color3" then
-                                emitter.Color = get_synced_vfx_rainbow_c3()
-                            end
-                        end)
-                        setting_rainbow_color = false
-                    end
-                end))
-
-                if emitter:IsA("Trail") or emitter:IsA("Beam") then
-                    local conn_color = track_vfx_conn(emitter:GetPropertyChangedSignal("Color"):Connect(function()
-                        if setting_rainbow_color then return end
-                        local active = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
-                        if active then
-                            setting_rainbow_color = true
-                            pcall(function()
-                                if typeof(emitter.Color) == "ColorSequence" then
-                                    emitter.Color = get_synced_vfx_rainbow_seq()
-                                elseif typeof(emitter.Color) == "Color3" then
-                                    emitter.Color = get_synced_vfx_rainbow_c3()
-                                end
-                            end)
-                            setting_rainbow_color = false
-                        end
-                    end))
-                end
-
-                local conn_ancestry
-                conn_ancestry = track_vfx_conn(emitter.AncestryChanged:Connect(function(_, parent)
-                    if not parent then
-                        tracked_emitters[emitter] = nil
-                        original_colors[emitter] = nil
-                        if conn_enabled then conn_enabled:Disconnect() end
-                        if conn_ancestry then conn_ancestry:Disconnect() end
-                    end
-                end))
             end
 
             local vfx_registry = {
@@ -33680,7 +33636,7 @@ end
                     {
                         id = "Grapple",
                         matches = function(desc, char)
-                            if not (desc:IsA("ParticleEmitter") or desc:IsA("Beam") or desc:IsA("Trail") or desc:IsA("BasePart")) then return false end
+                            if not (desc:IsA("Beam") or desc:IsA("ParticleEmitter") or desc:IsA("Trail") or desc:IsA("BasePart")) then return false end
                             local name = string.lower(desc.Name)
                             if name == "cord" or string.find(name, "cord", 1, true) or string.find(name, "grapple", 1, true) or string.find(name, "hook", 1, true) then return true end
                             local p = desc.Parent
@@ -33913,16 +33869,24 @@ end
             local function handle_thrown_child(child)
                 if not child or child.Name:find("RainbowShield", 1, true) then return end
 
-                local function process_child()
-                    local char = get_local_char()
-                    if not char then return end
+                local cname = child.Name
+                local is_particle_container = cname == "ParticleArm" or cname == "ParticleBack"
+                    or string.find(cname, "ParticleArm", 1, true) or string.find(cname, "ParticleBack", 1, true)
 
-                    local cname = child.Name
-                    local is_particle_container = cname == "ParticleArm" or cname == "ParticleBack"
-                        or string.find(cname, "ParticleArm", 1, true) or string.find(cname, "ParticleBack", 1, true)
-
-                    if is_particle_container then
-                        if is_attached_to_char(child, char) then
+                if is_particle_container then
+                    local function apply_particle_container()
+                        local char = get_local_char()
+                        if not char or not child.Parent then return true end
+                        local matched = is_attached_to_char(child, char)
+                        if not matched then
+                            for _, desc in ipairs(child:GetDescendants()) do
+                                if desc:IsA("Trail") and is_trail_attached_to_char(desc, char) then
+                                    matched = true
+                                    break
+                                end
+                            end
+                        end
+                        if matched then
                             for _, desc in ipairs(child:GetDescendants()) do
                                 if desc:IsA("Trail") or desc:IsA("ParticleEmitter") or desc:IsA("Beam") then
                                     track_target(desc)
@@ -33930,65 +33894,75 @@ end
                             end
                             local tt = child:FindFirstChild("TestTrail")
                             if tt then track_target(tt) end
+                            return true
                         end
+                        return false
                     end
 
-                    if child:IsA("Trail") or child:IsA("Beam") then
-                        if is_trail_attached_to_char(child, char) or is_attached_to_char(child, char) then
-                            track_target(child)
-                        end
+                    if not apply_particle_container() then
+                        task.defer(apply_particle_container)
+                        task.delay(0.015, apply_particle_container)
+                        task.delay(0.035, apply_particle_container)
                     end
 
-                    for _, desc in ipairs(child:GetDescendants()) do
-                        if desc:IsA("Trail") or desc:IsA("Beam") then
-                            if is_trail_attached_to_char(desc, char) or is_attached_to_char(child, char) then
+                    track_vfx_conn(child.DescendantAdded:Connect(function(desc)
+                        if not shared or shared.is_unloading or getgenv()._hx_unloaded then return end
+                        if desc:IsA("Trail") or desc:IsA("ParticleEmitter") or desc:IsA("Beam") then
+                            local char = get_local_char()
+                            if char then
+                                if is_attached_to_char(child, char) or (desc:IsA("Trail") and is_trail_attached_to_char(desc, char)) then
+                                    track_target(desc)
+                                else
+                                    task.defer(function()
+                                        local c = get_local_char()
+                                        if c and (is_attached_to_char(child, c) or (desc:IsA("Trail") and is_trail_attached_to_char(desc, c))) then
+                                            track_target(desc)
+                                        end
+                                    end)
+                                end
+                            end
+                        end
+                    end))
+                    return
+                end
+
+                local char = get_local_char()
+                if not char then return end
+
+                if child:IsA("Trail") or child:IsA("Beam") then
+                    if is_trail_attached_to_char(child, char) or is_attached_to_char(child, char) then
+                        track_target(child)
+                    else
+                        task.defer(function()
+                            local c = get_local_char()
+                            if c and (is_trail_attached_to_char(child, c) or is_attached_to_char(child, c)) then
+                                track_target(child)
+                            end
+                        end)
+                    end
+                end
+
+                for _, rule in ipairs(RainbowVFX.thrown_rules) do
+                    local ok, matches = pcall(rule.matches_container, child, char)
+                    if ok and matches then
+                        for _, desc in ipairs(child:GetDescendants()) do
+                            if rule.matches_emitter(desc) then
                                 track_target(desc)
                             end
                         end
-                    end
-
-                    for _, rule in ipairs(RainbowVFX.thrown_rules) do
-                        local ok, matches = pcall(rule.matches_container, child, char)
-                        if ok and matches then
-                            for _, desc in ipairs(child:GetDescendants()) do
-                                if rule.matches_emitter(desc) then
-                                    track_target(desc)
-                                end
-                            end
-                            if rule.matches_emitter(child) then
-                                track_target(child)
-                            end
+                        if rule.matches_emitter(child) then
+                            track_target(child)
                         end
                     end
                 end
 
-                process_child()
-                task.defer(process_child)
-
-                if child:IsA("BasePart") then
-                    track_vfx_conn(child:GetPropertyChangedSignal("CFrame"):Connect(process_child))
-                end
-
-                if child:IsA("Trail") or child:IsA("Beam") then
-                    track_vfx_conn(child:GetPropertyChangedSignal("Attachment0"):Connect(process_child))
-                    track_vfx_conn(child:GetPropertyChangedSignal("Attachment1"):Connect(process_child))
-                end
-
-                local conn_desc
-                conn_desc = track_vfx_conn(child.DescendantAdded:Connect(function(desc)
+                track_vfx_conn(child.DescendantAdded:Connect(function(desc)
                     if not shared or shared.is_unloading or getgenv()._hx_unloaded then return end
-                    process_child()
                     if desc:IsA("Trail") or desc:IsA("Beam") then
-                        track_vfx_conn(desc:GetPropertyChangedSignal("Attachment0"):Connect(process_child))
-                        track_vfx_conn(desc:GetPropertyChangedSignal("Attachment1"):Connect(process_child))
-                    end
-                end))
-
-                local conn_anc
-                conn_anc = track_vfx_conn(child.AncestryChanged:Connect(function(_, parent)
-                    if not parent then
-                        if conn_desc then conn_desc:Disconnect() end
-                        if conn_anc then conn_anc:Disconnect() end
+                        local c = get_local_char()
+                        if c and (is_trail_attached_to_char(desc, c) or is_attached_to_char(child, c)) then
+                            track_target(desc)
+                        end
                     end
                 end))
             end
@@ -34045,19 +34019,17 @@ end
                     end
                     local seq = get_synced_vfx_rainbow_seq()
                     local c3 = get_synced_vfx_rainbow_c3()
-                    setting_rainbow_color = true
-                    for emitter in pairs(tracked_emitters) do
+                    for emitter, is_seq in pairs(tracked_emitters) do
                         if emitter.Parent then
                             pcall(function()
-                                if typeof(emitter.Color) == "ColorSequence" then
+                                if is_seq then
                                     emitter.Color = seq
-                                elseif typeof(emitter.Color) == "Color3" then
+                                else
                                     emitter.Color = c3
                                 end
                             end)
                         end
                     end
-                    setting_rainbow_color = false
                 else
                     disconnect_all_vfx_conns()
                     for emitter, orig_col in pairs(original_colors) do
@@ -34094,7 +34066,7 @@ end
                 end
                 last_vfx_update = now
 
-                if now - last_vfx_scan > 0.25 then
+                if now - last_vfx_scan > 0.35 then
                     last_vfx_scan = now
                     local char = get_local_char()
                     if char then
@@ -34160,14 +34132,6 @@ end
                                 if is_trail_attached_to_char(child, char) then
                                     track_target(child)
                                 end
-                            else
-                                for _, desc in ipairs(child:GetDescendants()) do
-                                    if (desc:IsA("Trail") or desc:IsA("Beam")) and not tracked_emitters[desc] then
-                                        if is_trail_attached_to_char(desc, char) or is_attached_to_char(child, char) then
-                                            track_target(desc)
-                                        end
-                                    end
-                                end
                             end
                         end
                     end
@@ -34176,13 +34140,12 @@ end
                 local seq = get_synced_vfx_rainbow_seq()
                 local c3 = get_synced_vfx_rainbow_c3()
 
-                setting_rainbow_color = true
-                for emitter in pairs(tracked_emitters) do
+                for emitter, is_seq in pairs(tracked_emitters) do
                     if emitter.Parent then
                         pcall(function()
-                            if typeof(emitter.Color) == "ColorSequence" then
+                            if is_seq then
                                 emitter.Color = seq
-                            elseif typeof(emitter.Color) == "Color3" then
+                            else
                                 emitter.Color = c3
                             end
                         end)
@@ -34191,7 +34154,6 @@ end
                         original_colors[emitter] = nil
                     end
                 end
-                setting_rainbow_color = false
             end))
 
             utility:Connection(plr.CharacterAdded, function(char)
