@@ -10647,13 +10647,15 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             })
             group_overlays:AddDropdown("RainbowVFXItems", {
                 Text = "Rainbow VFX Items",
-                Values = {"Mana Run", "General Back VFX", "Mana Dashes", "Mana Shield", "Grapple", "Snarv", "Dagger Throws", "Swings", "Lethality"},
+                Values = {"Mana Run", "General Back VFX", "Mana Dashes", "Mana Shield", "Grapple", "Snarv", "Dagger Throws", "Swings", "Lethality", "Viribus"},
                 Default = {},
                 Multi = true,
                 Tooltip = "Select which VFX elements will be colored rainbow (empty = all enabled)",
                 Callback = function(value)
                     cheat_client.config.rainbow_vfx_items = value
-                    if cheat_client.update_rainbow_vfx and ((Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx) then
+                    if cheat_client.refresh_rainbow_vfx_selection then
+                        cheat_client.refresh_rainbow_vfx_selection()
+                    elseif cheat_client.update_rainbow_vfx and ((Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx) then
                         cheat_client.update_rainbow_vfx(true)
                     end
                 end
@@ -33535,6 +33537,13 @@ end
                 if string.find(name, "windburst", 1, true) or string.find(name, "windclap", 1, true) or string.find(pname, "windburst", 1, true) or string.find(pname, "windclap", 1, true) then
                     return "Snarv"
                 end
+                if string.find(name, "earthpillar", 1, true) or string.find(name, "crater", 1, true) or string.find(name, "earthspear", 1, true)
+                    or string.find(pname, "earthpillar", 1, true) or string.find(pname, "crater", 1, true) or string.find(pname, "earthspear", 1, true)
+                    or string.find(name, "viribus", 1, true) or string.find(pname, "viribus", 1, true)
+                    or string.find(name, "monkparticle", 1, true) or string.find(pname, "monkparticle", 1, true)
+                    or inst:FindFirstAncestor("EarthPillar") or (p and p:FindFirstAncestor("EarthPillar")) then
+                    return "Viribus"
+                end
                 if string.find(name, "daggerthrow", 1, true) or string.find(pname, "daggerthrow", 1, true) then
                     return "Dagger Throws"
                 end
@@ -33637,6 +33646,13 @@ end
                 local char_name = string.lower(char.Name)
                 if string.find(name, plr_name, 1, true) or string.find(name, char_name, 1, true) then
                     return true
+                end
+
+                for _, child_inst in ipairs(obj:GetChildren()) do
+                    local c_name = string.lower(child_inst.Name)
+                    if string.find(c_name, plr_name, 1, true) or string.find(c_name, char_name, 1, true) then
+                        return true
+                    end
                 end
 
                 local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso")
@@ -33757,6 +33773,27 @@ end
                             local p = desc.Parent
                             local pname = p and string.lower(p.Name) or ""
                             return name == "lethaltrail" or string.find(name, "lethal", 1, true) or string.find(pname, "lethal", 1, true)
+                        end
+                    },
+                    {
+                        id = "Viribus",
+                        vfx_type = "Viribus",
+                        matches = function(desc, char)
+                            if not (desc:IsA("ParticleEmitter") or desc:IsA("Beam") or desc:IsA("Trail") or desc:IsA("BasePart")) then return false end
+                            local name = string.lower(desc.Name)
+                            if string.find(name, "earthpillar", 1, true) or string.find(name, "crater", 1, true) or string.find(name, "earthspear", 1, true)
+                                or string.find(name, "viribus", 1, true) or string.find(name, "monkparticle", 1, true) then
+                                return true
+                            end
+                            local p = desc.Parent
+                            if p then
+                                local pname = string.lower(p.Name)
+                                if string.find(pname, "earthpillar", 1, true) or string.find(pname, "crater", 1, true) or string.find(pname, "earthspear", 1, true)
+                                    or string.find(pname, "viribus", 1, true) or string.find(pname, "monkparticle", 1, true) then
+                                    return true
+                                end
+                            end
+                            return false
                         end
                     },
                     {
@@ -33892,6 +33929,18 @@ end
                 },
                 thrown_rules = {
                     {
+                        id = "EarthPillarThrown",
+                        vfx_type = "Viribus",
+                        matches_container = function(obj, char)
+                            local name = string.lower(obj.Name)
+                            if not (string.find(name, "earthpillar", 1, true) or string.find(name, "viribus", 1, true)) then return false end
+                            return is_attached_to_char(obj, char)
+                        end,
+                        matches_emitter = function(desc)
+                            return desc:IsA("BasePart") or desc:IsA("Trail") or desc:IsA("ParticleEmitter") or desc:IsA("Beam")
+                        end
+                    },
+                    {
                         id = "DaggerThrows",
                         vfx_type = "Dagger Throws",
                         matches_container = function(obj, char)
@@ -33972,7 +34021,8 @@ end
                                 or string.find(name, "speed", 1, true)
                                 or string.find(name, "particleback", 1, true)
                                 or string.find(name, "particlearm", 1, true)
-                                or string.find(name, "daggerthrow", 1, true) then
+                                or string.find(name, "daggerthrow", 1, true)
+                                or string.find(name, "earthpillar", 1, true) then
                                 return is_attached_to_char(obj, char)
                             end
                             return false
@@ -34039,31 +34089,15 @@ end
                     pcall(function() descendant:Destroy() end)
                     return
                 end
+                if not (descendant:IsA("Trail") or descendant:IsA("ParticleEmitter") or descendant:IsA("Beam") or descendant:IsA("BasePart")) then
+                    return
+                end
+
                 local char = get_local_char()
                 if not char or not descendant:IsDescendantOf(char) then return end
 
-                for _, rule in ipairs(RainbowVFX.character_rules) do
-                    local matches = false
-                    local ok, res = pcall(rule.matches, descendant, char)
-                    if ok and res then
-                        matches = true
-                    end
-                    if matches then
-                        local vtype = rule.vfx_type or infer_vfx_type(descendant)
-                        track_target(descendant, vtype)
-                        for _, child in ipairs(descendant:GetDescendants()) do
-                            if child:IsA("ParticleEmitter") or child:IsA("Beam") or child:IsA("Trail") or child:IsA("BasePart") then
-                                track_target(child, vtype)
-                            end
-                        end
-                        return
-                    end
-                end
-
-                if descendant:IsA("Trail") or descendant:IsA("ParticleEmitter") or descendant:IsA("Beam") then
-                    local vtype = infer_vfx_type(descendant)
-                    track_target(descendant, vtype)
-                end
+                local vtype = infer_vfx_type(descendant)
+                track_target(descendant, vtype)
             end
 
             local function handle_thrown_child(child)
@@ -34075,6 +34109,8 @@ end
                     or string.find(cname, "windburst", 1, true)
                     or string.find(cname, "windclap", 1, true)
                     or string.find(cname, "daggerthrow", 1, true)
+                    or string.find(cname, "earthpillar", 1, true)
+                    or string.find(cname, "viribus", 1, true)
 
                 if is_particle_container then
                     local function apply_particle_container()
@@ -34182,7 +34218,16 @@ end
             local function bind_thrown_folder(thrown_folder)
                 if not thrown_folder then return end
                 for _, child in ipairs(thrown_folder:GetChildren()) do
-                    handle_thrown_child(child)
+                    local cname = string.lower(child.Name)
+                    if string.find(cname, "particle", 1, true)
+                        or string.find(cname, "wind", 1, true)
+                        or string.find(cname, "dagger", 1, true)
+                        or string.find(cname, "earth", 1, true)
+                        or string.find(cname, "viribus", 1, true)
+                        or string.find(cname, "cord", 1, true)
+                        or child:IsA("Trail") or child:IsA("Beam") then
+                        handle_thrown_child(child)
+                    end
                 end
                 utility:Connection(thrown_folder.ChildAdded, function(child)
                     handle_thrown_child(child)
@@ -34207,6 +34252,40 @@ end
                     scan_character_descendant(desc)
                 end)
             end
+
+            local function refresh_rainbow_vfx_selection()
+                local rainbow_vfx_on = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
+                local now = os.clock()
+                local seq = get_synced_vfx_rainbow_seq(now)
+                local c3 = get_synced_vfx_rainbow_c3(now)
+                for emitter, data in pairs(tracked_all) do
+                    if emitter.Parent then
+                        local is_enabled = rainbow_vfx_on and is_vfx_type_enabled(data.vtype)
+                        if is_enabled then
+                            active_emitters[emitter] = data.is_seq
+                            pcall(function()
+                                if data.is_seq then
+                                    emitter.Color = seq
+                                else
+                                    emitter.Color = c3
+                                end
+                            end)
+                        else
+                            active_emitters[emitter] = nil
+                            local orig = original_colors[emitter]
+                            if orig then
+                                pcall(function() emitter.Color = orig end)
+                            end
+                        end
+                    else
+                        active_emitters[emitter] = nil
+                        tracked_all[emitter] = nil
+                        original_colors[emitter] = nil
+                    end
+                end
+            end
+
+            cheat_client.refresh_rainbow_vfx_selection = refresh_rainbow_vfx_selection
 
             local function refresh_all_vfx(state)
                 if state then
@@ -34246,36 +34325,19 @@ end
                     local current_thrown = ws:FindFirstChild("Thrown")
                     if current_thrown then
                         for _, child in ipairs(current_thrown:GetChildren()) do
-                            handle_thrown_child(child)
-                        end
-                    end
-                    local now = os.clock()
-                    local seq = get_synced_vfx_rainbow_seq(now)
-                    local c3 = get_synced_vfx_rainbow_c3(now)
-                    for emitter, data in pairs(tracked_all) do
-                        if emitter.Parent then
-                            if is_vfx_type_enabled(data.vtype) then
-                                active_emitters[emitter] = data.is_seq
-                                pcall(function()
-                                    if data.is_seq then
-                                        emitter.Color = seq
-                                    else
-                                        emitter.Color = c3
-                                    end
-                                end)
-                            else
-                                active_emitters[emitter] = nil
-                                local orig = original_colors[emitter]
-                                if orig then
-                                    pcall(function() emitter.Color = orig end)
-                                end
+                            local cname = string.lower(child.Name)
+                            if string.find(cname, "particle", 1, true)
+                                or string.find(cname, "wind", 1, true)
+                                or string.find(cname, "dagger", 1, true)
+                                or string.find(cname, "earth", 1, true)
+                                or string.find(cname, "viribus", 1, true)
+                                or string.find(cname, "cord", 1, true)
+                                or child:IsA("Trail") or child:IsA("Beam") then
+                                handle_thrown_child(child)
                             end
-                        else
-                            active_emitters[emitter] = nil
-                            tracked_all[emitter] = nil
-                            original_colors[emitter] = nil
                         end
                     end
+                    refresh_rainbow_vfx_selection()
                 else
                     disconnect_all_vfx_conns()
                     for emitter, orig_col in pairs(original_colors) do
@@ -34393,7 +34455,7 @@ end
                     return
                 end
                 local iname = string.lower(child.Name)
-                if iname == "cord" or string.find(iname, "cord", 1, true) or string.find(iname, "grapple", 1, true) or string.find(iname, "hook", 1, true) or string.find(iname, "particleback", 1, true) or string.find(iname, "particlearm", 1, true) or string.find(iname, "windburst", 1, true) or string.find(iname, "windclap", 1, true) or string.find(iname, "daggerthrow", 1, true) then
+                if iname == "cord" or string.find(iname, "cord", 1, true) or string.find(iname, "grapple", 1, true) or string.find(iname, "hook", 1, true) or string.find(iname, "particleback", 1, true) or string.find(iname, "particlearm", 1, true) or string.find(iname, "windburst", 1, true) or string.find(iname, "windclap", 1, true) or string.find(iname, "daggerthrow", 1, true) or string.find(iname, "earthpillar", 1, true) or string.find(iname, "viribus", 1, true) then
                     handle_thrown_child(child)
                 end
             end)
