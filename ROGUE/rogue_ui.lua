@@ -33573,6 +33573,61 @@ end
                 return false
             end
 
+            local function is_dash_or_dodge_object(obj, char)
+                if not obj then return false end
+                if obj.Name:find("RainbowShield", 1, true) then return false end
+                if not char then
+                    char = get_local_char()
+                end
+                if char and (obj == char or obj == char:FindFirstChild("HumanoidRootPart") or obj == char:FindFirstChild("Torso") or obj == char:FindFirstChild("Head") or obj == char:FindFirstChild("Humanoid")) then
+                    return false
+                end
+                local name = string.lower(obj.Name)
+                if string.find(name, "dodge", 1, true)
+                    or string.find(name, "dash", 1, true)
+                    or string.find(name, "roll", 1, true)
+                    or string.find(name, "wind", 1, true)
+                    or string.find(name, "speed", 1, true)
+                    or string.find(name, "trail", 1, true)
+                    or string.find(name, "smoke", 1, true)
+                    or string.find(name, "dust", 1, true)
+                    or string.find(name, "step", 1, true) then
+                    return true
+                end
+                local ancestor = obj.Parent
+                local depth = 0
+                while ancestor and ancestor ~= char and ancestor ~= ws and ancestor ~= game and depth < 6 do
+                    local aname = string.lower(ancestor.Name)
+                    if string.find(aname, "dodge", 1, true)
+                        or string.find(aname, "dash", 1, true)
+                        or string.find(aname, "roll", 1, true)
+                        or string.find(aname, "wind", 1, true)
+                        or string.find(aname, "speed", 1, true)
+                        or string.find(aname, "trail", 1, true) then
+                        return true
+                    end
+                    ancestor = ancestor.Parent
+                    depth = depth + 1
+                end
+                if char then
+                    local hrp = char:FindFirstChild("HumanoidRootPart")
+                    if hrp then
+                        local dp = hrp:FindFirstChild("DodgePartic") or hrp:FindFirstChild("Dash") or hrp:FindFirstChild("RollPartic")
+                        if dp and (obj == dp or obj:IsDescendantOf(dp)) then
+                            return true
+                        end
+                    end
+                    local torso = char:FindFirstChild("Torso")
+                    if torso then
+                        local dp = torso:FindFirstChild("DodgePartic") or torso:FindFirstChild("Dash") or torso:FindFirstChild("RollPartic")
+                        if dp and (obj == dp or obj:IsDescendantOf(dp)) then
+                            return true
+                        end
+                    end
+                end
+                return false
+            end
+
             local function track_seq_target(emitter)
                 if not emitter or tracked_seq_targets[emitter] then return end
                 local ok, col = pcall(function() return emitter.Color end)
@@ -33592,6 +33647,19 @@ end
                         pcall(safe_set_seq, emitter, get_synced_vfx_rainbow_seq())
                     end
                     setting_rainbow_color = false
+                end
+
+                if emitter:IsA("Trail") or is_dash_or_dodge_object(emitter) then
+                    track_vfx_conn(emitter:GetPropertyChangedSignal("Color"):Connect(function()
+                        if not setting_rainbow_color then
+                            local active = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
+                            if active then
+                                setting_rainbow_color = true
+                                pcall(safe_set_seq, emitter, get_synced_vfx_rainbow_seq())
+                                setting_rainbow_color = false
+                            end
+                        end
+                    end))
                 end
 
                 track_vfx_conn(emitter.AncestryChanged:Connect(function(_, parent)
@@ -33624,6 +33692,19 @@ end
                     setting_rainbow_color = true
                     pcall(safe_set_c3, inst, prop_name, get_synced_vfx_rainbow_c3())
                     setting_rainbow_color = false
+                end
+
+                if is_dash_or_dodge_object(inst) then
+                    track_vfx_conn(inst:GetPropertyChangedSignal(prop_name):Connect(function()
+                        if not setting_rainbow_color then
+                            local active = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
+                            if active then
+                                setting_rainbow_color = true
+                                pcall(safe_set_c3, inst, prop_name, get_synced_vfx_rainbow_c3())
+                                setting_rainbow_color = false
+                            end
+                        end
+                    end))
                 end
 
                 track_vfx_conn(inst.AncestryChanged:Connect(function(_, parent)
@@ -33828,6 +33909,12 @@ end
             local vfx_registry = {
                 character_rules = {
                     {
+                        id = "CharacterTrails",
+                        matches = function(desc, char)
+                            return desc:IsA("Trail")
+                        end
+                    },
+                    {
                         id = "Orb",
                         matches = function(desc, char)
                             return is_shield_or_orb_object(desc)
@@ -33842,16 +33929,7 @@ end
                     {
                         id = "DodgePartic",
                         matches = function(desc, char)
-                            if not (desc:IsA("ParticleEmitter") or desc:IsA("Beam") or desc:IsA("Trail")) then return false end
-                            if desc.Name == "DodgePartic" or (desc.Parent and desc.Parent.Name == "DodgePartic") then return true end
-                            local hrp = char:FindFirstChild("HumanoidRootPart")
-                            if hrp then
-                                local dp = hrp:FindFirstChild("DodgePartic")
-                                if dp and (desc == dp or desc:IsDescendantOf(dp)) then
-                                    return true
-                                end
-                            end
-                            return false
+                            return is_dash_or_dodge_object(desc, char)
                         end
                     }
                 },
@@ -33875,6 +33953,16 @@ end
                         matches_emitter = function(desc)
                             return desc:IsA("Beam") or desc:IsA("ParticleEmitter") or desc:IsA("Trail") or desc:IsA("BasePart")
                         end
+                    },
+                    {
+                        id = "DashThrown",
+                        matches_container = function(obj, char)
+                            if not is_dash_or_dodge_object(obj, char) then return false end
+                            return is_attached_to_char(obj, char)
+                        end,
+                        matches_emitter = function(desc)
+                            return desc:IsA("ParticleEmitter") or desc:IsA("Beam") or desc:IsA("Trail") or desc:IsA("BasePart")
+                        end
                     }
                 }
             }
@@ -33897,6 +33985,11 @@ end
                 local char = get_local_char()
                 if not char or not descendant:IsDescendantOf(char) then return end
 
+                if descendant:IsA("Trail") then
+                    track_any_target(descendant)
+                    return
+                end
+
                 if is_shield_or_orb_object(descendant) then
                     track_orb_hierarchy(descendant)
                     return
@@ -33904,6 +33997,14 @@ end
 
                 if is_grapple_object(descendant) then
                     track_grapple_hierarchy(descendant)
+                    return
+                end
+
+                if is_dash_or_dodge_object(descendant, char) then
+                    track_any_target(descendant)
+                    for _, d in ipairs(descendant:GetDescendants()) do
+                        track_any_target(d)
+                    end
                     return
                 end
 
@@ -34130,7 +34231,30 @@ end
                                         orb_tracked_set[child] = true
                                         track_orb_hierarchy(child)
                                     end
+                                elseif is_dash_or_dodge_object(child, char) then
+                                    track_any_target(child)
+                                    for _, d in ipairs(child:GetDescendants()) do
+                                        track_any_target(d)
+                                    end
                                 end
+                            end
+                        end
+
+                        local torso = char:FindFirstChild("Torso")
+                        if torso then
+                            for _, child in ipairs(torso:GetChildren()) do
+                                if is_dash_or_dodge_object(child, char) then
+                                    track_any_target(child)
+                                    for _, d in ipairs(child:GetDescendants()) do
+                                        track_any_target(d)
+                                    end
+                                end
+                            end
+                        end
+
+                        for _, desc in ipairs(char:GetDescendants()) do
+                            if desc:IsA("Trail") and not tracked_seq_targets[desc] then
+                                track_seq_target(desc)
                             end
                         end
 
@@ -34151,7 +34275,7 @@ end
                 for emitter in pairs(tracked_seq_targets) do
                     if emitter.Parent then
                         if emitter:IsA("ParticleEmitter") then
-                            if emitter.Enabled then
+                            if emitter.Enabled or is_dash_or_dodge_object(emitter, plr.Character) then
                                 if is_shield_or_orb_object(emitter) then
                                     pcall(safe_set_seq, emitter, c3_seq)
                                 else
