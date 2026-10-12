@@ -33543,6 +33543,15 @@ end
                         end
                     end
                 end
+                for _, desc in ipairs(char:GetDescendants()) do
+                    if desc:IsA("JointInstance") or desc:IsA("WeldConstraint") then
+                        local p0 = desc.Part0
+                        local p1 = desc.Part1
+                        if (p0 and p0:IsDescendantOf(obj)) or (p1 and p1:IsDescendantOf(obj)) then
+                            return true
+                        end
+                    end
+                end
                 if string.find(obj.Name, plr.Name, 1, true) or string.find(obj.Name, char.Name, 1, true) then
                     return true
                 end
@@ -33557,17 +33566,36 @@ end
                     local d_rt = root and (check_pos - root.Position).Magnitude or 999
                     local min_dist = math.min(d_ra, d_la, d_rt)
                     if min_dist < 14 then
-                        return true
+                        local live = ws:FindFirstChild("Live")
+                        if live then
+                            local closest_char = nil
+                            local closest_dist = 999
+                            for _, other_char in ipairs(live:GetChildren()) do
+                                local other_root = other_char:FindFirstChild("HumanoidRootPart") or other_char:FindFirstChild("Torso")
+                                if other_root then
+                                    local dist = (check_pos - other_root.Position).Magnitude
+                                    if dist < closest_dist then
+                                        closest_dist = dist
+                                        closest_char = other_char
+                                    end
+                                end
+                            end
+                            if closest_char == char then
+                                return true
+                            end
+                        else
+                            return true
+                        end
                     end
                 end
                 return false
             end
 
-            local function is_beam_or_trail_attached_to_char(obj, char)
-                if not obj or not char then return false end
-                if obj:IsDescendantOf(char) then return true end
-                local ok0, a0 = pcall(function() return obj.Attachment0 end)
-                local ok1, a1 = pcall(function() return obj.Attachment1 end)
+            local function is_trail_attached_to_char(trail, char)
+                if not trail or not char then return false end
+                if trail:IsDescendantOf(char) then return true end
+                local ok0, a0 = pcall(function() return trail.Attachment0 end)
+                local ok1, a1 = pcall(function() return trail.Attachment1 end)
                 if (ok0 and a0 and a0:IsDescendantOf(char)) or (ok1 and a1 and a1:IsDescendantOf(char)) then
                     return true
                 end
@@ -33577,7 +33605,7 @@ end
                 if ok1 and a1 and a1.Parent and is_attached_to_char(a1.Parent, char) then
                     return true
                 end
-                local p = obj.Parent
+                local p = trail.Parent
                 if p and is_attached_to_char(p, char) then
                     return true
                 end
@@ -33587,13 +33615,51 @@ end
                     if ok0 and a0 then
                         local ok_pos, pos = pcall(function() return a0.WorldPosition end)
                         if ok_pos and pos and (pos - char_pos).Magnitude < 14 then
-                            return true
+                            local live = ws:FindFirstChild("Live")
+                            if live then
+                                local closest_char = nil
+                                local closest_dist = 999
+                                for _, other_char in ipairs(live:GetChildren()) do
+                                    local other_root = other_char:FindFirstChild("HumanoidRootPart") or other_char:FindFirstChild("Torso")
+                                    if other_root then
+                                        local dist = (pos - other_root.Position).Magnitude
+                                        if dist < closest_dist then
+                                            closest_dist = dist
+                                            closest_char = other_char
+                                        end
+                                    end
+                                end
+                                if closest_char == char then
+                                    return true
+                                end
+                            else
+                                return true
+                            end
                         end
                     end
-                    if ok1 and a1 then
-                        local ok_pos, pos = pcall(function() return a1.WorldPosition end)
-                        if ok_pos and pos and (pos - char_pos).Magnitude < 14 then
-                            return true
+                    if p and p:IsA("BasePart") then
+                        local dist = (p.Position - char_pos).Magnitude
+                        if dist < 14 then
+                            local live = ws:FindFirstChild("Live")
+                            if live then
+                                local closest_char = nil
+                                local closest_dist = 999
+                                for _, other_char in ipairs(live:GetChildren()) do
+                                    local other_root = other_char:FindFirstChild("HumanoidRootPart") or other_char:FindFirstChild("Torso")
+                                    if other_root then
+                                        local d = (p.Position - other_root.Position).Magnitude
+                                        if d < closest_dist then
+                                            closest_dist = d
+                                            closest_char = other_char
+                                        end
+                                    end
+                                end
+                                if closest_char == char then
+                                    return true
+                                end
+                            else
+                                return true
+                            end
                         end
                     end
                 end
@@ -33668,10 +33734,145 @@ end
                 end))
             end
 
-            local RainbowVFX = {
-                character_rules = {},
-                thrown_rules = {},
+            local vfx_registry = {
+                character_rules = {
+                    {
+                        id = "Trail",
+                        matches = function(desc, char)
+                            return desc:IsA("Trail")
+                        end
+                    },
+                    {
+                        id = "Grapple",
+                        matches = function(desc, char)
+                            if not (desc:IsA("ParticleEmitter") or desc:IsA("Beam") or desc:IsA("Trail") or desc:IsA("BasePart")) then return false end
+                            local name = string.lower(desc.Name)
+                            if name == "cord" or string.find(name, "cord", 1, true) or string.find(name, "grapple", 1, true) or string.find(name, "hook", 1, true) then return true end
+                            local p = desc.Parent
+                            if p then
+                                local pname = string.lower(p.Name)
+                                if pname == "cord" or string.find(pname, "cord", 1, true) or string.find(pname, "grapple", 1, true) or string.find(pname, "hook", 1, true) then return true end
+                            end
+                            if desc:IsA("Beam") then
+                                local ok0, a0 = pcall(function() return desc.Attachment0 end)
+                                local ok1, a1 = pcall(function() return desc.Attachment1 end)
+                                if (ok0 and a0 and a0:IsDescendantOf(char)) or (ok1 and a1 and a1:IsDescendantOf(char)) then
+                                    return true
+                                end
+                            end
+                            return false
+                        end
+                    },
+                    {
+                        id = "Orb",
+                        matches = function(desc, char)
+                            if not (desc:IsA("ParticleEmitter") or desc:IsA("Beam") or desc:IsA("Trail") or desc:IsA("BasePart")) then return false end
+                            if desc.Name == "Orb" or (desc.Parent and desc.Parent.Name == "Orb") then return true end
+                            if desc:FindFirstAncestor("Orb") then return true end
+                            local hrp = char:FindFirstChild("HumanoidRootPart")
+                            if hrp then
+                                local orb = hrp:FindFirstChild("Orb")
+                                if orb and (desc == orb or desc:IsDescendantOf(orb)) then
+                                    return true
+                                end
+                            end
+                            return false
+                        end
+                    },
+                    {
+                        id = "DodgePartic",
+                        matches = function(desc, char)
+                            if not (desc:IsA("ParticleEmitter") or desc:IsA("Beam") or desc:IsA("Trail") or desc:IsA("BasePart")) then return false end
+                            local name = string.lower(desc.Name)
+                            if name == "dodgepartic" or name == "dash" or name == "forwarddash" or name == "rollpartic" or string.find(name, "dodge", 1, true) or string.find(name, "dash", 1, true) then return true end
+                            local p = desc.Parent
+                            if p then
+                                local pname = string.lower(p.Name)
+                                if pname == "dodgepartic" or pname == "dash" or pname == "forwarddash" or pname == "rollpartic" or string.find(pname, "dodge", 1, true) or string.find(pname, "dash", 1, true) then return true end
+                            end
+                            local hrp = char:FindFirstChild("HumanoidRootPart")
+                            if hrp then
+                                local dp = hrp:FindFirstChild("DodgePartic") or hrp:FindFirstChild("Dash") or hrp:FindFirstChild("ForwardDash")
+                                if dp and (desc == dp or desc:IsDescendantOf(dp)) then
+                                    return true
+                                end
+                            end
+                            local torso = char:FindFirstChild("Torso")
+                            if torso then
+                                local dp = torso:FindFirstChild("DodgePartic") or torso:FindFirstChild("Dash") or torso:FindFirstChild("ForwardDash")
+                                if dp and (desc == dp or desc:IsDescendantOf(dp)) then
+                                    return true
+                                end
+                            end
+                            return false
+                        end
+                    },
+                    {
+                        id = "CharacterGenericVFX",
+                        matches = function(desc, char)
+                            if (desc:IsA("ParticleEmitter") or desc:IsA("Beam") or desc:IsA("Trail")) and desc:IsDescendantOf(char) then
+                                return true
+                            end
+                            return false
+                        end
+                    }
+                },
+                thrown_rules = {
+                    {
+                        id = "ThrownTrail",
+                        matches_container = function(obj, char)
+                            if obj:IsA("Trail") then
+                                return is_trail_attached_to_char(obj, char)
+                            end
+                            for _, desc in ipairs(obj:GetDescendants()) do
+                                if desc:IsA("Trail") and is_trail_attached_to_char(desc, char) then
+                                    return true
+                                end
+                            end
+                            local name = string.lower(obj.Name)
+                            if string.find(name, "trail", 1, true)
+                                or string.find(name, "dash", 1, true)
+                                or string.find(name, "dodge", 1, true)
+                                or string.find(name, "roll", 1, true)
+                                or string.find(name, "wind", 1, true)
+                                or string.find(name, "speed", 1, true) then
+                                return is_attached_to_char(obj, char)
+                            end
+                            return false
+                        end,
+                        matches_emitter = function(desc)
+                            return desc:IsA("Trail") or desc:IsA("ParticleEmitter") or desc:IsA("Beam") or desc:IsA("BasePart")
+                        end
+                    },
+                    {
+                        id = "ParticleArm",
+                        matches_container = function(obj, char)
+                            if not (obj.Name == "ParticleArm" or string.find(obj.Name, "ParticleArm", 1, true)) then return false end
+                            return is_attached_to_char(obj, char)
+                        end,
+                        matches_emitter = function(desc)
+                            return desc:IsA("ParticleEmitter") or desc:IsA("Beam") or desc:IsA("Trail") or desc:IsA("BasePart")
+                        end
+                    },
+                    {
+                        id = "GrappleThrown",
+                        matches_container = function(obj, char)
+                            local name = string.lower(obj.Name)
+                            if not (name == "cord" or string.find(name, "cord", 1, true) or string.find(name, "grapple", 1, true) or string.find(name, "hook", 1, true)) then return false end
+                            return is_attached_to_char(obj, char) or is_trail_attached_to_char(obj, char)
+                        end,
+                        matches_emitter = function(desc)
+                            return desc:IsA("Beam") or desc:IsA("ParticleEmitter") or desc:IsA("Trail") or desc:IsA("BasePart")
+                        end
+                    }
+                },
                 scanners = {}
+            }
+
+            local RainbowVFX = {
+                character_rules = vfx_registry.character_rules,
+                thrown_rules = vfx_registry.thrown_rules,
+                scanners = vfx_registry.scanners
             }
 
             RainbowVFX.add_rule = function(rule_type, rule)
@@ -33706,154 +33907,6 @@ end
             RainbowVFX.is_tracked = function(inst)
                 return tracked_emitters[inst] ~= nil
             end
-
-            RainbowVFX.add_rule("character", {
-                id = "Trail",
-                matches = function(desc, char)
-                    return desc:IsA("Trail")
-                end
-            })
-
-            RainbowVFX.add_rule("character", {
-                id = "Grapple",
-                matches = function(desc, char)
-                    if not (desc:IsA("Beam") or desc:IsA("ParticleEmitter") or desc:IsA("Trail") or desc:IsA("BasePart") or desc:IsA("Constraint")) then
-                        return false
-                    end
-                    local name = string.lower(desc.Name)
-                    if name == "cord" or string.find(name, "cord", 1, true) or string.find(name, "grapple", 1, true) or string.find(name, "hook", 1, true) then
-                        return true
-                    end
-                    local p = desc.Parent
-                    if p then
-                        local pname = string.lower(p.Name)
-                        if pname == "cord" or string.find(pname, "cord", 1, true) or string.find(pname, "grapple", 1, true) or string.find(pname, "hook", 1, true) then
-                            return true
-                        end
-                    end
-                    if desc:IsA("Beam") or desc:IsA("Constraint") then
-                        local ok0, a0 = pcall(function() return desc.Attachment0 end)
-                        local ok1, a1 = pcall(function() return desc.Attachment1 end)
-                        if (ok0 and a0 and a0:IsDescendantOf(char)) or (ok1 and a1 and a1:IsDescendantOf(char)) then
-                            return true
-                        end
-                    end
-                    return false
-                end
-            })
-
-            RainbowVFX.add_rule("character", {
-                id = "Orb",
-                matches = function(desc, char)
-                    if not (desc:IsA("ParticleEmitter") or desc:IsA("Beam") or desc:IsA("Trail") or desc:IsA("BasePart")) then return false end
-                    if desc.Name == "Orb" or (desc.Parent and desc.Parent.Name == "Orb") or desc:FindFirstAncestor("Orb") then
-                        return true
-                    end
-                    local hrp = char:FindFirstChild("HumanoidRootPart")
-                    if hrp then
-                        local orb = hrp:FindFirstChild("Orb")
-                        if orb and (desc == orb or desc:IsDescendantOf(orb)) then
-                            return true
-                        end
-                    end
-                    return false
-                end
-            })
-
-            RainbowVFX.add_rule("character", {
-                id = "DodgePartic",
-                matches = function(desc, char)
-                    if not (desc:IsA("ParticleEmitter") or desc:IsA("Beam") or desc:IsA("Trail") or desc:IsA("BasePart")) then return false end
-                    local name = string.lower(desc.Name)
-                    if name == "dodgepartic" or name == "dash" or name == "forwarddash" or name == "rollpartic" or string.find(name, "dodge", 1, true) or string.find(name, "dash", 1, true) then
-                        return true
-                    end
-                    local p = desc.Parent
-                    if p then
-                        local pname = string.lower(p.Name)
-                        if pname == "dodgepartic" or pname == "dash" or pname == "forwarddash" or pname == "rollpartic" or string.find(pname, "dodge", 1, true) or string.find(pname, "dash", 1, true) then
-                            return true
-                        end
-                    end
-                    local hrp = char:FindFirstChild("HumanoidRootPart")
-                    if hrp then
-                        local dp = hrp:FindFirstChild("DodgePartic") or hrp:FindFirstChild("Dash") or hrp:FindFirstChild("ForwardDash")
-                        if dp and (desc == dp or desc:IsDescendantOf(dp)) then
-                            return true
-                        end
-                    end
-                    local torso = char:FindFirstChild("Torso")
-                    if torso then
-                        local dp = torso:FindFirstChild("DodgePartic") or torso:FindFirstChild("Dash") or torso:FindFirstChild("ForwardDash")
-                        if dp and (desc == dp or desc:IsDescendantOf(dp)) then
-                            return true
-                        end
-                    end
-                    return false
-                end
-            })
-
-            RainbowVFX.add_rule("character", {
-                id = "CharacterGenericVFX",
-                matches = function(desc, char)
-                    if (desc:IsA("ParticleEmitter") or desc:IsA("Beam") or desc:IsA("Trail")) and desc:IsDescendantOf(char) then
-                        return true
-                    end
-                    return false
-                end
-            })
-
-            RainbowVFX.add_rule("thrown", {
-                id = "GrappleThrown",
-                matches_container = function(obj, char)
-                    local name = string.lower(obj.Name)
-                    if not (name == "cord" or string.find(name, "cord", 1, true) or string.find(name, "grapple", 1, true) or string.find(name, "hook", 1, true)) then
-                        return false
-                    end
-                    return is_attached_to_char(obj, char) or (obj:IsA("Beam") and is_beam_or_trail_attached_to_char(obj, char))
-                end,
-                matches_emitter = function(desc)
-                    return desc:IsA("Beam") or desc:IsA("ParticleEmitter") or desc:IsA("Trail") or desc:IsA("BasePart") or desc:IsA("Constraint")
-                end
-            })
-
-            RainbowVFX.add_rule("thrown", {
-                id = "ThrownTrail",
-                matches_container = function(obj, char)
-                    if obj:IsA("Trail") then
-                        return is_beam_or_trail_attached_to_char(obj, char)
-                    end
-                    for _, desc in ipairs(obj:GetDescendants()) do
-                        if desc:IsA("Trail") and is_beam_or_trail_attached_to_char(desc, char) then
-                            return true
-                        end
-                    end
-                    local name = string.lower(obj.Name)
-                    if string.find(name, "trail", 1, true)
-                        or string.find(name, "dash", 1, true)
-                        or string.find(name, "dodge", 1, true)
-                        or string.find(name, "roll", 1, true)
-                        or string.find(name, "wind", 1, true)
-                        or string.find(name, "speed", 1, true) then
-                        return is_attached_to_char(obj, char)
-                    end
-                    return false
-                end,
-                matches_emitter = function(desc)
-                    return desc:IsA("Trail") or desc:IsA("ParticleEmitter") or desc:IsA("Beam") or desc:IsA("BasePart")
-                end
-            })
-
-            RainbowVFX.add_rule("thrown", {
-                id = "ParticleArm",
-                matches_container = function(obj, char)
-                    if not (obj.Name == "ParticleArm" or string.find(obj.Name, "ParticleArm", 1, true)) then return false end
-                    return is_attached_to_char(obj, char)
-                end,
-                matches_emitter = function(desc)
-                    return desc:IsA("ParticleEmitter") or desc:IsA("Beam") or desc:IsA("Trail") or desc:IsA("BasePart")
-                end
-            })
 
             cheat_client.rainbow_vfx = RainbowVFX
             cheat_client.rainbow_vfx_registry = RainbowVFX
@@ -33897,41 +33950,34 @@ end
             local function handle_thrown_child(child)
                 if not child or child.Name:find("RainbowShield", 1, true) then return end
 
-                local function check_trail(t)
-                    if not t or not t:IsA("Trail") then return end
+                local function check_trail_or_beam(t)
+                    if not t or not (t:IsA("Trail") or t:IsA("Beam")) then return end
                     local char = get_local_char()
                     if not char then return end
-                    if is_beam_or_trail_attached_to_char(t, char) or is_attached_to_char(child, char) then
+                    if is_trail_attached_to_char(t, char) or is_attached_to_char(child, char) or is_attached_to_char(t, char) then
                         track_target(t)
                     end
                 end
 
-                local function check_beam(b)
-                    if not b or not b:IsA("Beam") then return end
-                    local char = get_local_char()
-                    if not char then return end
-                    if is_beam_or_trail_attached_to_char(b, char) or is_attached_to_char(child, char) then
-                        track_target(b)
+                local function check_all_trails_and_beams()
+                    if child:IsA("Trail") or child:IsA("Beam") then
+                        check_trail_or_beam(child)
                     end
-                end
-
-                local function check_all_attached()
-                    if child:IsA("Trail") then check_trail(child) end
-                    if child:IsA("Beam") then check_beam(child) end
                     for _, desc in ipairs(child:GetDescendants()) do
-                        if desc:IsA("Trail") then check_trail(desc) end
-                        if desc:IsA("Beam") then check_beam(desc) end
+                        if desc:IsA("Trail") or desc:IsA("Beam") then
+                            check_trail_or_beam(desc)
+                        end
                     end
                 end
 
-                check_all_attached()
-                task.defer(check_all_attached)
-                task.delay(0.05, check_all_attached)
-                task.delay(0.15, check_all_attached)
+                check_all_trails_and_beams()
+                task.defer(check_all_trails_and_beams)
+                task.delay(0.05, check_all_trails_and_beams)
+                task.delay(0.15, check_all_trails_and_beams)
 
                 if child:IsA("Trail") or child:IsA("Beam") then
-                    track_vfx_conn(child:GetPropertyChangedSignal("Attachment0"):Connect(check_all_attached))
-                    track_vfx_conn(child:GetPropertyChangedSignal("Attachment1"):Connect(check_all_attached))
+                    track_vfx_conn(child:GetPropertyChangedSignal("Attachment0"):Connect(check_all_trails_and_beams))
+                    track_vfx_conn(child:GetPropertyChangedSignal("Attachment1"):Connect(check_all_trails_and_beams))
                 end
 
                 for _, rule in ipairs(RainbowVFX.thrown_rules) do
@@ -33958,14 +34004,10 @@ end
                     local conn_desc
                     conn_desc = track_vfx_conn(child.DescendantAdded:Connect(function(desc)
                         if not shared or shared.is_unloading or getgenv()._hx_unloaded then return end
-                        if desc:IsA("Trail") then
-                            check_trail(desc)
-                            track_vfx_conn(desc:GetPropertyChangedSignal("Attachment0"):Connect(check_all_attached))
-                            track_vfx_conn(desc:GetPropertyChangedSignal("Attachment1"):Connect(check_all_attached))
-                        elseif desc:IsA("Beam") then
-                            check_beam(desc)
-                            track_vfx_conn(desc:GetPropertyChangedSignal("Attachment0"):Connect(check_all_attached))
-                            track_vfx_conn(desc:GetPropertyChangedSignal("Attachment1"):Connect(check_all_attached))
+                        if desc:IsA("Trail") or desc:IsA("Beam") then
+                            check_trail_or_beam(desc)
+                            track_vfx_conn(desc:GetPropertyChangedSignal("Attachment0"):Connect(check_all_trails_and_beams))
+                            track_vfx_conn(desc:GetPropertyChangedSignal("Attachment1"):Connect(check_all_trails_and_beams))
                         end
                         local char = get_local_char()
                         if not char then return end
@@ -33995,10 +34037,7 @@ end
             local function bind_thrown_folder(thrown_folder)
                 if not thrown_folder then return end
                 for _, child in ipairs(thrown_folder:GetChildren()) do
-                    local cname = string.lower(child.Name)
-                    if child:IsA("Trail") or child:IsA("Beam") or string.find(cname, "cord", 1, true) or string.find(cname, "grapple", 1, true) or string.find(cname, "trail", 1, true) or string.find(cname, "particlearm", 1, true) then
-                        handle_thrown_child(child)
-                    end
+                    handle_thrown_child(child)
                 end
                 utility:Connection(thrown_folder.ChildAdded, function(child)
                     handle_thrown_child(child)
@@ -34042,10 +34081,7 @@ end
                     local current_thrown = ws:FindFirstChild("Thrown")
                     if current_thrown then
                         for _, child in ipairs(current_thrown:GetChildren()) do
-                            local cname = string.lower(child.Name)
-                            if child:IsA("Trail") or child:IsA("Beam") or string.find(cname, "cord", 1, true) or string.find(cname, "grapple", 1, true) or string.find(cname, "trail", 1, true) or string.find(cname, "particlearm", 1, true) then
-                                handle_thrown_child(child)
-                            end
+                            handle_thrown_child(child)
                         end
                     end
                     local seq = get_synced_vfx_rainbow_seq()
@@ -34084,6 +34120,8 @@ end
                     refresh_all_vfx(false)
                 end)
             end
+
+            local last_vfx_update = 0
 
             utility:Connection(rs.RenderStepped, LPH_NO_VIRTUALIZE(function()
                 if not shared or shared.is_unloading or getgenv()._hx_unloaded then return end
@@ -34150,22 +34188,15 @@ end
                     local thrown = ws:FindFirstChild("Thrown")
                     if thrown and char then
                         for _, child in ipairs(thrown:GetChildren()) do
-                            if child:IsA("Trail") and not tracked_emitters[child] then
-                                if is_beam_or_trail_attached_to_char(child, char) then
-                                    track_target(child)
-                                end
-                            elseif child:IsA("Beam") and not tracked_emitters[child] then
-                                if is_beam_or_trail_attached_to_char(child, char) then
+                            if (child:IsA("Trail") or child:IsA("Beam")) and not tracked_emitters[child] then
+                                if is_trail_attached_to_char(child, char) then
                                     track_target(child)
                                 end
                             else
-                                local cname = string.lower(child.Name)
-                                if string.find(cname, "cord", 1, true) or string.find(cname, "grapple", 1, true) or string.find(cname, "trail", 1, true) then
-                                    for _, desc in ipairs(child:GetDescendants()) do
-                                        if (desc:IsA("Trail") or desc:IsA("Beam") or desc:IsA("ParticleEmitter")) and not tracked_emitters[desc] then
-                                            if is_beam_or_trail_attached_to_char(desc, char) or is_attached_to_char(child, char) then
-                                                track_target(desc)
-                                            end
+                                for _, desc in ipairs(child:GetDescendants()) do
+                                    if (desc:IsA("Trail") or desc:IsA("Beam")) and not tracked_emitters[desc] then
+                                        if is_trail_attached_to_char(desc, char) or is_attached_to_char(child, char) then
+                                            track_target(desc)
                                         end
                                     end
                                 end
