@@ -10648,9 +10648,9 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             group_overlays:AddDropdown("RainbowVFXItems", {
                 Text = "Rainbow VFX Items",
                 Values = {"Mana Run", "General Back VFX", "Mana Dashes", "Mana Shield", "Grapple", "Snarv", "Dagger Throws", "Swings", "Lethality"},
-                Default = {1, 2, 3, 4, 5, 6, 7, 8, 9},
+                Default = {},
                 Multi = true,
-                Tooltip = "Select which VFX elements will be colored rainbow",
+                Tooltip = "Select which VFX elements will be colored rainbow (empty = all enabled)",
                 Callback = function(value)
                     cheat_client.config.rainbow_vfx_items = value
                     if cheat_client.update_rainbow_vfx and ((Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx) then
@@ -33474,13 +33474,14 @@ end
         end
 
         do
-            local tracked_emitters = {}
+            local tracked_all = {}
+            local active_emitters = {}
             local original_colors = {}
-            local emitter_vfx_type = {}
             local vfx_connections = {}
             local bound_chars = {}
             local last_vfx_update = 0
             local last_vfx_scan = 0
+            local seq_kps = table.create(6)
 
             local function track_vfx_conn(conn)
                 if conn then
@@ -33508,23 +33509,20 @@ end
                 return plr.Character
             end
 
-            local function get_synced_vfx_rainbow_seq()
-                local now = os.clock()
+            local function get_synced_vfx_rainbow_seq(now)
                 local shift = (now * 0.32) % 1
                 if utility.get_liquid_rainbow_seq then
                     return utility.get_liquid_rainbow_seq(shift, 0.85, now)
                 end
-                local kps = {}
-                for i = 0, 8 do
-                    local t = i / 8
+                for i = 0, 5 do
+                    local t = i / 5
                     local raw_h = (shift + t * 0.85) % 1
-                    table.insert(kps, ColorSequenceKeypoint.new(t, Color3.fromHSV(raw_h, 0.9, 1)))
+                    seq_kps[i + 1] = ColorSequenceKeypoint.new(t, Color3.fromHSV(raw_h, 0.9, 1))
                 end
-                return ColorSequence.new(kps)
+                return ColorSequence.new(seq_kps)
             end
 
-            local function get_synced_vfx_rainbow_c3()
-                local now = os.clock()
+            local function get_synced_vfx_rainbow_c3(now)
                 local shift = (now * 0.32) % 1
                 return Color3.fromHSV(shift, 0.9, 1)
             end
@@ -33578,7 +33576,7 @@ end
             end
 
             local function is_item_checked(sel, name)
-                if not sel then return true end
+                if not sel then return false end
                 if sel[name] ~= nil then return sel[name] == true end
                 local lname = string.lower(name)
                 for k, v in pairs(sel) do
@@ -33588,7 +33586,7 @@ end
                         return true
                     end
                 end
-                return nil
+                return false
             end
 
             local function is_vfx_type_enabled(vfx_type)
@@ -33597,11 +33595,20 @@ end
                 local sel = (Options and Options.RainbowVFXItems and Options.RainbowVFXItems.Value)
                     or cheat_client.config.rainbow_vfx_items
                 if not sel then return true end
-                local checked = is_item_checked(sel, vfx_type)
-                if checked ~= nil then
-                    return checked
+
+                local any_selected = false
+                for _, v in pairs(sel) do
+                    if v == true then
+                        any_selected = true
+                        break
+                    end
                 end
-                return true
+
+                if not any_selected then
+                    return true
+                end
+
+                return is_item_checked(sel, vfx_type)
             end
 
             local function is_attached_to_char(obj, char)
@@ -33698,7 +33705,6 @@ end
                     return
                 end
                 vfx_type = vfx_type or infer_vfx_type(emitter)
-                emitter_vfx_type[emitter] = vfx_type
 
                 local ok, col = pcall(function() return emitter.Color end)
                 if not ok or not col then return end
@@ -33706,17 +33712,19 @@ end
                     original_colors[emitter] = col
                 end
                 local is_seq = typeof(col) == "ColorSequence"
-                tracked_emitters[emitter] = is_seq
+                tracked_all[emitter] = { is_seq = is_seq, vtype = vtype, orig = original_colors[emitter] }
 
                 if is_vfx_type_enabled(vfx_type) then
+                    active_emitters[emitter] = is_seq
                     pcall(function()
                         if is_seq then
-                            emitter.Color = get_synced_vfx_rainbow_seq()
+                            emitter.Color = get_synced_vfx_rainbow_seq(os.clock())
                         else
-                            emitter.Color = get_synced_vfx_rainbow_c3()
+                            emitter.Color = get_synced_vfx_rainbow_c3(os.clock())
                         end
                     end)
                 else
+                    active_emitters[emitter] = nil
                     pcall(function()
                         emitter.Color = original_colors[emitter]
                     end)
@@ -34013,7 +34021,7 @@ end
 
             RainbowVFX.track = track_target
             RainbowVFX.is_tracked = function(inst)
-                return tracked_emitters[inst] ~= nil
+                return tracked_all[inst] ~= nil
             end
             RainbowVFX.infer_type = infer_vfx_type
             RainbowVFX.is_type_enabled = is_vfx_type_enabled
@@ -34098,33 +34106,29 @@ end
 
                     if not apply_particle_container() then
                         task.defer(apply_particle_container)
-                        task.delay(0.015, apply_particle_container)
-                        task.delay(0.035, apply_particle_container)
                     end
 
-                    local conn
-                    conn = child.DescendantAdded:Connect(function(desc)
-                        if not shared or shared.is_unloading or getgenv()._hx_unloaded or not child.Parent then
-                            if conn then conn:Disconnect() end
+                    local child_conn
+                    child_conn = child.DescendantAdded:Connect(function(desc)
+                        if not child.Parent then
+                            if child_conn then child_conn:Disconnect() end
                             return
                         end
                         if desc:IsA("Trail") or desc:IsA("ParticleEmitter") or desc:IsA("Beam") or desc:IsA("BasePart") then
                             local char = get_local_char()
-                            if char then
-                                if is_attached_to_char(child, char) or (desc:IsA("Trail") and is_trail_attached_to_char(desc, char)) then
-                                    track_target(desc, infer_vfx_type(desc))
-                                else
-                                    task.defer(function()
-                                        local c = get_local_char()
-                                        if c and (is_attached_to_char(child, c) or (desc:IsA("Trail") and is_trail_attached_to_char(desc, c))) then
-                                            track_target(desc, infer_vfx_type(desc))
-                                        end
-                                    end)
-                                end
+                            if char and (is_attached_to_char(child, char) or (desc:IsA("Trail") and is_trail_attached_to_char(desc, char))) then
+                                track_target(desc, infer_vfx_type(desc))
                             end
                         end
                     end)
-                    track_vfx_conn(conn)
+                    child.AncestryChanged:Connect(function(_, p)
+                        if not p then
+                            if child_conn then child_conn:Disconnect() end
+                            active_emitters[child] = nil
+                            tracked_all[child] = nil
+                            original_colors[child] = nil
+                        end
+                    end)
                     return
                 end
 
@@ -34134,13 +34138,6 @@ end
                 if child:IsA("Trail") or child:IsA("Beam") or child:IsA("ParticleEmitter") or child:IsA("BasePart") then
                     if is_trail_attached_to_char(child, char) or is_attached_to_char(child, char) then
                         track_target(child, infer_vfx_type(child))
-                    else
-                        task.defer(function()
-                            local c = get_local_char()
-                            if c and (is_trail_attached_to_char(child, c) or is_attached_to_char(child, c)) then
-                                track_target(child, infer_vfx_type(child))
-                            end
-                        end)
                     end
                 end
 
@@ -34159,10 +34156,10 @@ end
                     end
                 end
 
-                local conn2
-                conn2 = child.DescendantAdded:Connect(function(desc)
-                    if not shared or shared.is_unloading or getgenv()._hx_unloaded or not child.Parent then
-                        if conn2 then conn2:Disconnect() end
+                local child_conn2
+                child_conn2 = child.DescendantAdded:Connect(function(desc)
+                    if not child.Parent then
+                        if child_conn2 then child_conn2:Disconnect() end
                         return
                     end
                     if desc:IsA("Trail") or desc:IsA("Beam") or desc:IsA("ParticleEmitter") or desc:IsA("BasePart") then
@@ -34172,7 +34169,14 @@ end
                         end
                     end
                 end)
-                track_vfx_conn(conn2)
+                child.AncestryChanged:Connect(function(_, p)
+                    if not p then
+                        if child_conn2 then child_conn2:Disconnect() end
+                        active_emitters[child] = nil
+                        tracked_all[child] = nil
+                        original_colors[child] = nil
+                    end
+                end)
             end
 
             local function bind_thrown_folder(thrown_folder)
@@ -34245,25 +34249,31 @@ end
                             handle_thrown_child(child)
                         end
                     end
-                    local seq = get_synced_vfx_rainbow_seq()
-                    local c3 = get_synced_vfx_rainbow_c3()
-                    for emitter, is_seq in pairs(tracked_emitters) do
+                    local now = os.clock()
+                    local seq = get_synced_vfx_rainbow_seq(now)
+                    local c3 = get_synced_vfx_rainbow_c3(now)
+                    for emitter, data in pairs(tracked_all) do
                         if emitter.Parent then
-                            local vtype = emitter_vfx_type[emitter] or infer_vfx_type(emitter)
-                            if is_vfx_type_enabled(vtype) then
+                            if is_vfx_type_enabled(data.vtype) then
+                                active_emitters[emitter] = data.is_seq
                                 pcall(function()
-                                    if is_seq then
+                                    if data.is_seq then
                                         emitter.Color = seq
                                     else
                                         emitter.Color = c3
                                     end
                                 end)
                             else
+                                active_emitters[emitter] = nil
                                 local orig = original_colors[emitter]
                                 if orig then
                                     pcall(function() emitter.Color = orig end)
                                 end
                             end
+                        else
+                            active_emitters[emitter] = nil
+                            tracked_all[emitter] = nil
+                            original_colors[emitter] = nil
                         end
                     end
                 else
@@ -34275,9 +34285,9 @@ end
                             end)
                         end
                     end
-                    table.clear(tracked_emitters)
+                    table.clear(tracked_all)
+                    table.clear(active_emitters)
                     table.clear(original_colors)
-                    table.clear(emitter_vfx_type)
                     table.clear(bound_chars)
                 end
             end
@@ -34295,29 +34305,28 @@ end
                 if not shared or shared.is_unloading or getgenv()._hx_unloaded then return end
                 local rainbow_vfx_on = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
                 if not rainbow_vfx_on then return end
-                if not plr.Character or not plr.Character.Parent then return end
 
                 local now = os.clock()
-                if now - last_vfx_update < 0.025 then
+                if now - last_vfx_update < 0.033 then
                     return
                 end
                 last_vfx_update = now
 
-                if now - last_vfx_scan > 0.35 then
+                if now - last_vfx_scan > 2.0 then
                     last_vfx_scan = now
                     local char = get_local_char()
                     if char then
                         local hrp = char:FindFirstChild("HumanoidRootPart")
                         if hrp then
                             local orb = hrp:FindFirstChild("Orb")
-                            if orb and not tracked_emitters[orb] then
+                            if orb and not tracked_all[orb] then
                                 track_target(orb, "Mana Shield")
                                 for _, d in ipairs(orb:GetDescendants()) do
                                     track_target(d, "Mana Shield")
                                 end
                             end
                             local dp = hrp:FindFirstChild("DodgePartic")
-                            if dp and not tracked_emitters[dp] then
+                            if dp and not tracked_all[dp] then
                                 track_target(dp, "Mana Dashes")
                                 for _, d in ipairs(dp:GetDescendants()) do
                                     track_target(d, "Mana Dashes")
@@ -34327,87 +34336,30 @@ end
                         local torso = char:FindFirstChild("Torso")
                         if torso then
                             local orb = torso:FindFirstChild("Orb")
-                            if orb and not tracked_emitters[orb] then
+                            if orb and not tracked_all[orb] then
                                 track_target(orb, "Mana Shield")
                                 for _, d in ipairs(orb:GetDescendants()) do
                                     track_target(d, "Mana Shield")
                                 end
                             end
                         end
-                        local left_arm = char:FindFirstChild("Left Arm") or char:FindFirstChild("LeftHand")
-                        if left_arm then
-                            local cord = left_arm:FindFirstChild("Cord")
-                            if cord and not tracked_emitters[cord] then
-                                track_target(cord, "Grapple")
-                                for _, d in ipairs(cord:GetDescendants()) do
-                                    track_target(d, "Grapple")
-                                end
-                            end
-                        end
-                        local cord = char:FindFirstChild("Cord", true)
-                        if cord and not tracked_emitters[cord] then
-                            track_target(cord, "Grapple")
-                            for _, d in ipairs(cord:GetDescendants()) do
-                                track_target(d, "Grapple")
-                            end
-                        end
-                        for _, desc in ipairs(char:GetDescendants()) do
-                            if (desc:IsA("Trail") or desc:IsA("Beam")) and not tracked_emitters[desc] then
-                                track_target(desc, infer_vfx_type(desc))
-                            end
-                        end
-                        for _, scanner in ipairs(RainbowVFX.scanners) do
-                            pcall(scanner, char)
-                        end
-                    end
-                    local thrown = ws:FindFirstChild("Thrown")
-                    if thrown and char then
-                        for _, child in ipairs(thrown:GetChildren()) do
-                            local cname = string.lower(child.Name)
-                            if string.find(cname, "daggerthrow", 1, true) or string.find(cname, "particlearm", 1, true) or string.find(cname, "particleback", 1, true) or string.find(cname, "windburst", 1, true) or string.find(cname, "windclap", 1, true) then
-                                if is_attached_to_char(child, char) then
-                                    if (child:IsA("BasePart") or child:IsA("Trail") or child:IsA("ParticleEmitter") or child:IsA("Beam")) and not tracked_emitters[child] then
-                                        track_target(child, infer_vfx_type(child))
-                                    end
-                                    for _, desc in ipairs(child:GetDescendants()) do
-                                        if (desc:IsA("Trail") or desc:IsA("ParticleEmitter") or desc:IsA("Beam") or desc:IsA("BasePart")) and not tracked_emitters[desc] then
-                                            track_target(desc, infer_vfx_type(desc))
-                                        end
-                                    end
-                                end
-                            elseif (child:IsA("Trail") or child:IsA("Beam") or child:IsA("ParticleEmitter") or child:IsA("BasePart")) and not tracked_emitters[child] then
-                                if is_trail_attached_to_char(child, char) or is_attached_to_char(child, char) then
-                                    track_target(child, infer_vfx_type(child))
-                                end
-                            end
-                        end
                     end
                 end
 
-                local seq = get_synced_vfx_rainbow_seq()
-                local c3 = get_synced_vfx_rainbow_c3()
+                local seq = get_synced_vfx_rainbow_seq(now)
+                local c3 = get_synced_vfx_rainbow_c3(now)
 
-                for emitter, is_seq in pairs(tracked_emitters) do
+                for emitter, is_seq in pairs(active_emitters) do
                     if emitter.Parent then
-                        local vtype = emitter_vfx_type[emitter] or infer_vfx_type(emitter)
-                        if is_vfx_type_enabled(vtype) then
-                            pcall(function()
-                                if is_seq then
-                                    emitter.Color = seq
-                                else
-                                    emitter.Color = c3
-                                end
-                            end)
+                        if is_seq then
+                            emitter.Color = seq
                         else
-                            local orig = original_colors[emitter]
-                            if orig then
-                                pcall(function() emitter.Color = orig end)
-                            end
+                            emitter.Color = c3
                         end
                     else
-                        tracked_emitters[emitter] = nil
+                        active_emitters[emitter] = nil
+                        tracked_all[emitter] = nil
                         original_colors[emitter] = nil
-                        emitter_vfx_type[emitter] = nil
                     end
                 end
             end))
