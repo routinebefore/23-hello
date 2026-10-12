@@ -33558,13 +33558,15 @@ end
                 local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso")
                 local right_arm = char:FindFirstChild("Right Arm") or char:FindFirstChild("RightHand")
                 local left_arm = char:FindFirstChild("Left Arm") or char:FindFirstChild("LeftHand")
+                local torso = char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
                 local obj_part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart", true)
                 if obj_part then
                     local check_pos = obj_part.Position
                     local d_ra = right_arm and (check_pos - right_arm.Position).Magnitude or 999
                     local d_la = left_arm and (check_pos - left_arm.Position).Magnitude or 999
                     local d_rt = root and (check_pos - root.Position).Magnitude or 999
-                    local min_dist = math.min(d_ra, d_la, d_rt)
+                    local d_to = torso and (check_pos - torso.Position).Magnitude or 999
+                    local min_dist = math.min(d_ra, d_la, d_rt, d_to)
                     if min_dist < 14 then
                         local live = ws:FindFirstChild("Live")
                         if live then
@@ -33808,6 +33810,20 @@ end
                         end
                     },
                     {
+                        id = "ParticleArmAndBack",
+                        matches = function(desc, char)
+                            if not (desc:IsA("ParticleEmitter") or desc:IsA("Beam") or desc:IsA("Trail") or desc:IsA("BasePart")) then return false end
+                            local name = string.lower(desc.Name)
+                            if string.find(name, "particlearm", 1, true) or string.find(name, "particleback", 1, true) or name == "testtrail" then return true end
+                            local p = desc.Parent
+                            if p then
+                                local pname = string.lower(p.Name)
+                                if string.find(pname, "particlearm", 1, true) or string.find(pname, "particleback", 1, true) then return true end
+                            end
+                            return false
+                        end
+                    },
+                    {
                         id = "CharacterGenericVFX",
                         matches = function(desc, char)
                             if (desc:IsA("ParticleEmitter") or desc:IsA("Beam") or desc:IsA("Trail")) and desc:IsDescendantOf(char) then
@@ -33835,7 +33851,9 @@ end
                                 or string.find(name, "dodge", 1, true)
                                 or string.find(name, "roll", 1, true)
                                 or string.find(name, "wind", 1, true)
-                                or string.find(name, "speed", 1, true) then
+                                or string.find(name, "speed", 1, true)
+                                or string.find(name, "particleback", 1, true)
+                                or string.find(name, "particlearm", 1, true) then
                                 return is_attached_to_char(obj, char)
                             end
                             return false
@@ -33847,7 +33865,19 @@ end
                     {
                         id = "ParticleArm",
                         matches_container = function(obj, char)
-                            if not (obj.Name == "ParticleArm" or string.find(obj.Name, "ParticleArm", 1, true)) then return false end
+                            local name = obj.Name
+                            if not (name == "ParticleArm" or string.find(name, "ParticleArm", 1, true) or name == "ParticleBack" or string.find(name, "ParticleBack", 1, true)) then return false end
+                            return is_attached_to_char(obj, char)
+                        end,
+                        matches_emitter = function(desc)
+                            return desc:IsA("ParticleEmitter") or desc:IsA("Beam") or desc:IsA("Trail") or desc:IsA("BasePart")
+                        end
+                    },
+                    {
+                        id = "ParticleBack",
+                        matches_container = function(obj, char)
+                            local name = obj.Name
+                            if not (name == "ParticleBack" or string.find(name, "ParticleBack", 1, true)) then return false end
                             return is_attached_to_char(obj, char)
                         end,
                         matches_emitter = function(desc)
@@ -33966,6 +33996,17 @@ end
                     for _, desc in ipairs(child:GetDescendants()) do
                         if desc:IsA("Trail") or desc:IsA("Beam") then
                             check_trail_or_beam(desc)
+                        end
+                    end
+                    local cname = child.Name
+                    if cname == "ParticleArm" or cname == "ParticleBack" or string.find(cname, "ParticleArm", 1, true) or string.find(cname, "ParticleBack", 1, true) then
+                        local char = get_local_char()
+                        if char and is_attached_to_char(child, char) then
+                            for _, desc in ipairs(child:GetDescendants()) do
+                                if desc:IsA("Trail") or desc:IsA("ParticleEmitter") or desc:IsA("Beam") then
+                                    track_target(desc)
+                                end
+                            end
                         end
                     end
                 end
@@ -34188,7 +34229,16 @@ end
                     local thrown = ws:FindFirstChild("Thrown")
                     if thrown and char then
                         for _, child in ipairs(thrown:GetChildren()) do
-                            if (child:IsA("Trail") or child:IsA("Beam")) and not tracked_emitters[child] then
+                            local cname = child.Name
+                            if cname == "ParticleArm" or cname == "ParticleBack" or string.find(cname, "ParticleArm", 1, true) or string.find(cname, "ParticleBack", 1, true) then
+                                if is_attached_to_char(child, char) then
+                                    for _, desc in ipairs(child:GetDescendants()) do
+                                        if (desc:IsA("Trail") or desc:IsA("ParticleEmitter") or desc:IsA("Beam")) and not tracked_emitters[desc] then
+                                            track_target(desc)
+                                        end
+                                    end
+                                end
+                            elseif (child:IsA("Trail") or child:IsA("Beam")) and not tracked_emitters[child] then
                                 if is_trail_attached_to_char(child, char) then
                                     track_target(child)
                                 end
@@ -34255,7 +34305,7 @@ end
                     return
                 end
                 local iname = string.lower(child.Name)
-                if iname == "cord" or string.find(iname, "cord", 1, true) or string.find(iname, "grapple", 1, true) or string.find(iname, "hook", 1, true) then
+                if iname == "cord" or string.find(iname, "cord", 1, true) or string.find(iname, "grapple", 1, true) or string.find(iname, "hook", 1, true) or string.find(iname, "particleback", 1, true) or string.find(iname, "particlearm", 1, true) then
                     handle_thrown_child(child)
                 end
             end)
