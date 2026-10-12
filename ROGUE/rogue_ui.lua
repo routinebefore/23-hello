@@ -33564,7 +33564,7 @@ end
                     local d_la = left_arm and (check_pos - left_arm.Position).Magnitude or 999
                     local d_rt = root and (check_pos - root.Position).Magnitude or 999
                     local min_dist = math.min(d_ra, d_la, d_rt)
-                    if min_dist < 4.5 then
+                    if min_dist < 12 then
                         local live = ws:FindFirstChild("Live")
                         if live then
                             local closest_char = nil
@@ -33584,6 +33584,80 @@ end
                             end
                         else
                             return true
+                        end
+                    end
+                end
+                return false
+            end
+
+            local function is_trail_attached_to_char(trail, char)
+                if not trail or not char then return false end
+                local ok0, a0 = pcall(function() return trail.Attachment0 end)
+                local ok1, a1 = pcall(function() return trail.Attachment1 end)
+                if (ok0 and a0 and a0:IsDescendantOf(char)) or (ok1 and a1 and a1:IsDescendantOf(char)) then
+                    return true
+                end
+                if ok0 and a0 and a0.Parent and is_attached_to_char(a0.Parent, char) then
+                    return true
+                end
+                if ok1 and a1 and a1.Parent and is_attached_to_char(a1.Parent, char) then
+                    return true
+                end
+                local p = trail.Parent
+                if p and is_attached_to_char(p, char) then
+                    return true
+                end
+                local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso")
+                if root then
+                    local char_pos = root.Position
+                    if ok0 and a0 then
+                        local ok_pos, pos = pcall(function() return a0.WorldPosition end)
+                        if ok_pos and pos and (pos - char_pos).Magnitude < 14 then
+                            local live = ws:FindFirstChild("Live")
+                            if live then
+                                local closest_char = nil
+                                local closest_dist = 999
+                                for _, other_char in ipairs(live:GetChildren()) do
+                                    local other_root = other_char:FindFirstChild("HumanoidRootPart") or other_char:FindFirstChild("Torso")
+                                    if other_root then
+                                        local dist = (pos - other_root.Position).Magnitude
+                                        if dist < closest_dist then
+                                            closest_dist = dist
+                                            closest_char = other_char
+                                        end
+                                    end
+                                end
+                                if closest_char == char then
+                                    return true
+                                end
+                            else
+                                return true
+                            end
+                        end
+                    end
+                    if p and p:IsA("BasePart") then
+                        local dist = (p.Position - char_pos).Magnitude
+                        if dist < 14 then
+                            local live = ws:FindFirstChild("Live")
+                            if live then
+                                local closest_char = nil
+                                local closest_dist = 999
+                                for _, other_char in ipairs(live:GetChildren()) do
+                                    local other_root = other_char:FindFirstChild("HumanoidRootPart") or other_char:FindFirstChild("Torso")
+                                    if other_root then
+                                        local d = (p.Position - other_root.Position).Magnitude
+                                        if d < closest_dist then
+                                            closest_dist = d
+                                            closest_char = other_char
+                                        end
+                                    end
+                                end
+                                if closest_char == char then
+                                    return true
+                                end
+                            else
+                                return true
+                            end
                         end
                     end
                 end
@@ -33624,6 +33698,20 @@ end
                         setting_rainbow_color = false
                     end
                 end))
+
+                if emitter:IsA("Trail") then
+                    local conn_color = track_vfx_conn(emitter:GetPropertyChangedSignal("Color"):Connect(function()
+                        if setting_rainbow_color then return end
+                        local active = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
+                        if active then
+                            setting_rainbow_color = true
+                            pcall(function()
+                                emitter.Color = get_synced_vfx_rainbow_seq()
+                            end)
+                            setting_rainbow_color = false
+                        end
+                    end))
+                end
 
                 local conn_ancestry
                 conn_ancestry = track_vfx_conn(emitter.AncestryChanged:Connect(function(_, parent)
@@ -33705,6 +33793,32 @@ end
                 },
                 thrown_rules = {
                     {
+                        id = "ThrownTrail",
+                        matches_container = function(obj, char)
+                            if obj:IsA("Trail") then
+                                return is_trail_attached_to_char(obj, char)
+                            end
+                            for _, desc in ipairs(obj:GetDescendants()) do
+                                if desc:IsA("Trail") and is_trail_attached_to_char(desc, char) then
+                                    return true
+                                end
+                            end
+                            local name = string.lower(obj.Name)
+                            if string.find(name, "trail", 1, true)
+                                or string.find(name, "dash", 1, true)
+                                or string.find(name, "dodge", 1, true)
+                                or string.find(name, "roll", 1, true)
+                                or string.find(name, "wind", 1, true)
+                                or string.find(name, "speed", 1, true) then
+                                return is_attached_to_char(obj, char)
+                            end
+                            return false
+                        end,
+                        matches_emitter = function(desc)
+                            return desc:IsA("Trail") or desc:IsA("ParticleEmitter") or desc:IsA("Beam") or desc:IsA("BasePart")
+                        end
+                    },
+                    {
                         id = "ParticleArm",
                         matches_container = function(obj, char)
                             if not (obj.Name == "ParticleArm" or string.find(obj.Name, "ParticleArm", 1, true)) then return false end
@@ -33771,6 +33885,37 @@ end
 
             local function handle_thrown_child(child)
                 if not child or child.Name:find("RainbowShield", 1, true) then return end
+
+                local function check_trail(t)
+                    if not t or not t:IsA("Trail") then return end
+                    local char = get_local_char()
+                    if not char then return end
+                    if is_trail_attached_to_char(t, char) or is_attached_to_char(child, char) or is_attached_to_char(t, char) then
+                        track_target(t)
+                    end
+                end
+
+                local function check_all_trails()
+                    if child:IsA("Trail") then
+                        check_trail(child)
+                    end
+                    for _, desc in ipairs(child:GetDescendants()) do
+                        if desc:IsA("Trail") then
+                            check_trail(desc)
+                        end
+                    end
+                end
+
+                check_all_trails()
+                task.defer(check_all_trails)
+                task.delay(0.05, check_all_trails)
+                task.delay(0.15, check_all_trails)
+
+                if child:IsA("Trail") then
+                    track_vfx_conn(child:GetPropertyChangedSignal("Attachment0"):Connect(check_all_trails))
+                    track_vfx_conn(child:GetPropertyChangedSignal("Attachment1"):Connect(check_all_trails))
+                end
+
                 for _, rule in ipairs(vfx_registry.thrown_rules) do
                     local function check_and_apply()
                         local char = get_local_char()
@@ -33795,6 +33940,11 @@ end
                     local conn_desc
                     conn_desc = track_vfx_conn(child.DescendantAdded:Connect(function(desc)
                         if not shared or shared.is_unloading or getgenv()._hx_unloaded then return end
+                        if desc:IsA("Trail") then
+                            check_trail(desc)
+                            track_vfx_conn(desc:GetPropertyChangedSignal("Attachment0"):Connect(check_all_trails))
+                            track_vfx_conn(desc:GetPropertyChangedSignal("Attachment1"):Connect(check_all_trails))
+                        end
                         local char = get_local_char()
                         if not char then return end
                         local ok, matches = pcall(rule.matches_container, child, char)
@@ -33938,6 +34088,24 @@ end
                         for _, desc in ipairs(char:GetDescendants()) do
                             if desc:IsA("Trail") and not tracked_emitters[desc] then
                                 track_target(desc)
+                            end
+                        end
+                    end
+                    local thrown = ws:FindFirstChild("Thrown")
+                    if thrown and char then
+                        for _, child in ipairs(thrown:GetChildren()) do
+                            if child:IsA("Trail") and not tracked_emitters[child] then
+                                if is_trail_attached_to_char(child, char) then
+                                    track_target(child)
+                                end
+                            else
+                                for _, desc in ipairs(child:GetDescendants()) do
+                                    if desc:IsA("Trail") and not tracked_emitters[desc] then
+                                        if is_trail_attached_to_char(desc, char) or is_attached_to_char(child, char) then
+                                            track_target(desc)
+                                        end
+                                    end
+                                end
                             end
                         end
                     end
