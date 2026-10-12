@@ -4489,7 +4489,8 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
         for _, path in ipairs(paths) do
             local content_success, content = pcall(function()
                 if path:sub(1, 4) == "http" then
-                    return game:HttpGet(path, true)
+                    local fetch_url = path .. (path:find("?", 1, true) and "&" or "?") .. "t=" .. tostring(os.time())
+                    return game:HttpGet(fetch_url, true)
                 end
 
                 if readfile and isfile and isfile(path) then

@@ -1230,7 +1230,20 @@ local function FillInstance(Table: { [string]: any }, Instance: GuiObject)
             end
         end
 
-        Instance[k] = v
+        if typeof(v) == "string" and (k:find("Color3") or k:find("Color") or k == "Color") then
+            if Library.Scheme[v] then
+                ThemeProperties[k] = v
+                v = Library.Scheme[v]
+            elseif Library.Scheme.FontColor then
+                v = Library.Scheme.FontColor
+            else
+                v = Color3.fromRGB(255, 255, 255)
+            end
+        end
+
+        pcall(function()
+            Instance[k] = v
+        end)
     end
 
     if GetTableSize(ThemeProperties) > 0 then
