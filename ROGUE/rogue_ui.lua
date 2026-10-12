@@ -33461,20 +33461,13 @@ end
         end
 
         do
-            local tracked_seq_targets = {}
-            local original_seq_colors = {}
-            local tracked_c3_targets = {}
-            local original_c3_colors = {}
-            local orb_listeners = {}
-            local orb_tracked_set = {}
-            local grapple_listeners = {}
-            local cord_tracked_set = {}
+            local tracked_emitters = {}
+            local original_colors = {}
             local vfx_connections = {}
             local bound_chars = {}
             local setting_rainbow_color = false
+            local last_vfx_update = 0
             local last_vfx_scan = 0
-            local last_c3_time = 0
-            local last_c3_res = nil
 
             local function track_vfx_conn(conn)
                 if conn then
@@ -33490,26 +33483,6 @@ end
                     end
                 end
                 table.clear(vfx_connections)
-                for _, conn in pairs(orb_listeners) do
-                    if conn and conn.Disconnect then
-                        pcall(function() conn:Disconnect() end)
-                    end
-                end
-                table.clear(orb_listeners)
-                for _, conn in pairs(grapple_listeners) do
-                    if conn and conn.Disconnect then
-                        pcall(function() conn:Disconnect() end)
-                    end
-                end
-                table.clear(grapple_listeners)
-            end
-
-            local function safe_set_seq(emitter, seq)
-                emitter.Color = seq
-            end
-
-            local function safe_set_c3(inst, prop, c3)
-                inst[prop] = c3
             end
 
             local function get_local_char()
@@ -33524,13 +33497,13 @@ end
 
             local function get_synced_vfx_rainbow_seq()
                 local now = os.clock()
-                local shift = (now * 0.20) % 1
+                local shift = (now * 0.32) % 1
                 if utility.get_liquid_rainbow_seq then
                     return utility.get_liquid_rainbow_seq(shift, 0.85, now)
                 end
                 local kps = {}
-                for i = 0, 5 do
-                    local t = i / 5
+                for i = 0, 8 do
+                    local t = i / 8
                     local raw_h = (shift + t * 0.85) % 1
                     table.insert(kps, ColorSequenceKeypoint.new(t, Color3.fromHSV(raw_h, 0.9, 1)))
                 end
@@ -33539,297 +33512,8 @@ end
 
             local function get_synced_vfx_rainbow_c3()
                 local now = os.clock()
-                if now == last_c3_time and last_c3_res then
-                    return last_c3_res
-                end
-                local shift = (now * 0.20) % 1
-                local c3 = Color3.fromHSV(shift, 0.9, 1)
-                last_c3_time = now
-                last_c3_res = c3
-                return c3
-            end
-
-            local function is_shield_or_orb_object(obj)
-                if not obj then return false end
-                if obj.Name:find("RainbowShield", 1, true) then return false end
-                if obj:IsA("ParticleEmitter") and obj.Texture and obj.Texture:find("241650934", 1, true) then
-                    return true
-                end
-                local name = string.lower(obj.Name)
-                if string.find(name, "orb", 1, true) or string.find(name, "shield", 1, true) or string.find(name, "bubble", 1, true) then
-                    return true
-                end
-                local ancestor = obj.Parent
-                local depth = 0
-                while ancestor and ancestor ~= ws and ancestor ~= game and depth < 6 do
-                    if ancestor.Name:find("RainbowShield", 1, true) then return false end
-                    local aname = string.lower(ancestor.Name)
-                    if string.find(aname, "orb", 1, true) or string.find(aname, "shield", 1, true) or string.find(aname, "bubble", 1, true) then
-                        return true
-                    end
-                    ancestor = ancestor.Parent
-                    depth = depth + 1
-                end
-                return false
-            end
-
-            local function is_dash_or_dodge_object(obj, char)
-                if not obj then return false end
-                if obj.Name:find("RainbowShield", 1, true) then return false end
-                if not char then
-                    char = get_local_char()
-                end
-                if char and (obj == char or obj == char:FindFirstChild("HumanoidRootPart") or obj == char:FindFirstChild("Torso") or obj == char:FindFirstChild("Head") or obj == char:FindFirstChild("Humanoid")) then
-                    return false
-                end
-                local name = string.lower(obj.Name)
-                if string.find(name, "dodge", 1, true)
-                    or string.find(name, "dash", 1, true)
-                    or string.find(name, "roll", 1, true)
-                    or string.find(name, "wind", 1, true)
-                    or string.find(name, "speed", 1, true)
-                    or string.find(name, "trail", 1, true)
-                    or string.find(name, "smoke", 1, true)
-                    or string.find(name, "dust", 1, true)
-                    or string.find(name, "step", 1, true) then
-                    return true
-                end
-                local ancestor = obj.Parent
-                local depth = 0
-                while ancestor and ancestor ~= char and ancestor ~= ws and ancestor ~= game and depth < 6 do
-                    local aname = string.lower(ancestor.Name)
-                    if string.find(aname, "dodge", 1, true)
-                        or string.find(aname, "dash", 1, true)
-                        or string.find(aname, "roll", 1, true)
-                        or string.find(aname, "wind", 1, true)
-                        or string.find(aname, "speed", 1, true)
-                        or string.find(aname, "trail", 1, true) then
-                        return true
-                    end
-                    ancestor = ancestor.Parent
-                    depth = depth + 1
-                end
-                if char then
-                    local hrp = char:FindFirstChild("HumanoidRootPart")
-                    if hrp then
-                        local dp = hrp:FindFirstChild("DodgePartic") or hrp:FindFirstChild("Dash") or hrp:FindFirstChild("RollPartic")
-                        if dp and (obj == dp or obj:IsDescendantOf(dp)) then
-                            return true
-                        end
-                    end
-                    local torso = char:FindFirstChild("Torso")
-                    if torso then
-                        local dp = torso:FindFirstChild("DodgePartic") or torso:FindFirstChild("Dash") or torso:FindFirstChild("RollPartic")
-                        if dp and (obj == dp or obj:IsDescendantOf(dp)) then
-                            return true
-                        end
-                    end
-                end
-                return false
-            end
-
-            local function track_seq_target(emitter)
-                if not emitter or tracked_seq_targets[emitter] then return end
-                local ok, col = pcall(function() return emitter.Color end)
-                if ok and typeof(col) == "ColorSequence" then
-                    original_seq_colors[emitter] = col
-                else
-                    return
-                end
-                tracked_seq_targets[emitter] = true
-
-                local is_enabled = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
-                if is_enabled then
-                    setting_rainbow_color = true
-                    if emitter:IsA("ParticleEmitter") and is_shield_or_orb_object(emitter) then
-                        pcall(safe_set_seq, emitter, ColorSequence.new(get_synced_vfx_rainbow_c3()))
-                    else
-                        pcall(safe_set_seq, emitter, get_synced_vfx_rainbow_seq())
-                    end
-                    setting_rainbow_color = false
-                end
-
-                if emitter:IsA("Trail") or is_dash_or_dodge_object(emitter) then
-                    track_vfx_conn(emitter:GetPropertyChangedSignal("Color"):Connect(function()
-                        if not setting_rainbow_color then
-                            local active = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
-                            if active then
-                                setting_rainbow_color = true
-                                pcall(safe_set_seq, emitter, get_synced_vfx_rainbow_seq())
-                                setting_rainbow_color = false
-                            end
-                        end
-                    end))
-                end
-
-                track_vfx_conn(emitter.AncestryChanged:Connect(function(_, parent)
-                    if not parent then
-                        tracked_seq_targets[emitter] = nil
-                        original_seq_colors[emitter] = nil
-                    end
-                end))
-            end
-
-            local function track_c3_target(inst, prop_name)
-                if not inst then return end
-                if tracked_c3_targets[inst] and tracked_c3_targets[inst][prop_name] then return end
-
-                local ok, orig_val = pcall(function() return inst[prop_name] end)
-                if not ok or typeof(orig_val) ~= "Color3" then return end
-
-                if not original_c3_colors[inst] then
-                    original_c3_colors[inst] = {}
-                end
-                original_c3_colors[inst][prop_name] = orig_val
-
-                if not tracked_c3_targets[inst] then
-                    tracked_c3_targets[inst] = {}
-                end
-                tracked_c3_targets[inst][prop_name] = true
-
-                local is_enabled = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
-                if is_enabled then
-                    setting_rainbow_color = true
-                    pcall(safe_set_c3, inst, prop_name, get_synced_vfx_rainbow_c3())
-                    setting_rainbow_color = false
-                end
-
-                if is_dash_or_dodge_object(inst) then
-                    track_vfx_conn(inst:GetPropertyChangedSignal(prop_name):Connect(function()
-                        if not setting_rainbow_color then
-                            local active = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
-                            if active then
-                                setting_rainbow_color = true
-                                pcall(safe_set_c3, inst, prop_name, get_synced_vfx_rainbow_c3())
-                                setting_rainbow_color = false
-                            end
-                        end
-                    end))
-                end
-
-                track_vfx_conn(inst.AncestryChanged:Connect(function(_, parent)
-                    if not parent then
-                        tracked_c3_targets[inst] = nil
-                        original_c3_colors[inst] = nil
-                    end
-                end))
-            end
-
-            local function track_any_target(inst)
-                if not inst then return end
-                if inst.Name:find("RainbowShield", 1, true) then
-                    pcall(function() inst:Destroy() end)
-                    return
-                end
-                if inst:IsA("ParticleEmitter") then
-                    if is_shield_or_orb_object(inst) then
-                        pcall(function()
-                            inst.Transparency = NumberSequence.new({
-                                NumberSequenceKeypoint.new(0, 0),
-                                NumberSequenceKeypoint.new(0.0184, 0),
-                                NumberSequenceKeypoint.new(0.0353, 1),
-                                NumberSequenceKeypoint.new(1, 1)
-                            })
-                        end)
-                    end
-                    track_seq_target(inst)
-                elseif inst:IsA("Beam") or inst:IsA("Trail") then
-                    track_seq_target(inst)
-                elseif inst:IsA("Light") then
-                    track_c3_target(inst, "Color")
-                elseif inst:IsA("BasePart") then
-                    track_c3_target(inst, "Color")
-                elseif inst:IsA("Fire") then
-                    track_c3_target(inst, "Color")
-                    track_c3_target(inst, "SecondaryColor")
-                elseif inst:IsA("Smoke") then
-                    track_c3_target(inst, "Color")
-                elseif inst:IsA("Sparkles") then
-                    track_c3_target(inst, "SparkleColor")
-                elseif inst:IsA("Highlight") then
-                    track_c3_target(inst, "FillColor")
-                    track_c3_target(inst, "OutlineColor")
-                elseif inst:IsA("SelectionBox") or inst:IsA("BoxHandleAdornment") or inst:IsA("SphereHandleAdornment") or inst:IsA("Decal") or inst:IsA("Texture") then
-                    track_c3_target(inst, "Color3")
-                end
-            end
-
-            local function is_grapple_object(obj)
-                if not obj then return false end
-                local name = string.lower(obj.Name)
-                if name == "cord" or string.find(name, "cord", 1, true) or string.find(name, "grapple", 1, true) then
-                    return true
-                end
-                local ancestor = obj.Parent
-                local depth = 0
-                while ancestor and ancestor ~= ws and ancestor ~= game and depth < 6 do
-                    local aname = string.lower(ancestor.Name)
-                    if aname == "cord" or string.find(aname, "cord", 1, true) or string.find(aname, "grapple", 1, true) then
-                        return true
-                    end
-                    ancestor = ancestor.Parent
-                    depth = depth + 1
-                end
-                return false
-            end
-
-            local function track_orb_hierarchy(orb_inst)
-                if not orb_inst then return end
-                if orb_inst.Name:find("RainbowShield", 1, true) then
-                    pcall(function() orb_inst:Destroy() end)
-                    return
-                end
-                track_any_target(orb_inst)
-                for _, desc in ipairs(orb_inst:GetDescendants()) do
-                    if desc.Name:find("RainbowShield", 1, true) then
-                        pcall(function() desc:Destroy() end)
-                    else
-                        track_any_target(desc)
-                    end
-                end
-                if not orb_listeners[orb_inst] then
-                    orb_listeners[orb_inst] = track_vfx_conn(orb_inst.DescendantAdded:Connect(function(desc)
-                        if not shared or shared.is_unloading or getgenv()._hx_unloaded then return end
-                        if not desc then return end
-                        if desc.Name:find("RainbowShield", 1, true) then
-                            pcall(function() desc:Destroy() end)
-                            return
-                        end
-                        track_any_target(desc)
-                    end))
-                end
-                track_vfx_conn(orb_inst.AncestryChanged:Connect(function(_, parent)
-                    if not parent then
-                        orb_tracked_set[orb_inst] = nil
-                        if orb_listeners[orb_inst] then
-                            orb_listeners[orb_inst]:Disconnect()
-                            orb_listeners[orb_inst] = nil
-                        end
-                    end
-                end))
-            end
-
-            local function track_grapple_hierarchy(inst)
-                if not inst then return end
-                track_any_target(inst)
-                for _, desc in ipairs(inst:GetDescendants()) do
-                    track_any_target(desc)
-                end
-                if not grapple_listeners[inst] then
-                    grapple_listeners[inst] = track_vfx_conn(inst.DescendantAdded:Connect(function(desc)
-                        if not shared or shared.is_unloading or getgenv()._hx_unloaded then return end
-                        track_any_target(desc)
-                    end))
-                end
-                track_vfx_conn(inst.AncestryChanged:Connect(function(_, parent)
-                    if not parent then
-                        cord_tracked_set[inst] = nil
-                        if grapple_listeners[inst] then
-                            grapple_listeners[inst]:Disconnect()
-                            grapple_listeners[inst] = nil
-                        end
-                    end
-                end))
+                local shift = (now * 0.32) % 1
+                return Color3.fromHSV(shift, 0.9, 1)
             end
 
             local function is_attached_to_char(obj, char)
@@ -33906,10 +33590,56 @@ end
                 return false
             end
 
+            local function track_target(emitter)
+                if not emitter or tracked_emitters[emitter] then return end
+                local ok, col = pcall(function() return emitter.Color end)
+                if not ok or not col then return end
+                original_colors[emitter] = col
+                tracked_emitters[emitter] = true
+
+                local is_enabled = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
+                if is_enabled then
+                    setting_rainbow_color = true
+                    pcall(function()
+                        if typeof(emitter.Color) == "ColorSequence" then
+                            emitter.Color = get_synced_vfx_rainbow_seq()
+                        elseif typeof(emitter.Color) == "Color3" then
+                            emitter.Color = get_synced_vfx_rainbow_c3()
+                        end
+                    end)
+                    setting_rainbow_color = false
+                end
+
+                local conn_enabled = track_vfx_conn(emitter:GetPropertyChangedSignal("Enabled"):Connect(function()
+                    local active = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
+                    if active and emitter.Enabled and not setting_rainbow_color then
+                        setting_rainbow_color = true
+                        pcall(function()
+                            if typeof(emitter.Color) == "ColorSequence" then
+                                emitter.Color = get_synced_vfx_rainbow_seq()
+                            elseif typeof(emitter.Color) == "Color3" then
+                                emitter.Color = get_synced_vfx_rainbow_c3()
+                            end
+                        end)
+                        setting_rainbow_color = false
+                    end
+                end))
+
+                local conn_ancestry
+                conn_ancestry = track_vfx_conn(emitter.AncestryChanged:Connect(function(_, parent)
+                    if not parent then
+                        tracked_emitters[emitter] = nil
+                        original_colors[emitter] = nil
+                        if conn_enabled then conn_enabled:Disconnect() end
+                        if conn_ancestry then conn_ancestry:Disconnect() end
+                    end
+                end))
+            end
+
             local vfx_registry = {
                 character_rules = {
                     {
-                        id = "CharacterTrails",
+                        id = "Trail",
                         matches = function(desc, char)
                             return desc:IsA("Trail")
                         end
@@ -33917,19 +33647,59 @@ end
                     {
                         id = "Orb",
                         matches = function(desc, char)
-                            return is_shield_or_orb_object(desc)
-                        end
-                    },
-                    {
-                        id = "Grapple",
-                        matches = function(desc, char)
-                            return is_grapple_object(desc)
+                            if not (desc:IsA("ParticleEmitter") or desc:IsA("Beam") or desc:IsA("Trail") or desc:IsA("BasePart")) then return false end
+                            if desc.Name == "Orb" or (desc.Parent and desc.Parent.Name == "Orb") then return true end
+                            if desc:FindFirstAncestor("Orb") then return true end
+                            local hrp = char:FindFirstChild("HumanoidRootPart")
+                            if hrp then
+                                local orb = hrp:FindFirstChild("Orb")
+                                if orb and (desc == orb or desc:IsDescendantOf(orb)) then
+                                    return true
+                                end
+                            end
+                            return false
                         end
                     },
                     {
                         id = "DodgePartic",
                         matches = function(desc, char)
-                            return is_dash_or_dodge_object(desc, char)
+                            if not (desc:IsA("ParticleEmitter") or desc:IsA("Beam") or desc:IsA("Trail") or desc:IsA("BasePart")) then return false end
+                            local name = string.lower(desc.Name)
+                            if name == "dodgepartic" or name == "dash" or name == "forwarddash" or name == "rollpartic" or string.find(name, "dodge", 1, true) or string.find(name, "dash", 1, true) then return true end
+                            local p = desc.Parent
+                            if p then
+                                local pname = string.lower(p.Name)
+                                if pname == "dodgepartic" or pname == "dash" or pname == "forwarddash" or pname == "rollpartic" or string.find(pname, "dodge", 1, true) or string.find(pname, "dash", 1, true) then return true end
+                            end
+                            local hrp = char:FindFirstChild("HumanoidRootPart")
+                            if hrp then
+                                local dp = hrp:FindFirstChild("DodgePartic") or hrp:FindFirstChild("Dash") or hrp:FindFirstChild("ForwardDash")
+                                if dp and (desc == dp or desc:IsDescendantOf(dp)) then
+                                    return true
+                                end
+                            end
+                            local torso = char:FindFirstChild("Torso")
+                            if torso then
+                                local dp = torso:FindFirstChild("DodgePartic") or torso:FindFirstChild("Dash") or torso:FindFirstChild("ForwardDash")
+                                if dp and (desc == dp or desc:IsDescendantOf(dp)) then
+                                    return true
+                                end
+                            end
+                            return false
+                        end
+                    },
+                    {
+                        id = "Grapple",
+                        matches = function(desc, char)
+                            if not (desc:IsA("ParticleEmitter") or desc:IsA("Beam") or desc:IsA("Trail") or desc:IsA("BasePart")) then return false end
+                            local name = string.lower(desc.Name)
+                            if name == "cord" or string.find(name, "cord", 1, true) or string.find(name, "grapple", 1, true) then return true end
+                            local p = desc.Parent
+                            if p then
+                                local pname = string.lower(p.Name)
+                                if pname == "cord" or string.find(pname, "cord", 1, true) or string.find(pname, "grapple", 1, true) then return true end
+                            end
+                            return false
                         end
                     }
                 },
@@ -33941,27 +33711,18 @@ end
                             return is_attached_to_char(obj, char)
                         end,
                         matches_emitter = function(desc)
-                            return desc:IsA("ParticleEmitter") or desc:IsA("Beam") or desc:IsA("Trail")
+                            return desc:IsA("ParticleEmitter") or desc:IsA("Beam") or desc:IsA("Trail") or desc:IsA("BasePart")
                         end
                     },
                     {
                         id = "GrappleThrown",
                         matches_container = function(obj, char)
-                            if not is_grapple_object(obj) then return false end
+                            local name = string.lower(obj.Name)
+                            if not (name == "cord" or string.find(name, "cord", 1, true) or string.find(name, "grapple", 1, true)) then return false end
                             return is_attached_to_char(obj, char)
                         end,
                         matches_emitter = function(desc)
                             return desc:IsA("Beam") or desc:IsA("ParticleEmitter") or desc:IsA("Trail") or desc:IsA("BasePart")
-                        end
-                    },
-                    {
-                        id = "DashThrown",
-                        matches_container = function(obj, char)
-                            if not is_dash_or_dodge_object(obj, char) then return false end
-                            return is_attached_to_char(obj, char)
-                        end,
-                        matches_emitter = function(desc)
-                            return desc:IsA("ParticleEmitter") or desc:IsA("Beam") or desc:IsA("Trail") or desc:IsA("BasePart")
                         end
                     }
                 }
@@ -33986,25 +33747,7 @@ end
                 if not char or not descendant:IsDescendantOf(char) then return end
 
                 if descendant:IsA("Trail") then
-                    track_any_target(descendant)
-                    return
-                end
-
-                if is_shield_or_orb_object(descendant) then
-                    track_orb_hierarchy(descendant)
-                    return
-                end
-
-                if is_grapple_object(descendant) then
-                    track_grapple_hierarchy(descendant)
-                    return
-                end
-
-                if is_dash_or_dodge_object(descendant, char) then
-                    track_any_target(descendant)
-                    for _, d in ipairs(descendant:GetDescendants()) do
-                        track_any_target(d)
-                    end
+                    track_target(descendant)
                     return
                 end
 
@@ -34015,7 +33758,12 @@ end
                         matches = true
                     end
                     if matches then
-                        track_any_target(descendant)
+                        track_target(descendant)
+                        for _, child in ipairs(descendant:GetDescendants()) do
+                            if child:IsA("ParticleEmitter") or child:IsA("Beam") or child:IsA("Trail") or child:IsA("BasePart") then
+                                track_target(child)
+                            end
+                        end
                         break
                     end
                 end
@@ -34031,11 +33779,11 @@ end
                         if ok and matches then
                             for _, desc in ipairs(child:GetDescendants()) do
                                 if rule.matches_emitter(desc) then
-                                    track_any_target(desc)
+                                    track_target(desc)
                                 end
                             end
                             if rule.matches_emitter(child) then
-                                track_any_target(child)
+                                track_target(child)
                             end
                         end
                     end
@@ -34053,11 +33801,11 @@ end
                         if ok and matches then
                             for _, d in ipairs(child:GetDescendants()) do
                                 if rule.matches_emitter(d) then
-                                    track_any_target(d)
+                                    track_target(d)
                                 end
                             end
                             if rule.matches_emitter(desc) then
-                                track_any_target(desc)
+                                track_target(desc)
                             end
                         end
                     end))
@@ -34099,24 +33847,6 @@ end
                 utility:Connection(char.DescendantAdded, function(desc)
                     scan_character_descendant(desc)
                 end)
-
-                local hrp = char:FindFirstChild("HumanoidRootPart")
-                if hrp then
-                    utility:Connection(hrp.ChildAdded, function(child)
-                        if is_shield_or_orb_object(child) then
-                            track_orb_hierarchy(child)
-                        end
-                    end)
-                end
-
-                local left_arm = char:FindFirstChild("Left Arm")
-                if left_arm then
-                    utility:Connection(left_arm.ChildAdded, function(child)
-                        if is_grapple_object(child) then
-                            track_grapple_hierarchy(child)
-                        end
-                    end)
-                end
             end
 
             local function refresh_all_vfx(state)
@@ -34124,11 +33854,7 @@ end
                     local char = get_local_char()
                     if char then
                         for _, desc in ipairs(char:GetDescendants()) do
-                            if desc.Name:find("RainbowShield", 1, true) then
-                                pcall(function() desc:Destroy() end)
-                            else
-                                scan_character_descendant(desc)
-                            end
+                            scan_character_descendant(desc)
                         end
                     end
                     local current_thrown = ws:FindFirstChild("Thrown")
@@ -34140,60 +33866,29 @@ end
                     local seq = get_synced_vfx_rainbow_seq()
                     local c3 = get_synced_vfx_rainbow_c3()
                     setting_rainbow_color = true
-                    for emitter in pairs(tracked_seq_targets) do
+                    for emitter in pairs(tracked_emitters) do
                         if emitter.Parent then
-                            if emitter:IsA("ParticleEmitter") and is_shield_or_orb_object(emitter) then
-                                pcall(safe_set_seq, emitter, ColorSequence.new(c3))
-                            else
-                                pcall(safe_set_seq, emitter, seq)
-                            end
-                        end
-                    end
-                    for inst, props in pairs(tracked_c3_targets) do
-                        if inst.Parent then
-                            for prop_name in pairs(props) do
-                                pcall(safe_set_c3, inst, prop_name, c3)
-                            end
+                            pcall(function()
+                                if typeof(emitter.Color) == "ColorSequence" then
+                                    emitter.Color = seq
+                                elseif typeof(emitter.Color) == "Color3" then
+                                    emitter.Color = c3
+                                end
+                            end)
                         end
                     end
                     setting_rainbow_color = false
                 else
                     disconnect_all_vfx_conns()
-                    local char = get_local_char()
-                    if char then
-                        for _, desc in ipairs(char:GetDescendants()) do
-                            if desc.Name:find("RainbowShield", 1, true) then
-                                pcall(function() desc:Destroy() end)
-                            elseif desc:IsA("ParticleEmitter") and is_shield_or_orb_object(desc) then
-                                pcall(function()
-                                    desc.Transparency = NumberSequence.new({
-                                        NumberSequenceKeypoint.new(0, 0),
-                                        NumberSequenceKeypoint.new(0.0184, 0),
-                                        NumberSequenceKeypoint.new(0.0353, 1),
-                                        NumberSequenceKeypoint.new(1, 1)
-                                    })
-                                end)
-                            end
-                        end
-                    end
-                    for emitter, orig_col in pairs(original_seq_colors) do
+                    for emitter, orig_col in pairs(original_colors) do
                         if emitter.Parent then
-                            pcall(safe_set_seq, emitter, orig_col)
+                            pcall(function()
+                                emitter.Color = orig_col
+                            end)
                         end
                     end
-                    for inst, props in pairs(original_c3_colors) do
-                        if inst.Parent then
-                            for prop_name, orig_val in pairs(props) do
-                                pcall(safe_set_c3, inst, prop_name, orig_val)
-                            end
-                        end
-                    end
-                    table.clear(tracked_seq_targets)
-                    table.clear(tracked_c3_targets)
-                    table.clear(original_seq_colors)
-                    table.clear(original_c3_colors)
-                    table.clear(orb_tracked_set)
-                    table.clear(cord_tracked_set)
+                    table.clear(tracked_emitters)
+                    table.clear(original_colors)
                     table.clear(bound_chars)
                 end
             end
@@ -34214,97 +33909,56 @@ end
                 if not plr.Character or not plr.Character.Parent then return end
 
                 local now = os.clock()
-                if now - last_vfx_update < 0.033 then
+                if now - last_vfx_update < 0.025 then
                     return
                 end
                 last_vfx_update = now
 
-                if now - last_vfx_scan > 0.4 then
+                if now - last_vfx_scan > 0.5 then
                     last_vfx_scan = now
                     local char = get_local_char()
                     if char then
                         local hrp = char:FindFirstChild("HumanoidRootPart")
                         if hrp then
-                            for _, child in ipairs(hrp:GetChildren()) do
-                                if is_shield_or_orb_object(child) then
-                                    if not orb_tracked_set[child] then
-                                        orb_tracked_set[child] = true
-                                        track_orb_hierarchy(child)
-                                    end
-                                elseif is_dash_or_dodge_object(child, char) then
-                                    track_any_target(child)
-                                    for _, d in ipairs(child:GetDescendants()) do
-                                        track_any_target(d)
-                                    end
+                            local orb = hrp:FindFirstChild("Orb")
+                            if orb and not tracked_emitters[orb] then
+                                track_target(orb)
+                                for _, d in ipairs(orb:GetDescendants()) do
+                                    track_target(d)
+                                end
+                            end
+                            local dp = hrp:FindFirstChild("DodgePartic")
+                            if dp and not tracked_emitters[dp] then
+                                track_target(dp)
+                                for _, d in ipairs(dp:GetDescendants()) do
+                                    track_target(d)
                                 end
                             end
                         end
-
-                        local torso = char:FindFirstChild("Torso")
-                        if torso then
-                            for _, child in ipairs(torso:GetChildren()) do
-                                if is_dash_or_dodge_object(child, char) then
-                                    track_any_target(child)
-                                    for _, d in ipairs(child:GetDescendants()) do
-                                        track_any_target(d)
-                                    end
-                                end
-                            end
-                        end
-
                         for _, desc in ipairs(char:GetDescendants()) do
-                            if desc:IsA("Trail") and not tracked_seq_targets[desc] then
-                                track_seq_target(desc)
+                            if desc:IsA("Trail") and not tracked_emitters[desc] then
+                                track_target(desc)
                             end
-                        end
-
-                        local left_arm = char:FindFirstChild("Left Arm")
-                        local cord = (left_arm and left_arm:FindFirstChild("Cord")) or char:FindFirstChild("Cord")
-                        if cord and not cord_tracked_set[cord] then
-                            cord_tracked_set[cord] = true
-                            track_grapple_hierarchy(cord)
                         end
                     end
                 end
 
                 local seq = get_synced_vfx_rainbow_seq()
                 local c3 = get_synced_vfx_rainbow_c3()
-                local c3_seq = ColorSequence.new(c3)
 
                 setting_rainbow_color = true
-                for emitter in pairs(tracked_seq_targets) do
+                for emitter in pairs(tracked_emitters) do
                     if emitter.Parent then
-                        if emitter:IsA("ParticleEmitter") then
-                            if emitter.Enabled or is_dash_or_dodge_object(emitter, plr.Character) then
-                                if is_shield_or_orb_object(emitter) then
-                                    pcall(safe_set_seq, emitter, c3_seq)
-                                else
-                                    pcall(safe_set_seq, emitter, seq)
-                                end
+                        pcall(function()
+                            if typeof(emitter.Color) == "ColorSequence" then
+                                emitter.Color = seq
+                            elseif typeof(emitter.Color) == "Color3" then
+                                emitter.Color = c3
                             end
-                        elseif emitter:IsA("Beam") then
-                            if emitter.Enabled then
-                                pcall(safe_set_seq, emitter, seq)
-                            end
-                        else
-                            pcall(safe_set_seq, emitter, seq)
-                        end
+                        end)
                     else
-                        tracked_seq_targets[emitter] = nil
-                        original_seq_colors[emitter] = nil
-                    end
-                end
-
-                for inst, props in pairs(tracked_c3_targets) do
-                    if inst.Parent then
-                        for prop_name in pairs(props) do
-                            if inst[prop_name] ~= c3 then
-                                pcall(safe_set_c3, inst, prop_name, c3)
-                            end
-                        end
-                    else
-                        tracked_c3_targets[inst] = nil
-                        original_c3_colors[inst] = nil
+                        tracked_emitters[emitter] = nil
+                        original_colors[emitter] = nil
                     end
                 end
                 setting_rainbow_color = false
