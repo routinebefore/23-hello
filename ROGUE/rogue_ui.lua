@@ -12709,12 +12709,16 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     Search.ZIndex = 2
                     Search.ClearTextOnFocus = false
                     Search.Font = Enum.Font.Bodoni
-                    Search.PlaceholderColor3 = Color3.fromRGB(22, 22, 22)
-                    Search.PlaceholderText = ""
+                    Search.PlaceholderColor3 = Color3.fromRGB(120, 120, 120)
+                    Search.PlaceholderText = "Search items..."
                     Search.Text = ""
                     Search.TextColor3 = Color3.fromRGB(27, 25, 23)
-                    Search.TextSize = 20.000
+                    Search.TextSize = 16.000
                     Search.TextTransparency = 0.100
+
+                    local searchCorner = Instance.new("UICorner")
+                    searchCorner.CornerRadius = UDim.new(0, 4)
+                    searchCorner.Parent = Search
 
                     Border.Name = "Border"
                     Border.Parent = Search
@@ -12735,14 +12739,26 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     inventory_search_connection = utility:Connection(Search:GetPropertyChangedSignal("Text"), function()
                         if shared and shared.is_unloading then return end
 
-                        local text = Search.Text:lower()
+                        local raw = Search.Text:match("^%s*(.-)%s*$"):lower()
+                        local tokens = {}
+                        for token in raw:gmatch("%S+") do
+                            table.insert(tokens, token)
+                        end
 
                         for _, v in pairs(scrollingFrame:GetChildren()) do
                             if v:IsA("TextButton") then
-                                if text == "" or string.find(v.Name:lower(), text) then
+                                if #tokens == 0 then
                                     v.Visible = true
                                 else
-                                    v.Visible = false
+                                    local name = v.Name:lower()
+                                    local match = true
+                                    for _, tok in ipairs(tokens) do
+                                        if not name:find(tok, 1, true) then
+                                            match = false
+                                            break
+                                        end
+                                    end
+                                    v.Visible = match
                                 end
                             end
                         end

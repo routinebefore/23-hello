@@ -81,7 +81,7 @@ local Library = {
 
     MinSize = Vector2.new(480, 360),
     DPIScale = 1,
-    CornerRadius = 4,
+    CornerRadius = 6,
 
     IsLightTheme = false,
     Scheme = {
@@ -259,7 +259,7 @@ local Templates = {
         Center = true,
         Resizable = true,
         SearchbarSize = UDim2.fromScale(1, 1),
-        CornerRadius = 4,
+        CornerRadius = 6,
         NotifySide = "Right",
         ShowCustomCursor = true,
         Font = Enum.Font.Code,
@@ -577,7 +577,48 @@ function Library:UpdateDependencyBoxes()
     end
 end
 
-local function CheckDepbox(Box, Search)
+local function GetElementSearchText(ElementInfo, extraContext)
+    local text = ""
+    if ElementInfo.Text then
+        text = text .. " " .. ElementInfo.Text:lower()
+    end
+    if ElementInfo.Tooltip and type(ElementInfo.Tooltip) == "string" then
+        text = text .. " " .. ElementInfo.Tooltip:lower()
+    end
+    if ElementInfo.Values and type(ElementInfo.Values) == "table" then
+        for _, val in pairs(ElementInfo.Values) do
+            if type(val) == "string" then
+                text = text .. " " .. val:lower()
+            end
+        end
+    end
+    if extraContext then
+        text = text .. " " .. extraContext
+    end
+    return text
+end
+
+local function MatchesTokens(textToSearch, tokens)
+    if not tokens or #tokens == 0 then return true end
+    for _, token in ipairs(tokens) do
+        if not textToSearch:find(token, 1, true) then
+            return false
+        end
+    end
+    return true
+end
+
+local function CheckDepbox(Box, Search, extraContext)
+    local tokens = {}
+    if type(Search) == "table" then
+        tokens = Search
+    elseif type(Search) == "string" then
+        local clean = Trim(Search:lower())
+        for token in clean:gmatch("%S+") do
+            table.insert(tokens, token)
+        end
+    end
+
     local VisibleElements = 0
 
     for _, ElementInfo in pairs(Box.Elements) do
@@ -585,30 +626,32 @@ local function CheckDepbox(Box, Search)
             ElementInfo.Holder.Visible = false
             continue
         elseif ElementInfo.SubButton then
-            --// Check if any of the Buttons Name matches with Search
-            local Visible = false
+            local elemSearch = GetElementSearchText(ElementInfo, extraContext)
+            local subSearch = ""
+            if ElementInfo.SubButton.Text then
+                subSearch = subSearch .. " " .. ElementInfo.SubButton.Text:lower()
+            end
+            if ElementInfo.SubButton.Tooltip and type(ElementInfo.SubButton.Tooltip) == "string" then
+                subSearch = subSearch .. " " .. ElementInfo.SubButton.Tooltip:lower()
+            end
+            if extraContext then
+                subSearch = subSearch .. " " .. extraContext
+            end
 
-            --// Check if Search matches Element's Name and if Element is Visible
-            if ElementInfo.Text:lower():find(Search, 1, true) and ElementInfo.Visible then
-                Visible = true
-            else
-                ElementInfo.Base.Visible = false
-            end
-            if ElementInfo.SubButton.Text:lower():find(Search, 1, true) and ElementInfo.SubButton.Visible then
-                Visible = true
-            else
-                ElementInfo.SubButton.Base.Visible = false
-            end
-            ElementInfo.Holder.Visible = Visible
-            if Visible then
+            local mainMatch = MatchesTokens(elemSearch, tokens) and (ElementInfo.Visible == nil or ElementInfo.Visible == true)
+            local subMatch = MatchesTokens(subSearch, tokens) and (ElementInfo.SubButton.Visible == nil or ElementInfo.SubButton.Visible == true)
+
+            ElementInfo.Base.Visible = mainMatch
+            ElementInfo.SubButton.Base.Visible = subMatch
+            ElementInfo.Holder.Visible = mainMatch or subMatch
+            if mainMatch or subMatch then
                 VisibleElements += 1
             end
-
             continue
         end
 
-        --// Check if Search matches Element's Name and if Element is Visible
-        if ElementInfo.Text and ElementInfo.Text:lower():find(Search, 1, true) and ElementInfo.Visible then
+        local elemSearch = GetElementSearchText(ElementInfo, extraContext)
+        if MatchesTokens(elemSearch, tokens) and (ElementInfo.Visible == nil or ElementInfo.Visible == true) then
             ElementInfo.Holder.Visible = true
             VisibleElements += 1
         else
@@ -621,7 +664,7 @@ local function CheckDepbox(Box, Search)
             continue
         end
 
-        VisibleElements += CheckDepbox(Depbox, Search)
+        VisibleElements += CheckDepbox(Depbox, tokens, extraContext)
     end
 
     return VisibleElements
@@ -649,37 +692,32 @@ local function RestoreDepbox(Box)
 end
 
 function Library:UpdateSearch(SearchText)
-    Library.SearchText = SearchText
+    Library.SearchText = SearchText or ""
 
-    --// Reset Elements Visibility in All Last Searched Tabs
-    for _, LastTab in pairs(Library.LastSearchTabs) do
-        for _, Groupbox in pairs(LastTab.Groupboxes) do
-            for _, ElementInfo in pairs(Groupbox.Elements) do
-                ElementInfo.Holder.Visible = typeof(ElementInfo.Visible) == "boolean" and ElementInfo.Visible or true
+    local cleanSearch = Trim(Library.SearchText:lower())
+    local tokens = {}
+    for token in cleanSearch:gmatch("%S+") do
+        table.insert(tokens, token)
+    end
 
-                if ElementInfo.SubButton then
-                    ElementInfo.Base.Visible = ElementInfo.Visible
-                    ElementInfo.SubButton.Base.Visible = ElementInfo.SubButton.Visible
-                end
+    --// Cancel Search if Search Text is empty
+    if #tokens == 0 or (Library.ActiveTab and Library.ActiveTab.IsKeyTab) then
+        Library.Searching = false
+
+        for _, Tab in pairs(Library.Tabs) do
+            if Tab.Label and Tab.Name then
+                Tab.Label.Text = Tab.Name
+                Tab.Label.TextTransparency = (Library.ActiveTab == Tab) and 0 or 0.5
             end
-
-            for _, Depbox in pairs(Groupbox.DependencyBoxes) do
-                if not Depbox.Visible then
-                    continue
-                end
-
-                RestoreDepbox(Depbox)
+            if Tab.Button then
+                Tab.Button.Visible = true
             end
-
-            Groupbox:Resize()
-            Groupbox.Holder.Visible = true
         end
 
-        for _, Tabbox in pairs(LastTab.Tabboxes) do
-            for _, Tab in pairs(Tabbox.Tabs) do
-                for _, ElementInfo in pairs(Tab.Elements) do
-                    ElementInfo.Holder.Visible = typeof(ElementInfo.Visible) == "boolean" and ElementInfo.Visible
-                        or true
+        for _, LastTab in pairs(Library.LastSearchTabs) do
+            for _, Groupbox in pairs(LastTab.Groupboxes) do
+                for _, ElementInfo in pairs(Groupbox.Elements) do
+                    ElementInfo.Holder.Visible = typeof(ElementInfo.Visible) == "boolean" and ElementInfo.Visible or true
 
                     if ElementInfo.SubButton then
                         ElementInfo.Base.Visible = ElementInfo.Visible
@@ -687,7 +725,7 @@ function Library:UpdateSearch(SearchText)
                     end
                 end
 
-                for _, Depbox in pairs(Tab.DependencyBoxes) do
+                for _, Depbox in pairs(Groupbox.DependencyBoxes) do
                     if not Depbox.Visible then
                         continue
                     end
@@ -695,46 +733,66 @@ function Library:UpdateSearch(SearchText)
                     RestoreDepbox(Depbox)
                 end
 
-                Tab.ButtonHolder.Visible = true
+                Groupbox:Resize()
+                Groupbox.Holder.Visible = true
             end
 
-            if Tabbox.ActiveTab then
-                Tabbox.ActiveTab:Resize()
-            end
-            Tabbox.Holder.Visible = true
-        end
+            for _, Tabbox in pairs(LastTab.Tabboxes) do
+                for _, Tab in pairs(Tabbox.Tabs) do
+                    for _, ElementInfo in pairs(Tab.Elements) do
+                        ElementInfo.Holder.Visible = typeof(ElementInfo.Visible) == "boolean" and ElementInfo.Visible
+                            or true
 
-        for _, DepGroupbox in pairs(LastTab.DependencyGroupboxes) do
-            if not DepGroupbox.Visible then
-                continue
-            end
+                        if ElementInfo.SubButton then
+                            ElementInfo.Base.Visible = ElementInfo.Visible
+                            ElementInfo.SubButton.Base.Visible = ElementInfo.SubButton.Visible
+                        end
+                    end
 
-            for _, ElementInfo in pairs(DepGroupbox.Elements) do
-                ElementInfo.Holder.Visible = typeof(ElementInfo.Visible) == "boolean" and ElementInfo.Visible or true
+                    for _, Depbox in pairs(Tab.DependencyBoxes) do
+                        if not Depbox.Visible then
+                            continue
+                        end
 
-                if ElementInfo.SubButton then
-                    ElementInfo.Base.Visible = ElementInfo.Visible
-                    ElementInfo.SubButton.Base.Visible = ElementInfo.SubButton.Visible
+                        RestoreDepbox(Depbox)
+                    end
+
+                    Tab.ButtonHolder.Visible = true
                 end
+
+                if Tabbox.ActiveTab then
+                    Tabbox.ActiveTab:Resize()
+                end
+                Tabbox.Holder.Visible = true
             end
 
-            for _, Depbox in pairs(DepGroupbox.DependencyBoxes) do
-                if not Depbox.Visible then
+            for _, DepGroupbox in pairs(LastTab.DependencyGroupboxes) do
+                if not DepGroupbox.Visible then
                     continue
                 end
 
-                RestoreDepbox(Depbox)
+                for _, ElementInfo in pairs(DepGroupbox.Elements) do
+                    ElementInfo.Holder.Visible = typeof(ElementInfo.Visible) == "boolean" and ElementInfo.Visible or true
+
+                    if ElementInfo.SubButton then
+                        ElementInfo.Base.Visible = ElementInfo.Visible
+                        ElementInfo.SubButton.Base.Visible = ElementInfo.SubButton.Visible
+                    end
+                end
+
+                for _, Depbox in pairs(DepGroupbox.DependencyBoxes) do
+                    if not Depbox.Visible then
+                        continue
+                    end
+
+                    RestoreDepbox(Depbox)
+                end
+
+                DepGroupbox:Resize()
+                DepGroupbox.Holder.Visible = true
             end
-
-            DepGroupbox:Resize()
-            DepGroupbox.Holder.Visible = true
         end
-    end
 
-    --// Cancel Search if Search Text is empty
-    local Search = SearchText:lower()
-    if Trim(Search) == "" or (Library.ActiveTab and Library.ActiveTab.IsKeyTab) then
-        Library.Searching = false
         Library.LastSearchTabs = {}
         return
     end
@@ -751,9 +809,12 @@ function Library:UpdateSearch(SearchText)
 
         table.insert(Library.LastSearchTabs, CurrentTab)
         TabMatchCounts[CurrentTab] = 0
+        local tabNameLower = CurrentTab.Name and CurrentTab.Name:lower() or ""
 
         --// Loop through Groupboxes to get Elements Info
         for _, Groupbox in pairs(CurrentTab.Groupboxes) do
+            local gbNameLower = Groupbox.Name and Groupbox.Name:lower() or ""
+            local extraContext = gbNameLower .. " " .. tabNameLower
             local VisibleElements = 0
 
             for _, ElementInfo in pairs(Groupbox.Elements) do
@@ -761,30 +822,33 @@ function Library:UpdateSearch(SearchText)
                     ElementInfo.Holder.Visible = false
                     continue
                 elseif ElementInfo.SubButton then
-                    --// Check if any of the Buttons Name matches with Search
-                    local Visible = false
+                    local elemSearch = GetElementSearchText(ElementInfo, extraContext)
+                    local subSearch = ""
+                    if ElementInfo.SubButton.Text then
+                        subSearch = subSearch .. " " .. ElementInfo.SubButton.Text:lower()
+                    end
+                    if ElementInfo.SubButton.Tooltip and type(ElementInfo.SubButton.Tooltip) == "string" then
+                        subSearch = subSearch .. " " .. ElementInfo.SubButton.Tooltip:lower()
+                    end
+                    if extraContext then
+                        subSearch = subSearch .. " " .. extraContext
+                    end
 
-                    --// Check if Search matches Element's Name and if Element is Visible
-                    if ElementInfo.Text:lower():find(Search, 1, true) and ElementInfo.Visible then
-                        Visible = true
-                    else
-                        ElementInfo.Base.Visible = false
-                    end
-                    if ElementInfo.SubButton.Text:lower():find(Search, 1, true) and ElementInfo.SubButton.Visible then
-                        Visible = true
-                    else
-                        ElementInfo.SubButton.Base.Visible = false
-                    end
-                    ElementInfo.Holder.Visible = Visible
-                    if Visible then
+                    local mainMatch = MatchesTokens(elemSearch, tokens) and (ElementInfo.Visible == nil or ElementInfo.Visible == true)
+                    local subMatch = MatchesTokens(subSearch, tokens) and (ElementInfo.SubButton.Visible == nil or ElementInfo.SubButton.Visible == true)
+
+                    ElementInfo.Base.Visible = mainMatch
+                    ElementInfo.SubButton.Base.Visible = subMatch
+                    ElementInfo.Holder.Visible = mainMatch or subMatch
+                    if mainMatch or subMatch then
                         VisibleElements += 1
                     end
 
                     continue
                 end
 
-                --// Check if Search matches Element's Name and if Element is Visible
-                if ElementInfo.Text and ElementInfo.Text:lower():find(Search, 1, true) and ElementInfo.Visible then
+                local elemSearch = GetElementSearchText(ElementInfo, extraContext)
+                if MatchesTokens(elemSearch, tokens) and (ElementInfo.Visible == nil or ElementInfo.Visible == true) then
                     ElementInfo.Holder.Visible = true
                     VisibleElements += 1
                 else
@@ -797,15 +861,18 @@ function Library:UpdateSearch(SearchText)
                     continue
                 end
 
-                VisibleElements += CheckDepbox(Depbox, Search)
+                VisibleElements += CheckDepbox(Depbox, tokens, extraContext)
             end
 
             --// Track match count for this tab
             TabMatchCounts[CurrentTab] += VisibleElements
 
-            --// Always resize and keep groupbox visible (clean look)
-            Groupbox:Resize()
-            Groupbox.Holder.Visible = true
+            if VisibleElements > 0 then
+                Groupbox:Resize()
+                Groupbox.Holder.Visible = true
+            else
+                Groupbox.Holder.Visible = false
+            end
         end
 
         for _, Tabbox in pairs(CurrentTab.Tabboxes) do
@@ -814,36 +881,41 @@ function Library:UpdateSearch(SearchText)
 
             for _, Tab in pairs(Tabbox.Tabs) do
                 VisibleElements[Tab] = 0
+                local tbNameLower = Tab.Name and Tab.Name:lower() or ""
+                local extraContext = tbNameLower .. " " .. tabNameLower
 
                 for _, ElementInfo in pairs(Tab.Elements) do
                     if ElementInfo.Type == "Divider" then
                         ElementInfo.Holder.Visible = false
                         continue
                     elseif ElementInfo.SubButton then
-                        --// Check if any of the Buttons Name matches with Search
-                        local Visible = false
+                        local elemSearch = GetElementSearchText(ElementInfo, extraContext)
+                        local subSearch = ""
+                        if ElementInfo.SubButton.Text then
+                            subSearch = subSearch .. " " .. ElementInfo.SubButton.Text:lower()
+                        end
+                        if ElementInfo.SubButton.Tooltip and type(ElementInfo.SubButton.Tooltip) == "string" then
+                            subSearch = subSearch .. " " .. ElementInfo.SubButton.Tooltip:lower()
+                        end
+                        if extraContext then
+                            subSearch = subSearch .. " " .. extraContext
+                        end
 
-                        --// Check if Search matches Element's Name and if Element is Visible
-                        if ElementInfo.Text:lower():find(Search, 1, true) and ElementInfo.Visible then
-                            Visible = true
-                        else
-                            ElementInfo.Base.Visible = false
-                        end
-                        if ElementInfo.SubButton.Text:lower():find(Search, 1, true) and ElementInfo.SubButton.Visible then
-                            Visible = true
-                        else
-                            ElementInfo.SubButton.Base.Visible = false
-                        end
-                        ElementInfo.Holder.Visible = Visible
-                        if Visible then
+                        local mainMatch = MatchesTokens(elemSearch, tokens) and (ElementInfo.Visible == nil or ElementInfo.Visible == true)
+                        local subMatch = MatchesTokens(subSearch, tokens) and (ElementInfo.SubButton.Visible == nil or ElementInfo.SubButton.Visible == true)
+
+                        ElementInfo.Base.Visible = mainMatch
+                        ElementInfo.SubButton.Base.Visible = subMatch
+                        ElementInfo.Holder.Visible = mainMatch or subMatch
+                        if mainMatch or subMatch then
                             VisibleElements[Tab] += 1
                         end
 
                         continue
                     end
 
-                    --// Check if Search matches Element's Name and if Element is Visible
-                    if ElementInfo.Text and ElementInfo.Text:lower():find(Search, 1, true) and ElementInfo.Visible then
+                    local elemSearch = GetElementSearchText(ElementInfo, extraContext)
+                    if MatchesTokens(elemSearch, tokens) and (ElementInfo.Visible == nil or ElementInfo.Visible == true) then
                         ElementInfo.Holder.Visible = true
                         VisibleElements[Tab] += 1
                     else
@@ -856,7 +928,7 @@ function Library:UpdateSearch(SearchText)
                         continue
                     end
 
-                    VisibleElements[Tab] += CheckDepbox(Depbox, Search)
+                    VisibleElements[Tab] += CheckDepbox(Depbox, tokens, extraContext)
                 end
             end
 
@@ -874,8 +946,7 @@ function Library:UpdateSearch(SearchText)
                 end
             end
 
-            --// Keep tabbox visible for clean look
-            Tabbox.Holder.Visible = true
+            Tabbox.Holder.Visible = (VisibleTabs > 0)
         end
 
         for _, DepGroupbox in pairs(CurrentTab.DependencyGroupboxes) do
@@ -883,6 +954,8 @@ function Library:UpdateSearch(SearchText)
                 continue
             end
 
+            local dgbNameLower = DepGroupbox.Name and DepGroupbox.Name:lower() or ""
+            local extraContext = dgbNameLower .. " " .. tabNameLower
             local VisibleElements = 0
 
             for _, ElementInfo in pairs(DepGroupbox.Elements) do
@@ -890,30 +963,33 @@ function Library:UpdateSearch(SearchText)
                     ElementInfo.Holder.Visible = false
                     continue
                 elseif ElementInfo.SubButton then
-                    --// Check if any of the Buttons Name matches with Search
-                    local Visible = false
+                    local elemSearch = GetElementSearchText(ElementInfo, extraContext)
+                    local subSearch = ""
+                    if ElementInfo.SubButton.Text then
+                        subSearch = subSearch .. " " .. ElementInfo.SubButton.Text:lower()
+                    end
+                    if ElementInfo.SubButton.Tooltip and type(ElementInfo.SubButton.Tooltip) == "string" then
+                        subSearch = subSearch .. " " .. ElementInfo.SubButton.Tooltip:lower()
+                    end
+                    if extraContext then
+                        subSearch = subSearch .. " " .. extraContext
+                    end
 
-                    --// Check if Search matches Element's Name and if Element is Visible
-                    if ElementInfo.Text:lower():find(Search, 1, true) and ElementInfo.Visible then
-                        Visible = true
-                    else
-                        ElementInfo.Base.Visible = false
-                    end
-                    if ElementInfo.SubButton.Text:lower():find(Search, 1, true) and ElementInfo.SubButton.Visible then
-                        Visible = true
-                    else
-                        ElementInfo.SubButton.Base.Visible = false
-                    end
-                    ElementInfo.Holder.Visible = Visible
-                    if Visible then
+                    local mainMatch = MatchesTokens(elemSearch, tokens) and (ElementInfo.Visible == nil or ElementInfo.Visible == true)
+                    local subMatch = MatchesTokens(subSearch, tokens) and (ElementInfo.SubButton.Visible == nil or ElementInfo.SubButton.Visible == true)
+
+                    ElementInfo.Base.Visible = mainMatch
+                    ElementInfo.SubButton.Base.Visible = subMatch
+                    ElementInfo.Holder.Visible = mainMatch or subMatch
+                    if mainMatch or subMatch then
                         VisibleElements += 1
                     end
 
                     continue
                 end
 
-                --// Check if Search matches Element's Name and if Element is Visible
-                if ElementInfo.Text and ElementInfo.Text:lower():find(Search, 1, true) and ElementInfo.Visible then
+                local elemSearch = GetElementSearchText(ElementInfo, extraContext)
+                if MatchesTokens(elemSearch, tokens) and (ElementInfo.Visible == nil or ElementInfo.Visible == true) then
                     ElementInfo.Holder.Visible = true
                     VisibleElements += 1
                 else
@@ -926,25 +1002,43 @@ function Library:UpdateSearch(SearchText)
                     continue
                 end
 
-                VisibleElements += CheckDepbox(Depbox, Search)
+                VisibleElements += CheckDepbox(Depbox, tokens, extraContext)
             end
 
-            --// Track match count for this tab
             TabMatchCounts[CurrentTab] += VisibleElements
 
-            --// Always resize and keep visible (clean look)
-            DepGroupbox:Resize()
-            DepGroupbox.Holder.Visible = true
+            if VisibleElements > 0 then
+                DepGroupbox:Resize()
+                DepGroupbox.Holder.Visible = true
+            else
+                DepGroupbox.Holder.Visible = false
+            end
+        end
+
+        if CurrentTab.Label and CurrentTab.Name then
+            local count = TabMatchCounts[CurrentTab] or 0
+            if count > 0 then
+                CurrentTab.Label.Text = string.format("%s (%d)", CurrentTab.Name, count)
+                CurrentTab.Label.TextTransparency = (Library.ActiveTab == CurrentTab) and 0 or 0.25
+            else
+                CurrentTab.Label.Text = CurrentTab.Name
+                CurrentTab.Label.TextTransparency = 0.75
+            end
         end
     end
 
-    --// Auto-switch to first tab with matches if current tab has no matches
-    if Library.ActiveTab and TabMatchCounts[Library.ActiveTab] == 0 then
+    --// Auto-switch to tab with most matches if current tab has no matches
+    if Library.ActiveTab and (TabMatchCounts[Library.ActiveTab] or 0) == 0 then
+        local bestTab = nil
+        local bestCount = 0
         for _, CurrentTab in ipairs(Library.LastSearchTabs) do
-            if not CurrentTab.IsKeyTab and TabMatchCounts[CurrentTab] and TabMatchCounts[CurrentTab] > 0 then
-                CurrentTab:Show()
-                break
+            if not CurrentTab.IsKeyTab and (TabMatchCounts[CurrentTab] or 0) > bestCount then
+                bestCount = TabMatchCounts[CurrentTab]
+                bestTab = CurrentTab
             end
+        end
+        if bestTab then
+            bestTab:Show()
         end
     end
 end
@@ -3395,6 +3489,10 @@ do
                 Visible = Button.Visible,
                 Parent = Holder,
             })
+            New("UICorner", {
+                CornerRadius = UDim.new(0, math.max(3, Library.CornerRadius - 2)),
+                Parent = Base,
+            })
 
             local Stroke = New("UIStroke", {
                 Color = "OutlineColor",
@@ -4074,8 +4172,7 @@ do
         local Box = New("TextBox", {
             AnchorPoint = Vector2.new(0, 1),
             BackgroundColor3 = "MainColor",
-            BorderColor3 = "OutlineColor",
-            BorderSizePixel = 1,
+            BorderSizePixel = 0,
             ClearTextOnFocus = not Input.Disabled and Input.ClearTextOnFocus,
             PlaceholderText = Input.Placeholder,
             Position = UDim2.fromScale(0, 1),
@@ -4085,6 +4182,14 @@ do
             TextScaled = true,
             TextXAlignment = Enum.TextXAlignment.Left,
             Parent = Holder,
+        })
+        New("UICorner", {
+            CornerRadius = UDim.new(0, math.max(3, Library.CornerRadius - 2)),
+            Parent = Box,
+        })
+        New("UIStroke", {
+            Color = "OutlineColor",
+            Parent = Box,
         })
 
         New("UIPadding", {
@@ -4653,7 +4758,7 @@ do
 
             local Count = 0
             for _, Value in pairs(Values) do
-                if SearchBox and not tostring(Value):lower():match(SearchBox.Text:lower()) then
+                if SearchBox and SearchBox.Text ~= "" and not tostring(Value):lower():find(SearchBox.Text:lower(), 1, true) then
                     continue
                 end
 
@@ -5428,6 +5533,7 @@ do
         end
 
         local DepGroupbox = {
+            Name = Groupbox.Name,
             Visible = false,
             Dependencies = {},
 
@@ -6016,9 +6122,12 @@ function Library:CreateWindow(WindowInfo)
 
         SearchBox = New("TextBox", {
             BackgroundColor3 = "MainColor",
-            PlaceholderText = "Search",
+            PlaceholderText = "Search features...",
             Size = WindowInfo.SearchbarSize,
-            TextScaled = true,
+            TextSize = 13,
+            TextScaled = false,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            ClearTextOnFocus = false,
             Visible = not (WindowInfo.DisableSearch or false),
             Parent = RightWrapper,
         })
@@ -6027,30 +6136,81 @@ function Library:CreateWindow(WindowInfo)
             Parent = SearchBox,
         })
         New("UIPadding", {
-            PaddingBottom = UDim.new(0, 8),
-            PaddingLeft = UDim.new(0, 8),
-            PaddingRight = UDim.new(0, 8),
-            PaddingTop = UDim.new(0, 8),
+            PaddingBottom = UDim.new(0, 7),
+            PaddingLeft = UDim.new(0, 26),
+            PaddingRight = UDim.new(0, 24),
+            PaddingTop = UDim.new(0, 7),
             Parent = SearchBox,
         })
-        New("UIStroke", {
+        local SearchStroke = New("UIStroke", {
             Color = "OutlineColor",
             Parent = SearchBox,
         })
 
         local SearchIcon = Library:GetIcon("search")
+        local SearchIconLabel = nil
         if SearchIcon then
-            New("ImageLabel", {
+            SearchIconLabel = New("ImageLabel", {
+                AnchorPoint = Vector2.new(0, 0.5),
+                Position = UDim2.new(0, -18, 0.5, 0),
                 Image = SearchIcon.Url,
                 ImageColor3 = "FontColor",
                 ImageRectOffset = SearchIcon.ImageRectOffset,
                 ImageRectSize = SearchIcon.ImageRectSize,
                 ImageTransparency = 0.5,
-                Size = UDim2.fromScale(1, 1),
-                SizeConstraint = Enum.SizeConstraint.RelativeYY,
+                Size = UDim2.fromOffset(14, 14),
                 Parent = SearchBox,
             })
         end
+
+        local ClearSearchBtn = New("TextButton", {
+            AnchorPoint = Vector2.new(1, 0.5),
+            Position = UDim2.new(1, -2, 0.5, 0),
+            Size = UDim2.fromOffset(16, 16),
+            BackgroundTransparency = 1,
+            Text = "✕",
+            TextSize = 11,
+            TextColor3 = Library.Scheme.FontColor,
+            TextTransparency = 0.5,
+            Visible = false,
+            Parent = SearchBox,
+        })
+
+        ClearSearchBtn.MouseEnter:Connect(function()
+            ClearSearchBtn.TextTransparency = 0.1
+        end)
+        ClearSearchBtn.MouseLeave:Connect(function()
+            ClearSearchBtn.TextTransparency = 0.5
+        end)
+        ClearSearchBtn.MouseButton1Click:Connect(function()
+            SearchBox.Text = ""
+            Library:UpdateSearch("")
+        end)
+
+        SearchBox:GetPropertyChangedSignal("Text"):Connect(function()
+            ClearSearchBtn.Visible = (SearchBox.Text ~= "")
+        end)
+
+        SearchBox.Focused:Connect(function()
+            TweenService:Create(SearchStroke, Library.TweenInfo, {
+                Color = Library.Scheme.AccentColor,
+            }):Play()
+            if SearchIconLabel then
+                TweenService:Create(SearchIconLabel, Library.TweenInfo, {
+                    ImageTransparency = 0.2,
+                }):Play()
+            end
+        end)
+        SearchBox.FocusLost:Connect(function()
+            TweenService:Create(SearchStroke, Library.TweenInfo, {
+                Color = Library.Scheme.OutlineColor,
+            }):Play()
+            if SearchIconLabel then
+                TweenService:Create(SearchIconLabel, Library.TweenInfo, {
+                    ImageTransparency = 0.5,
+                }):Play()
+            end
+        end)
 
 
 
@@ -6144,6 +6304,14 @@ function Library:CreateWindow(WindowInfo)
         })
 
         New("UIListLayout", {
+            Padding = UDim.new(0, 2),
+            Parent = Tabs,
+        })
+        New("UIPadding", {
+            PaddingBottom = UDim.new(0, 6),
+            PaddingLeft = UDim.new(0, 6),
+            PaddingRight = UDim.new(0, 6),
+            PaddingTop = UDim.new(0, 6),
             Parent = Tabs,
         })
 
@@ -6202,29 +6370,47 @@ function Library:CreateWindow(WindowInfo)
         local WarningStroke
 
         Icon = Library:GetCustomIcon(Icon)
+        local TabIndicator
         do
             TabButton = New("TextButton", {
                 BackgroundColor3 = "MainColor",
                 BackgroundTransparency = 1,
-                Size = UDim2.new(1, 0, 0, 40),
+                Size = UDim2.new(1, 0, 0, 36),
                 Text = "",
                 Parent = Tabs,
             })
+            New("UICorner", {
+                CornerRadius = UDim.new(0, 5),
+                Parent = TabButton,
+            })
 
             New("UIPadding", {
-                PaddingBottom = UDim.new(0, 11),
-                PaddingLeft = UDim.new(0, 12),
-                PaddingRight = UDim.new(0, 12),
-                PaddingTop = UDim.new(0, 11),
+                PaddingBottom = UDim.new(0, 8),
+                PaddingLeft = UDim.new(0, 10),
+                PaddingRight = UDim.new(0, 10),
+                PaddingTop = UDim.new(0, 8),
                 Parent = TabButton,
+            })
+
+            TabIndicator = New("Frame", {
+                AnchorPoint = Vector2.new(0, 0.5),
+                BackgroundColor3 = "AccentColor",
+                Position = UDim2.new(0, -6, 0.5, 0),
+                Size = UDim2.fromOffset(3, 16),
+                Visible = false,
+                Parent = TabButton,
+            })
+            New("UICorner", {
+                CornerRadius = UDim.new(1, 0),
+                Parent = TabIndicator,
             })
 
             TabLabel = New("TextLabel", {
                 BackgroundTransparency = 1,
-                Position = UDim2.fromOffset(30, 0),
-                Size = UDim2.new(1, -30, 1, 0),
+                Position = UDim2.fromOffset(28, 0),
+                Size = UDim2.new(1, -28, 1, 0),
                 Text = Name,
-                TextSize = 16,
+                TextSize = 15,
                 TextTransparency = 0.5,
                 TextXAlignment = Enum.TextXAlignment.Left,
                 Parent = TabButton,
@@ -6375,6 +6561,10 @@ function Library:CreateWindow(WindowInfo)
 
         --// Tab Table \\--
         local Tab = {
+            Name = Name,
+            Label = TabLabel,
+            Button = TabButton,
+            Indicator = TabIndicator,
             Groupboxes = {},
             Tabboxes = {},
             DependencyGroupboxes = {},
@@ -6560,6 +6750,7 @@ function Library:CreateWindow(WindowInfo)
             end
 
             local Groupbox = {
+                Name = Info.Name,
                 BoxHolder = BoxHolder,
                 Holder = Background,
                 Container = GroupboxContainer,
@@ -6686,6 +6877,7 @@ function Library:CreateWindow(WindowInfo)
                 })
 
                 local Tab = {
+                    Name = Name,
                     ButtonHolder = Button,
                     Container = Container,
 
@@ -6982,12 +7174,15 @@ function Library:CreateWindow(WindowInfo)
                 return
             end
 
+            TweenService:Create(TabButton, Library.TweenInfo, {
+                BackgroundTransparency = Hovering and 0.5 or 1,
+            }):Play()
             TweenService:Create(TabLabel, Library.TweenInfo, {
-                TextTransparency = Hovering and 0.25 or 0.5,
+                TextTransparency = Hovering and 0.2 or (Library.Searching and 0.75 or 0.5),
             }):Play()
             if TabIcon then
                 TweenService:Create(TabIcon, Library.TweenInfo, {
-                    ImageTransparency = Hovering and 0.25 or 0.5,
+                    ImageTransparency = Hovering and 0.2 or 0.5,
                 }):Play()
             end
         end
@@ -7008,6 +7203,9 @@ function Library:CreateWindow(WindowInfo)
                     ImageTransparency = 0,
                 }):Play()
             end
+            if TabIndicator then
+                TabIndicator.Visible = true
+            end
             TabContainer.Visible = true
 
             Library.ActiveTab = Tab
@@ -7018,12 +7216,15 @@ function Library:CreateWindow(WindowInfo)
                 BackgroundTransparency = 1,
             }):Play()
             TweenService:Create(TabLabel, Library.TweenInfo, {
-                TextTransparency = 0.5,
+                TextTransparency = Library.Searching and 0.75 or 0.5,
             }):Play()
             if TabIcon then
                 TweenService:Create(TabIcon, Library.TweenInfo, {
                     ImageTransparency = 0.5,
                 }):Play()
+            end
+            if TabIndicator then
+                TabIndicator.Visible = false
             end
             TabContainer.Visible = false
 
@@ -7122,6 +7323,12 @@ function Library:CreateWindow(WindowInfo)
     end)
 
     Library:GiveSignal(UserInputService.InputBegan:Connect(function(Input: InputObject, gameProcessed: boolean)
+        if UserInputService:GetFocusedTextBox() == SearchBox and Input.KeyCode == Enum.KeyCode.Escape then
+            SearchBox.Text = ""
+            SearchBox:ReleaseFocus()
+            return
+        end
+
         if gameProcessed or UserInputService:GetFocusedTextBox() then
             return
         end
