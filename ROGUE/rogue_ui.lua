@@ -10648,15 +10648,25 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             group_overlays:AddDropdown("RainbowVFXItems", {
                 Text = "Rainbow VFX Items",
                 Values = {"Mana Run", "General Back VFX", "Mana Dashes", "Mana Shield", "Grapple", "Snarv", "Dagger Throws", "Swings", "Lethality", "Viribus"},
-                Default = {},
+                Default = {"Mana Run", "General Back VFX", "Mana Dashes", "Mana Shield", "Grapple", "Snarv", "Dagger Throws", "Swings", "Lethality", "Viribus"},
                 Multi = true,
                 Tooltip = "Select which VFX elements will be colored rainbow (empty = all enabled)",
                 Callback = function(value)
                     cheat_client.config.rainbow_vfx_items = value
                     if cheat_client.refresh_rainbow_vfx_selection then
                         cheat_client.refresh_rainbow_vfx_selection()
-                    elseif cheat_client.update_rainbow_vfx and ((Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx) then
-                        cheat_client.update_rainbow_vfx(true)
+                    elseif cheat_client.update_rainbow_vfx then
+                        local is_on = false
+                        if library and library.Toggles and library.Toggles.RainbowVFX then
+                            is_on = library.Toggles.RainbowVFX.Value == true
+                        elseif Toggles and Toggles.RainbowVFX then
+                            is_on = Toggles.RainbowVFX.Value == true
+                        elseif cheat_client.config then
+                            is_on = cheat_client.config.rainbow_vfx == true
+                        end
+                        if is_on then
+                            cheat_client.update_rainbow_vfx(true)
+                        end
                     end
                 end
             })
@@ -33485,6 +33495,43 @@ end
             local last_vfx_scan = 0
             local seq_kps = table.create(6)
 
+            local body_part_names = {
+                ["head"] = true,
+                ["torso"] = true,
+                ["humanoidrootpart"] = true,
+                ["left arm"] = true,
+                ["right arm"] = true,
+                ["left leg"] = true,
+                ["right leg"] = true,
+                ["uppertorso"] = true,
+                ["lowertorso"] = true,
+                ["leftupperarm"] = true,
+                ["leftlowerarm"] = true,
+                ["lefthand"] = true,
+                ["rightupperarm"] = true,
+                ["rightlowerarm"] = true,
+                ["righthand"] = true,
+                ["leftupperleg"] = true,
+                ["leftlowerleg"] = true,
+                ["leftfoot"] = true,
+                ["rightupperleg"] = true,
+                ["rightlowerleg"] = true,
+                ["rightfoot"] = true,
+            }
+
+            local all_vfx_names = {
+                "Mana Run",
+                "General Back VFX",
+                "Mana Dashes",
+                "Mana Shield",
+                "Grapple",
+                "Snarv",
+                "Dagger Throws",
+                "Swings",
+                "Lethality",
+                "Viribus"
+            }
+
             local function track_vfx_conn(conn)
                 if conn then
                     table.insert(vfx_connections, conn)
@@ -33511,6 +33558,32 @@ end
                 return plr.Character
             end
 
+            local function is_rainbow_vfx_toggle_on()
+                local tog = (library and library.Toggles and library.Toggles.RainbowVFX)
+                    or (Toggles and Toggles.RainbowVFX)
+                    or (getgenv and getgenv().Toggles and getgenv().Toggles.RainbowVFX)
+                if tog and tog.Value ~= nil then
+                    return tog.Value == true
+                end
+                if cheat_client and cheat_client.config then
+                    return cheat_client.config.rainbow_vfx == true
+                end
+                return false
+            end
+
+            local function get_rainbow_vfx_selection()
+                local opt = (library and library.Options and library.Options.RainbowVFXItems)
+                    or (Options and Options.RainbowVFXItems)
+                    or (getgenv and getgenv().Options and getgenv().Options.RainbowVFXItems)
+                if opt and opt.Value then
+                    return opt.Value
+                end
+                if cheat_client and cheat_client.config and cheat_client.config.rainbow_vfx_items then
+                    return cheat_client.config.rainbow_vfx_items
+                end
+                return nil
+            end
+
             local function get_synced_vfx_rainbow_seq(now)
                 local shift = (now * 0.32) % 1
                 if utility.get_liquid_rainbow_seq then
@@ -33530,67 +33603,97 @@ end
             end
 
             local function infer_vfx_type(inst)
-                if not inst then return "Mana Run" end
+                if not inst then return nil end
                 local name = string.lower(inst.Name)
                 local p = inst.Parent
                 local pname = p and string.lower(p.Name) or ""
+
                 if string.find(name, "windburst", 1, true) or string.find(name, "windclap", 1, true) or string.find(pname, "windburst", 1, true) or string.find(pname, "windclap", 1, true) then
                     return "Snarv"
                 end
+
                 if string.find(name, "earthpillar", 1, true) or string.find(name, "crater", 1, true) or string.find(name, "earthspear", 1, true)
                     or string.find(pname, "earthpillar", 1, true) or string.find(pname, "crater", 1, true) or string.find(pname, "earthspear", 1, true)
                     or string.find(name, "viribus", 1, true) or string.find(pname, "viribus", 1, true)
-                    or string.find(name, "monkparticle", 1, true) or string.find(pname, "monkparticle", 1, true)
-                    or inst:FindFirstAncestor("EarthPillar") or (p and p:FindFirstAncestor("EarthPillar")) then
+                    or string.find(name, "monkparticle", 1, true) or string.find(pname, "monkparticle", 1, true) then
                     return "Viribus"
                 end
+
+                local v_anc = inst.Parent
+                while v_anc and v_anc ~= ws do
+                    local vaname = string.lower(v_anc.Name)
+                    if string.find(vaname, "earthpillar", 1, true) or string.find(vaname, "viribus", 1, true) then
+                        return "Viribus"
+                    end
+                    v_anc = v_anc.Parent
+                end
+
                 if string.find(name, "daggerthrow", 1, true) or string.find(pname, "daggerthrow", 1, true) then
                     return "Dagger Throws"
                 end
-                if string.find(name, "lethaltrail", 1, true) or string.find(name, "lethal", 1, true) or string.find(pname, "lethaltrail", 1, true) or string.find(pname, "lethal", 1, true) then
+
+                local d_anc = inst.Parent
+                while d_anc and d_anc ~= ws do
+                    if string.find(string.lower(d_anc.Name), "daggerthrow", 1, true) then
+                        return "Dagger Throws"
+                    end
+                    d_anc = d_anc.Parent
+                end
+
+                if string.find(name, "lethaltrail", 1, true) or string.find(pname, "lethaltrail", 1, true) then
                     return "Lethality"
                 end
+
                 if (name == "testtrail" or string.find(name, "swing", 1, true)) and not (string.find(pname, "particlearm", 1, true) or string.find(pname, "particleback", 1, true)) then
                     return "Swings"
                 end
-                if inst:FindFirstAncestor("Hilt") or (p and p:FindFirstAncestor("Hilt")) then
+
+                if (inst:FindFirstAncestor("Hilt") or (p and p:FindFirstAncestor("Hilt"))) and not (string.find(name, "lethal", 1, true) or string.find(pname, "lethal", 1, true)) then
                     return "Swings"
                 end
+
                 if string.find(name, "cord", 1, true) or string.find(name, "grapple", 1, true) or string.find(name, "hook", 1, true) or string.find(pname, "cord", 1, true) or string.find(pname, "grapple", 1, true) or string.find(pname, "hook", 1, true) then
                     return "Grapple"
                 end
+
                 if string.find(name, "orb", 1, true) or string.find(pname, "orb", 1, true) or string.find(name, "shield", 1, true) or string.find(pname, "shield", 1, true) then
                     return "Mana Shield"
                 end
+
                 if string.find(name, "particlearm", 1, true) or string.find(pname, "particlearm", 1, true) then
                     return "Mana Run"
                 end
+
                 local thrown = ws:FindFirstChild("Thrown")
                 if thrown and (inst:IsDescendantOf(thrown) or p == thrown) then
                     if string.find(name, "particleback", 1, true) or string.find(pname, "particleback", 1, true) then
                         return "Mana Run"
                     end
                 end
+
                 if string.find(name, "particleback", 1, true) or string.find(pname, "particleback", 1, true) or string.find(name, "back", 1, true) then
                     return "General Back VFX"
                 end
+
                 if string.find(name, "dodge", 1, true) or string.find(name, "dash", 1, true) or string.find(name, "roll", 1, true)
                     or string.find(pname, "dodge", 1, true) or string.find(pname, "dash", 1, true) or string.find(pname, "roll", 1, true) then
                     return "Mana Dashes"
                 end
-                if inst:IsA("Trail") or string.find(name, "trail", 1, true) then
+
+                if inst:IsA("Trail") then
                     return "Mana Run"
                 end
-                return "Mana Run"
+
+                return nil
             end
 
             local function is_item_checked(sel, name)
-                if not sel then return false end
-                if sel[name] ~= nil then return sel[name] == true end
+                if not sel or not name then return false end
+                if sel[name] == true then return true end
                 local lname = string.lower(name)
                 for k, v in pairs(sel) do
-                    if type(k) == "string" and string.lower(k) == lname then
-                        return v == true
+                    if type(k) == "string" and string.lower(k) == lname and v == true then
+                        return true
                     elseif type(v) == "string" and string.lower(v) == lname then
                         return true
                     end
@@ -33599,21 +33702,20 @@ end
             end
 
             local function is_vfx_type_enabled(vfx_type)
-                local is_on = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
-                if not is_on then return false end
-                local sel = (Options and Options.RainbowVFXItems and Options.RainbowVFXItems.Value)
-                    or cheat_client.config.rainbow_vfx_items
+                if not vfx_type then return false end
+                if not is_rainbow_vfx_toggle_on() then return false end
+
+                local sel = get_rainbow_vfx_selection()
                 if not sel then return true end
 
-                local any_selected = false
-                for _, v in pairs(sel) do
-                    if v == true then
-                        any_selected = true
-                        break
+                local total_selected = 0
+                for _, name in ipairs(all_vfx_names) do
+                    if is_item_checked(sel, name) then
+                        total_selected = total_selected + 1
                     end
                 end
 
-                if not any_selected then
+                if total_selected == 0 then
                     return true
                 end
 
@@ -33721,6 +33823,7 @@ end
                     return
                 end
                 vfx_type = vfx_type or infer_vfx_type(emitter)
+                if not vfx_type then return end
 
                 local ok, col = pcall(function() return emitter.Color end)
                 if not ok or not col then return end
@@ -33728,7 +33831,7 @@ end
                     original_colors[emitter] = col
                 end
                 local is_seq = typeof(col) == "ColorSequence"
-                tracked_all[emitter] = { is_seq = is_seq, vtype = vtype, orig = original_colors[emitter] }
+                tracked_all[emitter] = { is_seq = is_seq, vtype = vfx_type, orig = original_colors[emitter] }
 
                 if is_vfx_type_enabled(vfx_type) then
                     active_emitters[emitter] = is_seq
@@ -34089,14 +34192,33 @@ end
                     pcall(function() descendant:Destroy() end)
                     return
                 end
-                if not (descendant:IsA("Trail") or descendant:IsA("ParticleEmitter") or descendant:IsA("Beam") or descendant:IsA("BasePart")) then
-                    return
-                end
 
                 local char = get_local_char()
                 if not char or not descendant:IsDescendantOf(char) then return end
 
+                local d_name = string.lower(descendant.Name)
+                if descendant:IsA("BasePart") then
+                    if body_part_names[d_name] or descendant:FindFirstAncestorWhichIsA("Accessory") or (descendant.Parent == char and d_name ~= "orb" and d_name ~= "cord") then
+                        if original_colors[descendant] then
+                            pcall(function() descendant.Color = original_colors[descendant] end)
+                            original_colors[descendant] = nil
+                        end
+                        active_emitters[descendant] = nil
+                        tracked_all[descendant] = nil
+                        return
+                    end
+                    if d_name ~= "orb" and d_name ~= "cord" and not descendant:FindFirstAncestor("Orb") then
+                        return
+                    end
+                end
+
+                if not (descendant:IsA("Trail") or descendant:IsA("ParticleEmitter") or descendant:IsA("Beam") or descendant:IsA("BasePart")) then
+                    return
+                end
+
                 local vtype = infer_vfx_type(descendant)
+                if not vtype then return end
+
                 track_target(descendant, vtype)
             end
 
@@ -34254,27 +34376,45 @@ end
             end
 
             local function refresh_rainbow_vfx_selection()
-                local rainbow_vfx_on = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
+                local rainbow_vfx_on = is_rainbow_vfx_toggle_on()
+                local char = get_local_char()
                 local now = os.clock()
                 local seq = get_synced_vfx_rainbow_seq(now)
                 local c3 = get_synced_vfx_rainbow_c3(now)
                 for emitter, data in pairs(tracked_all) do
                     if emitter.Parent then
-                        local is_enabled = rainbow_vfx_on and is_vfx_type_enabled(data.vtype)
-                        if is_enabled then
-                            active_emitters[emitter] = data.is_seq
-                            pcall(function()
-                                if data.is_seq then
-                                    emitter.Color = seq
-                                else
-                                    emitter.Color = c3
-                                end
-                            end)
-                        else
+                        local is_bad_part = false
+                        if char and emitter:IsDescendantOf(char) and emitter:IsA("BasePart") then
+                            local ename = string.lower(emitter.Name)
+                            if body_part_names[ename] or emitter:FindFirstAncestorWhichIsA("Accessory") or (emitter.Parent == char and ename ~= "orb" and ename ~= "cord") or (ename ~= "orb" and ename ~= "cord" and not emitter:FindFirstAncestor("Orb")) then
+                                is_bad_part = true
+                            end
+                        end
+                        if is_bad_part then
                             active_emitters[emitter] = nil
                             local orig = original_colors[emitter]
                             if orig then
                                 pcall(function() emitter.Color = orig end)
+                            end
+                            tracked_all[emitter] = nil
+                            original_colors[emitter] = nil
+                        else
+                            local is_enabled = rainbow_vfx_on and is_vfx_type_enabled(data.vtype)
+                            if is_enabled then
+                                active_emitters[emitter] = data.is_seq
+                                pcall(function()
+                                    if data.is_seq then
+                                        emitter.Color = seq
+                                    else
+                                        emitter.Color = c3
+                                    end
+                                end)
+                            else
+                                active_emitters[emitter] = nil
+                                local orig = original_colors[emitter]
+                                if orig then
+                                    pcall(function() emitter.Color = orig end)
+                                end
                             end
                         end
                     else
@@ -34361,15 +34501,12 @@ end
                 end)
             end
 
-            local last_vfx_update = 0
-
             utility:Connection(rs.RenderStepped, LPH_NO_VIRTUALIZE(function()
                 if not shared or shared.is_unloading or getgenv()._hx_unloaded then return end
-                local rainbow_vfx_on = (Toggles and Toggles.RainbowVFX and Toggles.RainbowVFX.Value) or cheat_client.config.rainbow_vfx
-                if not rainbow_vfx_on then return end
+                if not is_rainbow_vfx_toggle_on() then return end
 
                 local now = os.clock()
-                if now - last_vfx_update < 0.033 then
+                if now - last_vfx_update < 0.02 then
                     return
                 end
                 last_vfx_update = now
