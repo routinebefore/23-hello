@@ -33519,6 +33519,7 @@ end
             local function is_attached_to_char(obj, char)
                 if not char or not obj then return false end
                 if obj:IsDescendantOf(char) then return true end
+
                 if obj:IsA("JointInstance") or obj:IsA("WeldConstraint") then
                     local p0 = obj.Part0
                     local p1 = obj.Part1
@@ -33526,35 +33527,21 @@ end
                         return true
                     end
                 end
-                for _, desc in ipairs(obj:GetDescendants()) do
-                    if desc:IsA("JointInstance") or desc:IsA("WeldConstraint") then
-                        local p0 = desc.Part0
-                        local p1 = desc.Part1
-                        if (p0 and p0:IsDescendantOf(char)) or (p1 and p1:IsDescendantOf(char)) then
-                            return true
-                        end
-                    elseif desc:IsA("ObjectValue") then
-                        if desc.Value == char or desc.Value == plr then
-                            return true
-                        end
-                    elseif desc:IsA("StringValue") then
-                        if desc.Value == char.Name or desc.Value == plr.Name then
-                            return true
-                        end
+
+                local w = obj:FindFirstChildOfClass("Weld") or obj:FindFirstChildOfClass("ManualWeld") or obj:FindFirstChildOfClass("WeldConstraint")
+                if w then
+                    local p0 = w.Part0
+                    local p1 = w.Part1
+                    if (p0 and p0:IsDescendantOf(char)) or (p1 and p1:IsDescendantOf(char)) then
+                        return true
                     end
                 end
-                for _, desc in ipairs(char:GetDescendants()) do
-                    if desc:IsA("JointInstance") or desc:IsA("WeldConstraint") then
-                        local p0 = desc.Part0
-                        local p1 = desc.Part1
-                        if (p0 and p0:IsDescendantOf(obj)) or (p1 and p1:IsDescendantOf(obj)) then
-                            return true
-                        end
-                    end
-                end
-                if string.find(obj.Name, plr.Name, 1, true) or string.find(obj.Name, char.Name, 1, true) then
+
+                local name = obj.Name
+                if string.find(name, plr.Name, 1, true) or string.find(name, char.Name, 1, true) then
                     return true
                 end
+
                 local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso")
                 local right_arm = char:FindFirstChild("Right Arm") or char:FindFirstChild("RightHand")
                 local left_arm = char:FindFirstChild("Left Arm") or char:FindFirstChild("LeftHand")
@@ -33562,40 +33549,22 @@ end
                 local obj_part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart", true)
                 if obj_part then
                     local check_pos = obj_part.Position
-                    local d_ra = right_arm and (check_pos - right_arm.Position).Magnitude or 999
-                    local d_la = left_arm and (check_pos - left_arm.Position).Magnitude or 999
                     local d_rt = root and (check_pos - root.Position).Magnitude or 999
                     local d_to = torso and (check_pos - torso.Position).Magnitude or 999
-                    local min_dist = math.min(d_ra, d_la, d_rt, d_to)
-                    if min_dist < 14 then
-                        local live = ws:FindFirstChild("Live")
-                        if live then
-                            local closest_char = nil
-                            local closest_dist = 999
-                            for _, other_char in ipairs(live:GetChildren()) do
-                                local other_root = other_char:FindFirstChild("HumanoidRootPart") or other_char:FindFirstChild("Torso")
-                                if other_root then
-                                    local dist = (check_pos - other_root.Position).Magnitude
-                                    if dist < closest_dist then
-                                        closest_dist = dist
-                                        closest_char = other_char
-                                    end
-                                end
-                            end
-                            if closest_char == char then
-                                return true
-                            end
-                        else
-                            return true
-                        end
+                    local d_ra = right_arm and (check_pos - right_arm.Position).Magnitude or 999
+                    local d_la = left_arm and (check_pos - left_arm.Position).Magnitude or 999
+                    if math.min(d_rt, d_to, d_ra, d_la) < 14 then
+                        return true
                     end
                 end
+
                 return false
             end
 
             local function is_trail_attached_to_char(trail, char)
                 if not trail or not char then return false end
                 if trail:IsDescendantOf(char) then return true end
+
                 local ok0, a0 = pcall(function() return trail.Attachment0 end)
                 local ok1, a1 = pcall(function() return trail.Attachment1 end)
                 if (ok0 and a0 and a0:IsDescendantOf(char)) or (ok1 and a1 and a1:IsDescendantOf(char)) then
@@ -33607,64 +33576,28 @@ end
                 if ok1 and a1 and a1.Parent and is_attached_to_char(a1.Parent, char) then
                     return true
                 end
+
                 local p = trail.Parent
                 if p and is_attached_to_char(p, char) then
                     return true
                 end
+
                 local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso")
                 if root then
                     local char_pos = root.Position
                     if ok0 and a0 then
                         local ok_pos, pos = pcall(function() return a0.WorldPosition end)
                         if ok_pos and pos and (pos - char_pos).Magnitude < 14 then
-                            local live = ws:FindFirstChild("Live")
-                            if live then
-                                local closest_char = nil
-                                local closest_dist = 999
-                                for _, other_char in ipairs(live:GetChildren()) do
-                                    local other_root = other_char:FindFirstChild("HumanoidRootPart") or other_char:FindFirstChild("Torso")
-                                    if other_root then
-                                        local dist = (pos - other_root.Position).Magnitude
-                                        if dist < closest_dist then
-                                            closest_dist = dist
-                                            closest_char = other_char
-                                        end
-                                    end
-                                end
-                                if closest_char == char then
-                                    return true
-                                end
-                            else
-                                return true
-                            end
+                            return true
                         end
                     end
                     if p and p:IsA("BasePart") then
-                        local dist = (p.Position - char_pos).Magnitude
-                        if dist < 14 then
-                            local live = ws:FindFirstChild("Live")
-                            if live then
-                                local closest_char = nil
-                                local closest_dist = 999
-                                for _, other_char in ipairs(live:GetChildren()) do
-                                    local other_root = other_char:FindFirstChild("HumanoidRootPart") or other_char:FindFirstChild("Torso")
-                                    if other_root then
-                                        local d = (p.Position - other_root.Position).Magnitude
-                                        if d < closest_dist then
-                                            closest_dist = d
-                                            closest_char = other_char
-                                        end
-                                    end
-                                end
-                                if closest_char == char then
-                                    return true
-                                end
-                            else
-                                return true
-                            end
+                        if (p.Position - char_pos).Magnitude < 14 then
+                            return true
                         end
                     end
                 end
+
                 return false
             end
 
@@ -33980,51 +33913,41 @@ end
             local function handle_thrown_child(child)
                 if not child or child.Name:find("RainbowShield", 1, true) then return end
 
-                local function check_trail_or_beam(t)
-                    if not t or not (t:IsA("Trail") or t:IsA("Beam")) then return end
+                local function process_child()
                     local char = get_local_char()
                     if not char then return end
-                    if is_trail_attached_to_char(t, char) or is_attached_to_char(child, char) or is_attached_to_char(t, char) then
-                        track_target(t)
-                    end
-                end
 
-                local function check_all_trails_and_beams()
-                    if child:IsA("Trail") or child:IsA("Beam") then
-                        check_trail_or_beam(child)
-                    end
-                    for _, desc in ipairs(child:GetDescendants()) do
-                        if desc:IsA("Trail") or desc:IsA("Beam") then
-                            check_trail_or_beam(desc)
-                        end
-                    end
                     local cname = child.Name
-                    if cname == "ParticleArm" or cname == "ParticleBack" or string.find(cname, "ParticleArm", 1, true) or string.find(cname, "ParticleBack", 1, true) then
-                        local char = get_local_char()
-                        if char and is_attached_to_char(child, char) then
+                    local is_particle_container = cname == "ParticleArm" or cname == "ParticleBack"
+                        or string.find(cname, "ParticleArm", 1, true) or string.find(cname, "ParticleBack", 1, true)
+
+                    if is_particle_container then
+                        if is_attached_to_char(child, char) then
                             for _, desc in ipairs(child:GetDescendants()) do
                                 if desc:IsA("Trail") or desc:IsA("ParticleEmitter") or desc:IsA("Beam") then
                                     track_target(desc)
                                 end
                             end
+                            local tt = child:FindFirstChild("TestTrail")
+                            if tt then track_target(tt) end
                         end
                     end
-                end
 
-                check_all_trails_and_beams()
-                task.defer(check_all_trails_and_beams)
-                task.delay(0.05, check_all_trails_and_beams)
-                task.delay(0.15, check_all_trails_and_beams)
+                    if child:IsA("Trail") or child:IsA("Beam") then
+                        if is_trail_attached_to_char(child, char) or is_attached_to_char(child, char) then
+                            track_target(child)
+                        end
+                    end
 
-                if child:IsA("Trail") or child:IsA("Beam") then
-                    track_vfx_conn(child:GetPropertyChangedSignal("Attachment0"):Connect(check_all_trails_and_beams))
-                    track_vfx_conn(child:GetPropertyChangedSignal("Attachment1"):Connect(check_all_trails_and_beams))
-                end
+                    for _, desc in ipairs(child:GetDescendants()) do
+                        if desc:IsA("Trail") or desc:IsA("Beam") then
+                            if is_trail_attached_to_char(desc, char) or is_attached_to_char(child, char) then
+                                track_target(desc)
+                            end
+                        end
+                    end
 
-                for _, rule in ipairs(RainbowVFX.thrown_rules) do
-                    local function check_and_apply()
-                        local char = get_local_char()
-                        if not char then return end
+                    for _, rule in ipairs(RainbowVFX.thrown_rules) do
                         local ok, matches = pcall(rule.matches_container, child, char)
                         if ok and matches then
                             for _, desc in ipairs(child:GetDescendants()) do
@@ -34037,42 +33960,37 @@ end
                             end
                         end
                     end
-
-                    check_and_apply()
-                    task.defer(check_and_apply)
-                    task.delay(0.08, check_and_apply)
-
-                    local conn_desc
-                    conn_desc = track_vfx_conn(child.DescendantAdded:Connect(function(desc)
-                        if not shared or shared.is_unloading or getgenv()._hx_unloaded then return end
-                        if desc:IsA("Trail") or desc:IsA("Beam") then
-                            check_trail_or_beam(desc)
-                            track_vfx_conn(desc:GetPropertyChangedSignal("Attachment0"):Connect(check_all_trails_and_beams))
-                            track_vfx_conn(desc:GetPropertyChangedSignal("Attachment1"):Connect(check_all_trails_and_beams))
-                        end
-                        local char = get_local_char()
-                        if not char then return end
-                        local ok, matches = pcall(rule.matches_container, child, char)
-                        if ok and matches then
-                            for _, d in ipairs(child:GetDescendants()) do
-                                if rule.matches_emitter(d) then
-                                    track_target(d)
-                                end
-                            end
-                            if rule.matches_emitter(desc) then
-                                track_target(desc)
-                            end
-                        end
-                    end))
-
-                    local conn_anc
-                    conn_anc = track_vfx_conn(child.AncestryChanged:Connect(function(_, parent)
-                        if not parent then
-                            if conn_desc then conn_desc:Disconnect() end
-                            if conn_anc then conn_anc:Disconnect() end
-                        end
-                    end))
                 end
+
+                process_child()
+                task.defer(process_child)
+
+                if child:IsA("BasePart") then
+                    track_vfx_conn(child:GetPropertyChangedSignal("CFrame"):Connect(process_child))
+                end
+
+                if child:IsA("Trail") or child:IsA("Beam") then
+                    track_vfx_conn(child:GetPropertyChangedSignal("Attachment0"):Connect(process_child))
+                    track_vfx_conn(child:GetPropertyChangedSignal("Attachment1"):Connect(process_child))
+                end
+
+                local conn_desc
+                conn_desc = track_vfx_conn(child.DescendantAdded:Connect(function(desc)
+                    if not shared or shared.is_unloading or getgenv()._hx_unloaded then return end
+                    process_child()
+                    if desc:IsA("Trail") or desc:IsA("Beam") then
+                        track_vfx_conn(desc:GetPropertyChangedSignal("Attachment0"):Connect(process_child))
+                        track_vfx_conn(desc:GetPropertyChangedSignal("Attachment1"):Connect(process_child))
+                    end
+                end))
+
+                local conn_anc
+                conn_anc = track_vfx_conn(child.AncestryChanged:Connect(function(_, parent)
+                    if not parent then
+                        if conn_desc then conn_desc:Disconnect() end
+                        if conn_anc then conn_anc:Disconnect() end
+                    end
+                end))
             end
 
             local function bind_thrown_folder(thrown_folder)
@@ -34176,7 +34094,7 @@ end
                 end
                 last_vfx_update = now
 
-                if now - last_vfx_scan > 0.5 then
+                if now - last_vfx_scan > 0.25 then
                     last_vfx_scan = now
                     local char = get_local_char()
                     if char then
