@@ -33553,7 +33553,7 @@ end
                     local d_to = torso and (check_pos - torso.Position).Magnitude or 999
                     local d_ra = right_arm and (check_pos - right_arm.Position).Magnitude or 999
                     local d_la = left_arm and (check_pos - left_arm.Position).Magnitude or 999
-                    if math.min(d_rt, d_to, d_ra, d_la) < 30 then
+                    if math.min(d_rt, d_to, d_ra, d_la) < 35 then
                         return true
                     end
                 end
@@ -33713,6 +33713,20 @@ end
                         end
                     },
                     {
+                        id = "WindBurst",
+                        matches = function(desc, char)
+                            if not (desc:IsA("ParticleEmitter") or desc:IsA("Beam") or desc:IsA("Trail") or desc:IsA("BasePart")) then return false end
+                            local name = string.lower(desc.Name)
+                            if string.find(name, "windburst", 1, true) or string.find(name, "windclap", 1, true) then return true end
+                            local p = desc.Parent
+                            if p then
+                                local pname = string.lower(p.Name)
+                                if string.find(pname, "windburst", 1, true) or string.find(pname, "windclap", 1, true) then return true end
+                            end
+                            return false
+                        end
+                    },
+                    {
                         id = "CharacterGenericVFX",
                         matches = function(desc, char)
                             if (desc:IsA("ParticleEmitter") or desc:IsA("Beam") or desc:IsA("Trail")) and desc:IsDescendantOf(char) then
@@ -33782,6 +33796,17 @@ end
                         end,
                         matches_emitter = function(desc)
                             return desc:IsA("Beam") or desc:IsA("ParticleEmitter") or desc:IsA("Trail") or desc:IsA("BasePart")
+                        end
+                    },
+                    {
+                        id = "WindBurst",
+                        matches_container = function(obj, char)
+                            local name = string.lower(obj.Name)
+                            if not (string.find(name, "windburst", 1, true) or string.find(name, "windclap", 1, true)) then return false end
+                            return is_attached_to_char(obj, char)
+                        end,
+                        matches_emitter = function(desc)
+                            return desc:IsA("ParticleEmitter") or desc:IsA("Beam") or desc:IsA("Trail") or desc:IsA("BasePart")
                         end
                     }
                 },
@@ -33869,9 +33894,11 @@ end
             local function handle_thrown_child(child)
                 if not child or child.Name:find("RainbowShield", 1, true) then return end
 
-                local cname = child.Name
-                local is_particle_container = cname == "ParticleArm" or cname == "ParticleBack"
-                    or string.find(cname, "ParticleArm", 1, true) or string.find(cname, "ParticleBack", 1, true)
+                local cname = string.lower(child.Name)
+                local is_particle_container = string.find(cname, "particlearm", 1, true)
+                    or string.find(cname, "particleback", 1, true)
+                    or string.find(cname, "windburst", 1, true)
+                    or string.find(cname, "windclap", 1, true)
 
                 if is_particle_container then
                     local function apply_particle_container()
@@ -34119,8 +34146,8 @@ end
                     local thrown = ws:FindFirstChild("Thrown")
                     if thrown and char then
                         for _, child in ipairs(thrown:GetChildren()) do
-                            local cname = child.Name
-                            if cname == "ParticleArm" or cname == "ParticleBack" or string.find(cname, "ParticleArm", 1, true) or string.find(cname, "ParticleBack", 1, true) then
+                            local cname = string.lower(child.Name)
+                            if string.find(cname, "particlearm", 1, true) or string.find(cname, "particleback", 1, true) or string.find(cname, "windburst", 1, true) or string.find(cname, "windclap", 1, true) then
                                 if is_attached_to_char(child, char) then
                                     for _, desc in ipairs(child:GetDescendants()) do
                                         if (desc:IsA("Trail") or desc:IsA("ParticleEmitter") or desc:IsA("Beam")) and not tracked_emitters[desc] then
@@ -34185,7 +34212,7 @@ end
                     return
                 end
                 local iname = string.lower(child.Name)
-                if iname == "cord" or string.find(iname, "cord", 1, true) or string.find(iname, "grapple", 1, true) or string.find(iname, "hook", 1, true) or string.find(iname, "particleback", 1, true) or string.find(iname, "particlearm", 1, true) then
+                if iname == "cord" or string.find(iname, "cord", 1, true) or string.find(iname, "grapple", 1, true) or string.find(iname, "hook", 1, true) or string.find(iname, "particleback", 1, true) or string.find(iname, "particlearm", 1, true) or string.find(iname, "windburst", 1, true) or string.find(iname, "windclap", 1, true) then
                     handle_thrown_child(child)
                 end
             end)
