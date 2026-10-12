@@ -1212,13 +1212,12 @@ local function FillInstance(Table: { [string]: any }, Instance: GuiObject)
     for k, v in pairs(Table) do
         if k == "DPIExclude" or k == "DPIOffset" then
             continue
+        elseif k ~= "Text" and (Library.Scheme[v] or typeof(v) == "function") then
+            ThemeProperties[k] = v
+            Instance[k] = Library.Scheme[v] or (typeof(v) == "function" and v())
+            continue
         elseif ThemeProperties[k] then
             ThemeProperties[k] = nil
-        elseif k ~= "Text" and (Library.Scheme[v] or typeof(v) == "function") then
-            -- me when Red in dropdowns break things (temp fix - or perm idk if deivid will do something about this)
-            ThemeProperties[k] = v
-            Instance[k] = Library.Scheme[v] or v()
-            continue
         end
 
         if not DPIExclude[k] then
@@ -6192,7 +6191,6 @@ function Library:CreateWindow(WindowInfo)
             BackgroundTransparency = 1,
             Text = "",
             TextSize = 11,
-            TextColor3 = "FontColor",
             TextTransparency = 0.5,
             TextXAlignment = Enum.TextXAlignment.Right,
             Visible = false,
