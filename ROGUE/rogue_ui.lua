@@ -12721,8 +12721,8 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     Search.BackgroundColor3 = Color3.fromRGB(226, 226, 226)
                     Search.BorderColor3 = Color3.fromRGB(27, 42, 53)
                     Search.BorderSizePixel = 0
-                    Search.Position = UDim2.new(0.088, 0, 0, -32)
-                    Search.Size = UDim2.new(0.165, 0, 0, 26)
+                    Search.Position = UDim2.new(0.088, 0, 0, -30)
+                    Search.Size = UDim2.new(0.165, 0, 0, 24)
                     Search.ZIndex = 2
                     Search.ClearTextOnFocus = false
                     Search.Font = Enum.Font.Bodoni
@@ -12732,15 +12732,6 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     Search.TextColor3 = Color3.fromRGB(27, 25, 23)
                     Search.TextSize = 15.000
                     Search.TextTransparency = 0.100
-
-                    local searchCorner = Instance.new("UICorner")
-                    searchCorner.CornerRadius = UDim.new(0, 4)
-                    searchCorner.Parent = Search
-
-                    local searchPadding = Instance.new("UIPadding")
-                    searchPadding.PaddingLeft = UDim.new(0, 8)
-                    searchPadding.PaddingRight = UDim.new(0, 8)
-                    searchPadding.Parent = Search
 
                     Border.Name = "Border"
                     Border.Parent = Search
