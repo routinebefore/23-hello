@@ -33074,7 +33074,7 @@ end
             local function get_idle_color(overlay)
                 if overlay and not cd_state.original_overlay_colors[overlay] then
                     local current_col = overlay.ImageColor3
-                    if current_col ~= cd_colors.melee and current_col ~= cd_colors.spell and current_col ~= cd_colors.special and current_col ~= cd_colors.meleeShown and not is_rainbow_hotbar_enabled() then
+                    if current_col ~= cd_colors.melee and current_col ~= cd_colors.spell and current_col ~= cd_colors.special and current_col ~= cd_colors.meleeShown and current_col ~= Color3.new(1, 1, 1) and not is_rainbow_hotbar_enabled() then
                         cd_state.original_overlay_colors[overlay] = current_col
                     else
                         cd_state.original_overlay_colors[overlay] = cd_colors.idle
@@ -33410,6 +33410,32 @@ end
 
             local rainbow_hotbar_conn = nil
 
+            local function get_or_create_grad(parent)
+                local grad = parent:FindFirstChild("RainbowHotbarGrad")
+                if not grad then
+                    grad = Instance.new("UIGradient")
+                    grad.Name = "RainbowHotbarGrad"
+                    grad.Rotation = 0
+                    grad.Parent = parent
+                end
+                return grad
+            end
+
+            local function build_slot_gradient(now, shift, span, u_left, u_right)
+                local kps = table.create(5)
+                for i = 0, 4 do
+                    local t = i / 4
+                    local u = u_left + t * (u_right - u_left)
+                    local wave = math.sin(u * 6.28318 - now * 2.2) * 0.035
+                    local fluid_u = u + wave
+                    local raw_h = (shift + fluid_u * span) % 1
+                    local s = 0.88
+                    local v = 1.0
+                    kps[i + 1] = ColorSequenceKeypoint.new(t, Color3.fromHSV(raw_h, s, v))
+                end
+                return ColorSequence.new(kps)
+            end
+
             local function restore_hotbar_slots()
                 local containers = get_slot_containers()
                 local indicator_on = is_indicator_enabled()
@@ -33419,6 +33445,18 @@ end
                             if child:IsA("TextButton") then
                                 local overlay = child:FindFirstChild("Overlay")
                                 if overlay then
+                                    local grad = overlay:FindFirstChild("RainbowHotbarGrad")
+                                    if grad then
+                                        grad.Enabled = false
+                                    end
+                                    local type_outline = overlay:FindFirstChild("TypeOutline")
+                                    if type_outline then
+                                        local to_grad = type_outline:FindFirstChild("RainbowHotbarGrad")
+                                        if to_grad then
+                                            to_grad.Enabled = false
+                                        end
+                                        type_outline.ImageColor3 = get_idle_color(type_outline)
+                                    end
                                     local spell_frame = child:FindFirstChild("SpellFrame")
                                     local melee_frame = child:FindFirstChild("MeleeFrame")
                                     if spell_frame and indicator_on then
@@ -33428,12 +33466,12 @@ end
                                     else
                                         overlay.ImageColor3 = get_idle_color(overlay)
                                     end
-                                    local type_outline = overlay:FindFirstChild("TypeOutline")
-                                    if type_outline then
-                                        type_outline.ImageColor3 = get_idle_color(type_outline)
-                                    end
                                 end
                             elseif child:IsA("ImageLabel") and child.Name == "SlotMarker" then
+                                local grad = child:FindFirstChild("RainbowHotbarGrad")
+                                if grad then
+                                    grad.Enabled = false
+                                end
                                 child.ImageColor3 = get_idle_color(child)
                             end
                         end
@@ -33454,10 +33492,31 @@ end
 
                 local containers = get_slot_containers()
                 local indicator_on = is_indicator_enabled()
+                local shift = (now * 0.32) % 1
+                local span = 0.95
 
                 for _, container in ipairs(containers) do
                     if container then
-                        for _, child in ipairs(container:GetChildren()) do
+                        local children = container:GetChildren()
+                        local min_x = math.huge
+                        local max_x = -math.huge
+
+                        for _, child in ipairs(children) do
+                            if child:IsA("TextButton") or (child:IsA("ImageLabel") and child.Name == "SlotMarker") then
+                                local x = child.AbsolutePosition.X
+                                local w = child.AbsoluteSize.X
+                                if x < min_x then
+                                    min_x = x
+                                end
+                                if x + w > max_x then
+                                    max_x = x + w
+                                end
+                            end
+                        end
+
+                        local total_w = math.max(max_x - min_x, 1)
+
+                        for _, child in ipairs(children) do
                             if child:IsA("TextButton") then
                                 local overlay = child:FindFirstChild("Overlay")
                                 if overlay then
@@ -33467,30 +33526,60 @@ end
                                             is_on_cooldown = true
                                         end
                                     end
-                                    if not is_on_cooldown then
-                                        get_idle_color(overlay)
-                                        local abs_x = overlay.AbsolutePosition.X
-                                        local hue = (now * 0.32 + abs_x * 0.0014) % 1
-                                        local color = Color3.fromHSV(hue, 0.85, 1)
-                                        if overlay.ImageColor3 ~= color then
-                                            overlay.ImageColor3 = color
+                                    if is_on_cooldown then
+                                        local grad = overlay:FindFirstChild("RainbowHotbarGrad")
+                                        if grad and grad.Enabled then
+                                            grad.Enabled = false
                                         end
                                         local type_outline = overlay:FindFirstChild("TypeOutline")
                                         if type_outline then
+                                            local to_grad = type_outline:FindFirstChild("RainbowHotbarGrad")
+                                            if to_grad and to_grad.Enabled then
+                                                to_grad.Enabled = false
+                                            end
+                                        end
+                                    else
+                                        get_idle_color(overlay)
+                                        local u_left = math.clamp((child.AbsolutePosition.X - min_x) / total_w, 0, 1)
+                                        local u_right = math.clamp((child.AbsolutePosition.X + child.AbsoluteSize.X - min_x) / total_w, 0, 1)
+                                        if u_right <= u_left then
+                                            u_right = math.min(u_left + 0.08, 1)
+                                        end
+
+                                        local seq = build_slot_gradient(now, shift, span, u_left, u_right)
+                                        local grad = get_or_create_grad(overlay)
+                                        grad.Color = seq
+                                        grad.Enabled = true
+                                        if overlay.ImageColor3 ~= Color3.new(1, 1, 1) then
+                                            overlay.ImageColor3 = Color3.new(1, 1, 1)
+                                        end
+
+                                        local type_outline = overlay:FindFirstChild("TypeOutline")
+                                        if type_outline then
                                             get_idle_color(type_outline)
-                                            if type_outline.ImageColor3 ~= color then
-                                                type_outline.ImageColor3 = color
+                                            local to_grad = get_or_create_grad(type_outline)
+                                            to_grad.Color = seq
+                                            to_grad.Enabled = true
+                                            if type_outline.ImageColor3 ~= Color3.new(1, 1, 1) then
+                                                type_outline.ImageColor3 = Color3.new(1, 1, 1)
                                             end
                                         end
                                     end
                                 end
                             elseif child:IsA("ImageLabel") and child.Name == "SlotMarker" and child.Visible then
                                 get_idle_color(child)
-                                local abs_x = child.AbsolutePosition.X
-                                local hue = (now * 0.32 + abs_x * 0.0014) % 1
-                                local color = Color3.fromHSV(hue, 0.85, 1)
-                                if child.ImageColor3 ~= color then
-                                    child.ImageColor3 = color
+                                local u_left = math.clamp((child.AbsolutePosition.X - min_x) / total_w, 0, 1)
+                                local u_right = math.clamp((child.AbsolutePosition.X + child.AbsoluteSize.X - min_x) / total_w, 0, 1)
+                                if u_right <= u_left then
+                                    u_right = math.min(u_left + 0.08, 1)
+                                end
+
+                                local seq = build_slot_gradient(now, shift, span, u_left, u_right)
+                                local sm_grad = get_or_create_grad(child)
+                                sm_grad.Color = seq
+                                sm_grad.Enabled = true
+                                if child.ImageColor3 ~= Color3.new(1, 1, 1) then
+                                    child.ImageColor3 = Color3.new(1, 1, 1)
                                 end
                             end
                         end
