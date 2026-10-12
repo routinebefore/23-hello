@@ -704,6 +704,11 @@ function Library:UpdateSearch(SearchText)
     if #tokens == 0 or (Library.ActiveTab and Library.ActiveTab.IsKeyTab) then
         Library.Searching = false
 
+        if Library.SearchResultBadge then
+            Library.SearchResultBadge.Visible = false
+            Library.SearchResultBadge.Text = ""
+        end
+
         for _, Tab in pairs(Library.Tabs) do
             if Tab.Label and Tab.Name then
                 Tab.Label.Text = Tab.Name
@@ -711,6 +716,9 @@ function Library:UpdateSearch(SearchText)
             end
             if Tab.Button then
                 Tab.Button.Visible = true
+            end
+            if Tab.NoResultsLabel then
+                Tab.NoResultsLabel.Visible = false
             end
         end
 
@@ -857,11 +865,12 @@ function Library:UpdateSearch(SearchText)
             end
 
             for _, Depbox in pairs(Groupbox.DependencyBoxes) do
-                if not Depbox.Visible then
-                    continue
+                local depMatches = CheckDepbox(Depbox, tokens, extraContext)
+                VisibleElements += depMatches
+                if depMatches > 0 then
+                    Depbox.Holder.Visible = true
+                    Depbox:Resize()
                 end
-
-                VisibleElements += CheckDepbox(Depbox, tokens, extraContext)
             end
 
             --// Track match count for this tab
@@ -1025,6 +1034,19 @@ function Library:UpdateSearch(SearchText)
                 CurrentTab.Label.TextTransparency = 0.75
             end
         end
+        if CurrentTab.NoResultsLabel then
+            CurrentTab.NoResultsLabel.Visible = (TabMatchCounts[CurrentTab] or 0) == 0
+        end
+    end
+
+    if Library.SearchResultBadge then
+        local total = 0
+        for _, count in pairs(TabMatchCounts) do
+            total = total + count
+        end
+        Library.SearchResultBadge.Visible = true
+        Library.SearchResultBadge.Text = string.format("%d %s", total, total == 1 and "result" or "results")
+        Library.SearchResultBadge.TextColor3 = total > 0 and Library.Scheme.FontColor or Library.Scheme.Red
     end
 
     --// Auto-switch to tab with most matches if current tab has no matches
@@ -6064,7 +6086,7 @@ function Library:CreateWindow(WindowInfo)
             BackgroundTransparency = 1,
             AnchorPoint = Vector2.new(0, 0.5),
             Position = UDim2.new(0.3, 0, 0.5, 0),
-            Size = UDim2.new(0.7, -49, 1, -16),
+            Size = UDim2.new(0.7, -49, 1, -12),
             Parent = TopBar,
         })
 
@@ -6136,10 +6158,10 @@ function Library:CreateWindow(WindowInfo)
             Parent = SearchBox,
         })
         New("UIPadding", {
-            PaddingBottom = UDim.new(0, 7),
-            PaddingLeft = UDim.new(0, 26),
-            PaddingRight = UDim.new(0, 24),
-            PaddingTop = UDim.new(0, 7),
+            PaddingBottom = UDim.new(0, 4),
+            PaddingLeft = UDim.new(0, 32),
+            PaddingRight = UDim.new(0, 68),
+            PaddingTop = UDim.new(0, 4),
             Parent = SearchBox,
         })
         local SearchStroke = New("UIStroke", {
@@ -6152,24 +6174,39 @@ function Library:CreateWindow(WindowInfo)
         if SearchIcon then
             SearchIconLabel = New("ImageLabel", {
                 AnchorPoint = Vector2.new(0, 0.5),
-                Position = UDim2.new(0, -18, 0.5, 0),
+                Position = UDim2.new(0, -22, 0.5, 0),
                 Image = SearchIcon.Url,
                 ImageColor3 = "FontColor",
                 ImageRectOffset = SearchIcon.ImageRectOffset,
                 ImageRectSize = SearchIcon.ImageRectSize,
                 ImageTransparency = 0.5,
-                Size = UDim2.fromOffset(14, 14),
+                Size = UDim2.fromOffset(16, 16),
                 Parent = SearchBox,
             })
         end
 
+        local SearchResultBadge = New("TextLabel", {
+            AnchorPoint = Vector2.new(1, 0.5),
+            Position = UDim2.new(1, -24, 0.5, 0),
+            Size = UDim2.fromOffset(50, 16),
+            BackgroundTransparency = 1,
+            Text = "",
+            TextSize = 11,
+            TextColor3 = "FontColor",
+            TextTransparency = 0.5,
+            TextXAlignment = Enum.TextXAlignment.Right,
+            Visible = false,
+            Parent = SearchBox,
+        })
+        Library.SearchResultBadge = SearchResultBadge
+
         local ClearSearchBtn = New("TextButton", {
             AnchorPoint = Vector2.new(1, 0.5),
             Position = UDim2.new(1, -2, 0.5, 0),
-            Size = UDim2.fromOffset(16, 16),
+            Size = UDim2.fromOffset(18, 18),
             BackgroundTransparency = 1,
             Text = "✕",
-            TextSize = 11,
+            TextSize = 12,
             TextColor3 = Library.Scheme.FontColor,
             TextTransparency = 0.5,
             Visible = false,
@@ -6437,11 +6474,24 @@ function Library:CreateWindow(WindowInfo)
                 Parent = Container,
             })
 
+            local NoResultsLabel = New("TextLabel", {
+                BackgroundTransparency = 1,
+                Position = UDim2.fromOffset(0, 24),
+                Size = UDim2.new(1, 0, 0, 30),
+                Text = "No matching features in this tab",
+                TextSize = 14,
+                TextTransparency = 0.6,
+                Visible = false,
+                Parent = TabContainer,
+            })
+
             TabLeft = New("ScrollingFrame", {
                 AutomaticCanvasSize = Enum.AutomaticSize.Y,
                 BackgroundTransparency = 1,
                 CanvasSize = UDim2.fromScale(0, 0),
-                ScrollBarThickness = 0,
+                ScrollBarThickness = 3,
+                ScrollBarImageColor3 = "OutlineColor",
+                ScrollBarImageTransparency = 0.5,
                 Parent = TabContainer,
             })
             New("UIListLayout", {
@@ -6470,7 +6520,9 @@ function Library:CreateWindow(WindowInfo)
                 BackgroundTransparency = 1,
                 CanvasSize = UDim2.fromScale(0, 0),
                 Position = UDim2.fromScale(1, 0),
-                ScrollBarThickness = 0,
+                ScrollBarThickness = 3,
+                ScrollBarImageColor3 = "OutlineColor",
+                ScrollBarImageTransparency = 0.5,
                 Parent = TabContainer,
             })
             New("UIListLayout", {
@@ -6565,6 +6617,7 @@ function Library:CreateWindow(WindowInfo)
             Label = TabLabel,
             Button = TabButton,
             Indicator = TabIndicator,
+            NoResultsLabel = NoResultsLabel,
             Groupboxes = {},
             Tabboxes = {},
             DependencyGroupboxes = {},

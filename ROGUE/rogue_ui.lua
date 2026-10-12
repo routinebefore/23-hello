@@ -9329,6 +9329,23 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         object.TextScaled = true
                         object.TextWrapped = false
                         object.Size = UDim2.new(1, -16, 1, 0)
+                        local stroke = object:FindFirstChild("SGWTitleStroke") or Instance.new("UIStroke")
+                        stroke.Name = "SGWTitleStroke"
+                        stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+                        stroke.Thickness = 1.6
+                        stroke.LineJoinMode = Enum.LineJoinMode.Round
+                        stroke.Color = Color3.fromRGB(30, 30, 30)
+                        stroke.Parent = object
+                        cheat_client.sgw_title_stroke = stroke
+
+                        local grad = stroke:FindFirstChild("RainbowSpiralGradient") or Instance.new("UIGradient")
+                        grad.Name = "RainbowSpiralGradient"
+                        grad.Enabled = false
+                        grad.Parent = stroke
+                        cheat_client.sgw_title_grad = grad
+                        if cheat_client and cheat_client.config and cheat_client.config.rainbow_accents then
+                            grad.Enabled = true
+                        end
                         break
                     end
                 end
@@ -12704,8 +12721,8 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     Search.BackgroundColor3 = Color3.fromRGB(226, 226, 226)
                     Search.BorderColor3 = Color3.fromRGB(27, 42, 53)
                     Search.BorderSizePixel = 0
-                    Search.Position = UDim2.new(0.0800000057, 0, -0.0399999991, 0)
-                    Search.Size = UDim2.new(0.15625, 0, 0.028, 0)
+                    Search.Position = UDim2.new(0.088, 0, 0, -32)
+                    Search.Size = UDim2.new(0.165, 0, 0, 26)
                     Search.ZIndex = 2
                     Search.ClearTextOnFocus = false
                     Search.Font = Enum.Font.Bodoni
@@ -12713,12 +12730,17 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     Search.PlaceholderText = "Search items..."
                     Search.Text = ""
                     Search.TextColor3 = Color3.fromRGB(27, 25, 23)
-                    Search.TextSize = 16.000
+                    Search.TextSize = 15.000
                     Search.TextTransparency = 0.100
 
                     local searchCorner = Instance.new("UICorner")
                     searchCorner.CornerRadius = UDim.new(0, 4)
                     searchCorner.Parent = Search
+
+                    local searchPadding = Instance.new("UIPadding")
+                    searchPadding.PaddingLeft = UDim.new(0, 8)
+                    searchPadding.PaddingRight = UDim.new(0, 8)
+                    searchPadding.Parent = Search
 
                     Border.Name = "Border"
                     Border.Parent = Search
@@ -12727,7 +12749,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     Border.BorderColor3 = Color3.fromRGB(27, 42, 53)
                     Border.BorderSizePixel = 0
                     Border.Position = UDim2.new(0, -2, 0, -2)
-                    Border.Size = UDim2.new(1, 4, 1, 5)
+                    Border.Size = UDim2.new(1, 4, 1, 4)
                     Border.ZIndex = 3
                     Border.Image = "rbxassetid://2739347995"
                     Border.ImageColor3 = Color3.fromRGB(245, 197, 130)
@@ -24653,6 +24675,12 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         line.BackgroundColor3 = default_outline
                     end
                 end
+                if cheat_client.sgw_title_grad then
+                    cheat_client.sgw_title_grad.Enabled = false
+                end
+                if cheat_client.sgw_title_stroke then
+                    cheat_client.sgw_title_stroke.Color = Color3.fromRGB(30, 30, 30)
+                end
             end
 
             local function restore_accent_elements()
@@ -24732,6 +24760,15 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         else
                             table.remove(cached_accent_elements, i)
                         end
+                    end
+                end
+
+                if cheat_client.sgw_title_grad and cheat_client.sgw_title_stroke then
+                    cheat_client.sgw_title_grad.Enabled = true
+                    cheat_client.sgw_title_grad.Color = seq
+                    cheat_client.sgw_title_grad.Rotation = (now * 120 * speed) % 360
+                    if cheat_client.sgw_title_stroke.Color ~= Color3.new(1, 1, 1) then
+                        cheat_client.sgw_title_stroke.Color = Color3.new(1, 1, 1)
                     end
                 end
             end
