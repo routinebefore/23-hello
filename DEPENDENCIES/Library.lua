@@ -692,6 +692,11 @@ local function RestoreDepbox(Box)
 end
 
 function Library:UpdateSearch(SearchText)
+    if Library.UpdatingSearch then
+        return
+    end
+    Library.UpdatingSearch = true
+
     Library.SearchText = SearchText or ""
 
     local cleanSearch = Trim(Library.SearchText:lower())
@@ -802,6 +807,7 @@ function Library:UpdateSearch(SearchText)
         end
 
         Library.LastSearchTabs = {}
+        Library.UpdatingSearch = false
         return
     end
 
@@ -1049,20 +1055,7 @@ function Library:UpdateSearch(SearchText)
         Library.SearchResultBadge.TextColor3 = total > 0 and Library.Scheme.FontColor or Library.Scheme.Red
     end
 
-    --// Auto-switch to tab with most matches if current tab has no matches
-    if Library.ActiveTab and (TabMatchCounts[Library.ActiveTab] or 0) == 0 then
-        local bestTab = nil
-        local bestCount = 0
-        for _, CurrentTab in ipairs(Library.LastSearchTabs) do
-            if not CurrentTab.IsKeyTab and (TabMatchCounts[CurrentTab] or 0) > bestCount then
-                bestCount = TabMatchCounts[CurrentTab]
-                bestTab = CurrentTab
-            end
-        end
-        if bestTab then
-            bestTab:Show()
-        end
-    end
+    Library.UpdatingSearch = false
 end
 
 function Library:AddToRegistry(Instance, Properties)

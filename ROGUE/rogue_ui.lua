@@ -4479,9 +4479,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
     end
     
     local repo_candidates = {
-        "https://raw.githubusercontent.com/routinebefore/23-hello/main/",
         "https://raw.githubusercontent.com/routinebefore/23-hello/refs/heads/main/",
-        "https://raw.githubusercontent.com/themike-fart/HYDROXIDE/main/",
         "https://raw.githubusercontent.com/themike-fart/HYDROXIDE/refs/heads/main/",
     }
 
@@ -4491,8 +4489,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
         for _, path in ipairs(paths) do
             local content_success, content = pcall(function()
                 if path:sub(1, 4) == "http" then
-                    local fetch_url = path .. (path:find("?", 1, true) and "&" or "?") .. "t=" .. tostring(os.time())
-                    return game:HttpGet(fetch_url, true)
+                    return game:HttpGet(path, true)
                 end
 
                 if readfile and isfile and isfile(path) then
