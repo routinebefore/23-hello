@@ -32572,7 +32572,14 @@ end
             end
 
             local function update_ui()
-                local is_enabled = Toggles and Toggles.Killstreaks and Toggles.Killstreaks.Value
+                local is_enabled = false
+                if library and library.Toggles and library.Toggles.Killstreaks then
+                    is_enabled = library.Toggles.Killstreaks.Value == true
+                elseif Toggles and Toggles.Killstreaks then
+                    is_enabled = Toggles.Killstreaks.Value == true
+                elseif cheat_client.config then
+                    is_enabled = cheat_client.config.killstreaks == true
+                end
                 local streak = killstreak_data.current_streak or 0
                 local char = plr.Character
                 local head = char and (FindFirstChild(char, "Head") or char:FindFirstChild("Head"))
@@ -32751,49 +32758,77 @@ end
                     end
                 end
 
-                local executing_acc = my_char:FindFirstChild("Executing")
+                local executing_flag = my_char:FindFirstChild("Executing") or my_char:FindFirstChild("Execute")
 
-                if executing_acc then
-                    if not active_grip_target then
-                        if ws.Live then
-                            for _, other in ipairs(ws.Live:GetChildren()) do
-                                if other ~= my_char and other:IsA("Model") and plrs:FindFirstChild(other.Name) then
-                                    local being_exec = other:FindFirstChild("BeingExecuted")
-                                    if being_exec then
-                                        active_grip_target = {
-                                            model = other,
-                                            name = other.Name,
-                                            being_acc = being_exec,
-                                            hum = other:FindFirstChildOfClass("Humanoid")
-                                        }
-                                        active_grip_start = now
-                                        break
+                if ws.Live then
+                    for _, other in ipairs(ws.Live:GetChildren()) do
+                        if other ~= my_char and other:IsA("Model") then
+                            local other_plr = plrs:GetPlayerFromCharacter(other) or plrs:FindFirstChild(other.Name)
+                            if other_plr then
+                                local being_exec = other:FindFirstChild("BeingExecuted")
+                                if being_exec then
+                                    local is_mine = false
+                                    if being_exec:IsA("ObjectValue") and (being_exec.Value == my_char or being_exec.Value == plr) then
+                                        is_mine = true
+                                    end
+                                    local other_hrp = other:FindFirstChild("HumanoidRootPart") or other:FindFirstChild("Torso")
+                                    if not is_mine and my_hrp and other_hrp then
+                                        local dist = (my_hrp.Position - other_hrp.Position).Magnitude
+                                        if dist <= 14 then
+                                            is_mine = true
+                                        elseif executing_flag and dist <= 30 then
+                                            is_mine = true
+                                        end
+                                    end
+                                    if is_mine then
+                                        if not active_grip_target or active_grip_target.name ~= other.Name then
+                                            active_grip_target = {
+                                                model = other,
+                                                name = other.Name,
+                                                start = now,
+                                                last_seen = now,
+                                                being_acc = being_exec,
+                                                hum = other:FindFirstChildOfClass("Humanoid"),
+                                                pos = other_hrp and other_hrp.Position or my_hrp.Position
+                                            }
+                                        else
+                                            active_grip_target.last_seen = now
+                                            if other_hrp then
+                                                active_grip_target.pos = other_hrp.Position
+                                            end
+                                        end
                                     end
                                 end
                             end
                         end
                     end
-                elseif active_grip_target then
+                end
+
+                if active_grip_target then
                     local target_model = active_grip_target.model
                     local target_name = active_grip_target.name
                     local being_acc = active_grip_target.being_acc
                     local target_hum = active_grip_target.hum
 
-                    local being_gone = (not being_acc or being_acc.Parent ~= target_model)
                     local is_dead = false
                     if target_hum and target_hum.Health <= 0 then
                         is_dead = true
-                    elseif not target_model or not target_model:IsDescendantOf(ws) or target_model.Parent == nil then
+                    elseif not target_model or not target_model:IsDescendantOf(ws) or target_model.Parent ~= ws.Live then
                         is_dead = true
                     elseif target_model:FindFirstChild("Dead") then
                         is_dead = true
+                    elseif target_model:FindFirstChild("Head") and target_model.Head:FindFirstChild("Bone") then
+                        is_dead = true
                     end
 
-                    if being_gone and is_dead and (now - active_grip_start < 15) then
-                        award_kill(target_name, "Grip")
+                    if is_dead then
+                        if (now - active_grip_target.start < 25) then
+                            award_kill(target_name, "Grip")
+                        end
+                        active_grip_target = nil
+                    elseif now - active_grip_target.last_seen > 4.5 then
+                        active_grip_target = nil
                     end
-
-                    active_grip_target = nil
                 end
 
                 if ws.Live then
@@ -32848,9 +32883,16 @@ end
 
             if ws.Live then
                 utility:Connection(ws.Live.ChildRemoved, function(removed)
+                    local now = os.clock()
+                    if active_grip_target and (active_grip_target.model == removed or active_grip_target.name == removed.Name) then
+                        if (now - active_grip_target.start < 25) and (now - active_grip_target.last_seen <= 4.5) then
+                            award_kill(active_grip_target.name, "Grip")
+                        end
+                        active_grip_target = nil
+                    end
+
                     if tracked_targets[removed] then
                         local rec = tracked_targets[removed]
-                        local now = os.clock()
                         local my_hrp = plr.Character and (plr.Character:FindFirstChild("HumanoidRootPart") or plr.Character:FindFirstChild("Torso"))
                         if my_hrp and rec.last_pos and (my_hrp.Position - rec.last_pos).Magnitude <= 35 then
                             if (now - last_instant_kill_time <= 1.5) and (rec.last_hp and rec.last_hp > 0 and rec.last_hp <= 55) then
