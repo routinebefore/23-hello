@@ -9367,19 +9367,36 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     for _, obj in ipairs(library.ScreenGui:GetDescendants()) do
                         if obj.Name == "CommitIndicatorContainer" then
                             pcall(function() obj:Destroy() end)
+                        elseif obj.Name == "CommitIndicator" then
+                            local bad_btn = obj:FindFirstChild("CommitClickArea")
+                            if bad_btn then
+                                pcall(function() bad_btn:Destroy() end)
+                            end
                         end
                     end
                 end
 
-                local running_commit = "a4dd084"
+                local running_commit = "5df1044"
 
                 local function apply_commit_status(commit_id, is_latest)
                     if window and window.SetCommitStatus then
                         window:SetCommitStatus(commit_id, is_latest)
+                        if window.CommitIndicator then
+                            local bad = window.CommitIndicator:FindFirstChild("CommitClickArea")
+                            if bad then pcall(function() bad:Destroy() end) end
+                            window.CommitIndicator.Position = UDim2.new(0, 10, 0.5, 0)
+                            window.CommitIndicator.AnchorPoint = Vector2.new(0, 0.5)
+                        end
                         return
                     end
                     if library and library.SetCommitStatus then
                         library:SetCommitStatus(commit_id, is_latest)
+                        if library.CommitIndicator then
+                            local bad = library.CommitIndicator:FindFirstChild("CommitClickArea")
+                            if bad then pcall(function() bad:Destroy() end) end
+                            library.CommitIndicator.Position = UDim2.new(0, 10, 0.5, 0)
+                            library.CommitIndicator.AnchorPoint = Vector2.new(0, 0.5)
+                        end
                         return
                     end
 
@@ -9427,13 +9444,15 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
                     local ind = target:FindFirstChild("CommitIndicator")
                     if not ind then
-                        ind = Instance.new("Frame")
+                        ind = Instance.new("TextButton")
                         ind.Name = "CommitIndicator"
                         ind.AnchorPoint = Vector2.new(0, 0.5)
                         ind.Position = bottom_bar and UDim2.new(0, 10, 0.5, 0) or UDim2.new(0, 10, 1, -10)
                         ind.Size = UDim2.new(0, 0, 1, 0)
                         ind.AutomaticSize = Enum.AutomaticSize.X
                         ind.BackgroundTransparency = 1
+                        ind.Text = ""
+                        ind.AutoButtonColor = false
                         ind.ZIndex = 25
                         ind.Parent = target
 
@@ -9479,21 +9498,13 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         lbl.ZIndex = 26
                         lbl.Parent = ind
 
-                        local btn = Instance.new("TextButton")
-                        btn.Name = "CommitClickArea"
-                        btn.Size = UDim2.fromScale(1, 1)
-                        btn.BackgroundTransparency = 1
-                        btn.Text = ""
-                        btn.ZIndex = 27
-                        btn.Parent = ind
-
-                        btn.MouseEnter:Connect(function()
+                        ind.MouseEnter:Connect(function()
                             lbl.TextColor3 = Color3.fromRGB(235, 235, 235)
                         end)
-                        btn.MouseLeave:Connect(function()
+                        ind.MouseLeave:Connect(function()
                             lbl.TextColor3 = Color3.fromRGB(150, 150, 150)
                         end)
-                        btn.MouseButton1Click:Connect(function()
+                        ind.MouseButton1Click:Connect(function()
                             pcall(function()
                                 if setclipboard then
                                     setclipboard(commit_id)
@@ -9503,6 +9514,13 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                                 end
                             end)
                         end)
+                    else
+                        local bad_btn = ind:FindFirstChild("CommitClickArea")
+                        if bad_btn then
+                            pcall(function() bad_btn:Destroy() end)
+                        end
+                        ind.Position = bottom_bar and UDim2.new(0, 10, 0.5, 0) or UDim2.new(0, 10, 1, -10)
+                        ind.AnchorPoint = Vector2.new(0, 0.5)
                     end
 
                     local pop = target:FindFirstChild("UpdatePopup")
@@ -9562,6 +9580,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         ptxt.TextColor3 = Color3.fromRGB(255, 120, 120)
                         ptxt.TextXAlignment = Enum.TextXAlignment.Center
                         ptxt.TextYAlignment = Enum.TextYAlignment.Center
+                        ptxt.TextWrapped = false
                         ptxt.ZIndex = 52
                         ptxt.Parent = pop
 

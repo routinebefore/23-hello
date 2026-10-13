@@ -6313,13 +6313,15 @@ function Library:CreateWindow(WindowInfo)
         })
 
         --// Commit Indicator (Bottom Left) \\--
-        CommitIndicator = New("Frame", {
+        CommitIndicator = New("TextButton", {
             AnchorPoint = Vector2.new(0, 0.5),
+            AutoButtonColor = false,
             BackgroundTransparency = 1,
             Name = "CommitIndicator",
             Position = UDim2.new(0, 10, 0.5, 0),
             Size = UDim2.new(0, 0, 1, 0),
             AutomaticSize = Enum.AutomaticSize.X,
+            Text = "",
             ZIndex = 25,
             Parent = BottomBar,
         })
@@ -6357,6 +6359,7 @@ function Library:CreateWindow(WindowInfo)
             AutomaticSize = Enum.AutomaticSize.X,
             BackgroundTransparency = 1,
             Font = Enum.Font.GothamMedium,
+            FontFace = Font.fromEnum(Enum.Font.GothamMedium),
             LayoutOrder = 2,
             Name = "CommitLabel",
             Size = UDim2.new(0, 0, 1, 0),
@@ -6369,21 +6372,13 @@ function Library:CreateWindow(WindowInfo)
             Parent = CommitIndicator,
         })
 
-        local CommitClickArea = New("TextButton", {
-            BackgroundTransparency = 1,
-            Name = "CommitClickArea",
-            Size = UDim2.fromScale(1, 1),
-            Text = "",
-            ZIndex = 27,
-            Parent = CommitIndicator,
-        })
-        CommitClickArea.MouseEnter:Connect(function()
+        CommitIndicator.MouseEnter:Connect(function()
             CommitLabel.TextColor3 = Color3.fromRGB(235, 235, 235)
         end)
-        CommitClickArea.MouseLeave:Connect(function()
+        CommitIndicator.MouseLeave:Connect(function()
             CommitLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
         end)
-        CommitClickArea.MouseButton1Click:Connect(function()
+        CommitIndicator.MouseButton1Click:Connect(function()
             pcall(function()
                 if setclipboard then
                     setclipboard(CommitLabel.Text)
@@ -6443,12 +6438,14 @@ function Library:CreateWindow(WindowInfo)
         local PopupText = New("TextLabel", {
             BackgroundTransparency = 1,
             Font = Enum.Font.GothamBold,
+            FontFace = Font.fromEnum(Enum.Font.GothamBold),
             LayoutOrder = 2,
             Name = "PopupText",
             Size = UDim2.new(0, 130, 1, 0),
             Text = "UPDATE AVAILABLE",
             TextColor3 = Color3.fromRGB(255, 120, 120),
             TextSize = 10,
+            TextWrapped = false,
             TextXAlignment = Enum.TextXAlignment.Center,
             TextYAlignment = Enum.TextYAlignment.Center,
             ZIndex = 52,
