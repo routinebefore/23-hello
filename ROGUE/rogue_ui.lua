@@ -678,6 +678,13 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             custom_day_spoof = 1,
             spoof_days_enabled = false,
 
+            gacha_on_day_up = false,
+            trinket_sell_gacha = false,
+            gacha_23_mode = false,
+            gacha_use_chair = false,
+            gacha_scan_distance = 500,
+            gacha_stop_rolls = {},
+
             char_custom_enabled = false,
             char_custom_face = "",
             char_custom_shirt = "",
@@ -11566,32 +11573,9 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 end
             })
 
-            group_farm:AddDivider()
+            local group_training = Tabs.Automation:AddLeftGroupbox("Training & Mana")
 
-            group_farm:AddToggle("loop_orderly", {
-                Text = "Loop Gain Orderly",
-                Default = false,
-                Callback = function(value)
-                end
-            })
-
-            group_farm:AddToggle("train_climb", {
-                Text = "Train Climb",
-                Default = false,
-                Callback = function(value)
-                end
-            })
-
-            group_farm:AddDivider()
-
-            group_farm:AddToggle("SnapTrain", {
-                Text = "Snap Train",
-                Default = false,
-                Callback = function(value)
-                end
-            })
-
-            group_farm:AddToggle("AutoCharge", {
+            group_training:AddToggle("AutoCharge", {
                 Text = "Auto Mana Charge",
                 Default = cheat_client.config.auto_charge,
                 Callback = function(value)
@@ -11599,7 +11583,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 end
             })
 
-            group_farm:AddSlider("AutoChargeThreshold", {
+            group_training:AddSlider("AutoChargeThreshold", {
                 Text = "Charge At Percent",
                 Default = cheat_client.config.auto_charge_threshold,
                 Min = 1,
@@ -11610,7 +11594,30 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 end
             })
 
-            local group_automation = Tabs.Automation:AddRightGroupbox("Automation")
+            group_training:AddDivider()
+
+            group_training:AddToggle("SnapTrain", {
+                Text = "Snap Train",
+                Default = false,
+                Callback = function(value)
+                end
+            })
+
+            group_training:AddToggle("train_climb", {
+                Text = "Train Climb",
+                Default = false,
+                Callback = function(value)
+                end
+            })
+
+            group_training:AddToggle("loop_orderly", {
+                Text = "Loop Gain Orderly",
+                Default = false,
+                Callback = function(value)
+                end
+            })
+
+            local group_automation = Tabs.Automation:AddRightGroupbox("Crafting")
             local group_auto_pickup = Tabs.Automation:AddLeftGroupbox("Auto Pickup")
 
             do
@@ -18353,6 +18360,11 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
                 local i = 1
                 while i <= #trinket_bot.path_points do
+                    while trinket_bot.is_gacha_in_progress do
+                        task.wait(0.5)
+                    end
+                    if not trinket_bot.path_running then break end
+
                     if trinket_bot.moderator_detected then
                         library:Notify("Moderator detected - exiting main loop")
                         break
@@ -20182,6 +20194,750 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 end
             end
 
+            local SKYCASTLE_SCAN_CFRAME = CFrame.new(539.729858, 3699.88989, -48.7998047, 0, -1, -0, -1, 0, -0, 0, 0, -1)
+            local SHORE4_SCAN_CFRAME = CFrame.new(1469.35278, 434.696533, 2777.59888, -1.1920929e-07, 0, 1.00000012, 0, 1, 0, -1.00000012, 0, -1.1920929e-07)
+            local DAYS_ROLLED_PATH = "HYDROXIDE/days_rolled_" .. tostring(plr.UserId) .. ".json"
+
+            local function read_csg_points(union)
+                if not union or not union:IsA("BasePart") then return {} end
+                local raw_data = nil
+                if gethiddenproperty then
+                    local ok, prop = pcall(gethiddenproperty, union, "PhysicalConfigData")
+                    if ok and prop then
+                        if type(prop) == "table" and #prop >= 2 and type(prop[2]) == "string" then
+                            raw_data = prop[2]
+                        elseif type(prop) == "string" and #prop > 50 then
+                            raw_data = prop
+                        end
+                    end
+                    if not raw_data then
+                        for _, alt in ipairs({"BinaryData", "MeshData", "RawData", "ConfigData"}) do
+                            local s, d = pcall(gethiddenproperty, union, alt)
+                            if s and type(d) == "string" and #d > 50 then
+                                raw_data = d
+                                break
+                            end
+                        end
+                    end
+                end
+                if not raw_data or type(raw_data) ~= "string" or #raw_data < 60 then
+                    return {}
+                end
+
+                local stream = raw_data
+                local function read_bytes(n)
+                    if #stream < n then return "" end
+                    local sub = stream:sub(1, n)
+                    stream = stream:sub(n + 1, #stream)
+                    return sub
+                end
+
+                read_bytes(51)
+                local points = {}
+                while #stream > 48 do
+                    read_bytes(20)
+                    read_bytes(20)
+                    local ok_unpack, vert_size = pcall(string.unpack, "ii", read_bytes(8))
+                    if not ok_unpack or not vert_size or vert_size <= 0 or vert_size > 100000 then
+                        break
+                    end
+
+                    local count = math.floor(vert_size / 3)
+                    for _ = 1, count do
+                        if #stream < 12 then break end
+                        local ok_f, x, y, z = pcall(string.unpack, "fff", read_bytes(12))
+                        if ok_f and x and y and z then
+                            table.insert(points, Vector3.new(x, y, z))
+                        end
+                    end
+
+                    if #stream < 4 then break end
+                    local ok_face, face_size = pcall(string.unpack, "I", read_bytes(4))
+                    if ok_face and face_size and face_size > 0 and face_size < 100000 then
+                        read_bytes(face_size * 4)
+                    else
+                        break
+                    end
+                end
+
+                return points
+            end
+
+            local MOB_SIGNATURES = {
+                ["Golem"] = { 6.943, 17.125, 21.224 },
+                ["Arocknid"] = { 6.220, 11.577, 11.729 },
+                ["Evil Eye"] = { 4.928, 6.636, 11.830 },
+                ["Howler"] = { 3.139, 6.833, 6.839 },
+                ["Zombie Scroom"] = { 4.400, 4.714, 4.793 },
+            }
+
+            local function classify_mob_dimensions(size_vec)
+                local dims = { math.abs(size_vec.X), math.abs(size_vec.Y), math.abs(size_vec.Z) }
+                table.sort(dims)
+
+                local best_mob = "Zombie Scroom"
+                local lowest_error = math.huge
+
+                for mob_name, sig in pairs(MOB_SIGNATURES) do
+                    local sorted_sig = { sig[1], sig[2], sig[3] }
+                    table.sort(sorted_sig)
+
+                    local error_score = 0
+                    for axis = 1, 3 do
+                        local ratio = dims[axis] / sorted_sig[axis]
+                        error_score = error_score + (math.log(math.max(ratio, 0.0001)))^2
+                    end
+
+                    if error_score < lowest_error then
+                        lowest_error = error_score
+                        best_mob = mob_name
+                    end
+                end
+
+                return best_mob, lowest_error
+            end
+
+            local function solve_captcha_gui(captcha_gui, is_test_mode)
+                if not captcha_gui then return false, "No captcha gui" end
+                local main_frame = captcha_gui:FindFirstChild("MainFrame")
+                local viewport = main_frame and main_frame:FindFirstChild("Viewport")
+                local union = viewport and viewport:FindFirstChild("Union")
+                local options_frame = main_frame and main_frame:FindFirstChild("Options")
+
+                if not (union and options_frame) then
+                    return false, "Union or Options not found"
+                end
+
+                local points = read_csg_points(union)
+                if #points == 0 then
+                    return false, "Could not extract CSG points"
+                end
+
+                local camera_cframe = nil
+                if gethiddenproperty then
+                    local ok, cam = pcall(gethiddenproperty, viewport, "CameraCFrame")
+                    if ok and typeof(cam) == "CFrame" then
+                        camera_cframe = cam
+                    end
+                end
+                if not camera_cframe and viewport:IsA("ViewportFrame") and viewport.CurrentCamera then
+                    camera_cframe = viewport.CurrentCamera.CFrame
+                end
+                if not camera_cframe then
+                    camera_cframe = union.CFrame * CFrame.new(0, 0, 15)
+                end
+
+                local center_point = points[1]
+                local min_ray_err = math.huge
+                for _, pt in ipairs(points) do
+                    local world_p = union.CFrame:PointToWorldSpace(pt)
+                    local offset = world_p - camera_cframe.Position
+                    local depth = offset:Dot(camera_cframe.LookVector)
+                    if depth > 0 then
+                        local perp_sq = math.max(offset:Dot(offset) - depth * depth, 0)
+                        local err = math.sqrt(perp_sq) / depth
+                        if err < min_ray_err then
+                            min_ray_err = err
+                            center_point = pt
+                        end
+                    end
+                end
+
+                local far_point = points[1]
+                local max_dist = -1
+                for _, pt in ipairs(points) do
+                    local d = (pt - center_point).Magnitude
+                    if d > max_dist then
+                        max_dist = d
+                        far_point = pt
+                    end
+                end
+
+                local c1 = center_point
+                local c2 = far_point or (center_point + Vector3.new(20, 20, 20))
+                local cluster1 = {}
+
+                for _ = 1, 10 do
+                    local sum1 = Vector3.zero
+                    local count1 = 0
+                    local sum2 = Vector3.zero
+                    local count2 = 0
+                    cluster1 = {}
+
+                    for _, pt in ipairs(points) do
+                        local d1 = (pt - c1).Magnitude
+                        local d2 = (pt - c2).Magnitude
+                        if d1 <= d2 then
+                            table.insert(cluster1, pt)
+                            sum1 = sum1 + pt
+                            count1 = count1 + 1
+                        else
+                            sum2 = sum2 + pt
+                            count2 = count2 + 1
+                        end
+                    end
+
+                    if count1 > 0 then c1 = sum1 / count1 end
+                    if count2 > 0 then c2 = sum2 / count2 end
+                end
+
+                if #cluster1 == 0 then
+                    cluster1 = points
+                end
+
+                local min_x, min_y, min_z = math.huge, math.huge, math.huge
+                local max_x, max_y, max_z = -math.huge, -math.huge, -math.huge
+
+                for _, pt in ipairs(cluster1) do
+                    min_x = math.min(min_x, pt.X)
+                    max_x = math.max(max_x, pt.X)
+                    min_y = math.min(min_y, pt.Y)
+                    max_y = math.max(max_y, pt.Y)
+                    min_z = math.min(min_z, pt.Z)
+                    max_z = math.max(max_z, pt.Z)
+                end
+
+                local mob_size = Vector3.new(max_x - min_x, max_y - min_y, max_z - min_z)
+                local best_mob, error_score = classify_mob_dimensions(mob_size)
+                local target_button = options_frame:FindFirstChild(best_mob)
+
+                if not is_test_mode and target_button then
+                    if firesignal then
+                        pcall(firesignal, target_button.MouseButton1Click)
+                    end
+                    if vim then
+                        local pos = target_button.AbsolutePosition
+                        local sz = target_button.AbsoluteSize
+                        pcall(function()
+                            vim:SendMouseButtonEvent(pos.X + sz.X / 2, pos.Y + sz.Y / 2, 0, true, game, 0)
+                            task.wait(0.05)
+                            vim:SendMouseButtonEvent(pos.X + sz.X / 2, pos.Y + sz.Y / 2, 0, false, game, 0)
+                        end)
+                    end
+                end
+
+                return true, best_mob, error_score, target_button
+            end
+
+            local function find_chair_tool()
+                local sources = { plr.Character, plr:FindFirstChildOfClass("Backpack") }
+                for _, container in ipairs(sources) do
+                    if container then
+                        for _, item in ipairs(container:GetChildren()) do
+                            if item:IsA("Tool") then
+                                local tool_type_attr = item:GetAttribute("ToolType")
+                                local tool_type_val = item:FindFirstChild("ToolType")
+                                local has_sit_anim = item:FindFirstChild("Sit", true)
+                                local is_chair = (tool_type_attr and tostring(tool_type_attr):lower() == "chair")
+                                    or (tool_type_val and tostring(tool_type_val.Value):lower() == "chair")
+                                    or (has_sit_anim and has_sit_anim:IsA("Animation"))
+                                    or item.Name:lower():find("chair") ~= nil
+                                if is_chair then
+                                    return item
+                                end
+                            end
+                        end
+                    end
+                end
+                return nil
+            end
+
+            local function is_player_seated_on_chair()
+                local character = plr.Character
+                if not character then return false end
+                local chair_model = character:FindFirstChild("Chair")
+                if chair_model then
+                    local seat = chair_model:FindFirstChildWhichIsA("Seat", true)
+                    if seat and seat:FindFirstChild("ChairWeld") then
+                        return true
+                    end
+                    return true
+                end
+                local humanoid = character:FindFirstChildOfClass("Humanoid")
+                if humanoid and humanoid.Sit then
+                    return true
+                end
+                return false
+            end
+
+            local function use_chair()
+                if is_player_seated_on_chair() then
+                    return true
+                end
+                local chair_tool = find_chair_tool()
+                if not chair_tool then
+                    library:Notify("[Chair] No chair found in bag or character!", 4)
+                    return false
+                end
+                local character = plr.Character
+                local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+                if not humanoid then return false end
+
+                if chair_tool.Parent ~= character then
+                    humanoid:EquipTool(chair_tool)
+                    task.wait(0.2)
+                end
+                chair_tool:Activate()
+                local deadline = tick() + 2.5
+                while tick() < deadline do
+                    if is_player_seated_on_chair() then
+                        return true
+                    end
+                    task.wait(0.1)
+                end
+                return is_player_seated_on_chair()
+            end
+
+            local function load_days_rolled()
+                local days_table = {}
+                if readfile and isfile and isfile(DAYS_ROLLED_PATH) then
+                    local success, result = pcall(function()
+                        return hs:JSONDecode(readfile(DAYS_ROLLED_PATH))
+                    end)
+                    if success and type(result) == "table" then
+                        days_table = result
+                    end
+                end
+                return days_table
+            end
+
+            local function save_days_rolled(days_table)
+                if writefile then
+                    pcall(function()
+                        if isfolder and not isfolder("HYDROXIDE") and makefolder then
+                            makefolder("HYDROXIDE")
+                        end
+                        writefile(DAYS_ROLLED_PATH, hs:JSONEncode(days_table))
+                    end)
+                end
+            end
+
+            local function has_day_been_rolled(day)
+                local days_table = load_days_rolled()
+                return days_table[tostring(day)] ~= nil
+            end
+
+            local function record_day_rolled(day, reason)
+                local days_table = load_days_rolled()
+                days_table[tostring(day)] = {
+                    timestamp = os.time(),
+                    reason = reason or "rolled"
+                }
+                save_days_rolled(days_table)
+            end
+
+            local function get_trinket_sell_value()
+                local total_value = 0
+                if not plr or not plr:FindFirstChild("Backpack") then return 0 end
+                for _, item in ipairs(plr.Backpack:GetChildren()) do
+                    local silver_val = item:FindFirstChild("SilverValue")
+                    if silver_val and silver_val:IsA("ValueBase") then
+                        total_value = total_value + tonumber(silver_val.Value or 0)
+                    end
+                end
+                return total_value
+            end
+
+            local function scan_players_near_position(target_pos, max_distance)
+                local nearby_players = {}
+                for _, other in ipairs(plrs:GetPlayers()) do
+                    if other ~= plr and other.Character and other.Character:FindFirstChild("HumanoidRootPart") then
+                        local dist = (other.Character.HumanoidRootPart.Position - target_pos).Magnitude
+                        if dist <= max_distance then
+                            table.insert(nearby_players, { player = other, distance = dist })
+                        end
+                    end
+                end
+                return nearby_players
+            end
+
+            local function is_23_mode_safe()
+                if not (Toggles.Gacha23Mode and Toggles.Gacha23Mode.Value) then
+                    return false
+                end
+                local total_players = #plrs:GetPlayers()
+                return total_players >= 23
+            end
+
+            local function find_nearest_merchant()
+                local npcs_folder = workspace:FindFirstChild("NPCs")
+                if not npcs_folder then return nil end
+                local character = plr.Character
+                local root = character and character:FindFirstChild("HumanoidRootPart")
+                if not root then return nil end
+
+                local nearest_merchant = nil
+                local shortest_dist = math.huge
+
+                for _, npc in ipairs(npcs_folder:GetChildren()) do
+                    if npc.Name:lower():find("merchant") then
+                        local part = npc:FindFirstChild("HumanoidRootPart") or npc:FindFirstChild("Head") or npc:FindFirstChildWhichIsA("BasePart")
+                        if part then
+                            local dist = (part.Position - root.Position).Magnitude
+                            if dist < shortest_dist then
+                                shortest_dist = dist
+                                nearest_merchant = npc
+                            end
+                        end
+                    end
+                end
+                return nearest_merchant
+            end
+
+            local function execute_merchant_bulk_sell()
+                local merchant = find_nearest_merchant()
+                if not merchant then
+                    library:Notify("[Merchant] No merchant NPC found in workspace.NPCs!")
+                    return false
+                end
+
+                local part = merchant:FindFirstChild("HumanoidRootPart") or merchant:FindFirstChild("Head") or merchant:FindFirstChildWhichIsA("BasePart")
+                if part then
+                    SmoothTeleport(part.Position + Vector3.new(0, 0, 3))
+                    task.wait(0.5)
+                end
+
+                local click_detector = merchant:FindFirstChildWhichIsA("ClickDetector", true)
+                if click_detector then
+                    fireclickdetector(click_detector)
+                end
+                task.wait(0.5)
+
+                local d_remote = dialogue_remote or (rps:FindFirstChild("Requests") and (rps.Requests:FindFirstChild("PostDialogue") or rps.Requests:FindFirstChild("SendDialogue") or rps.Requests:FindFirstChild("Dialogue")))
+                if not d_remote then
+                    library:Notify("[Merchant] Dialogue remote not found for bulk sell!")
+                    return false
+                end
+
+                d_remote:FireServer({ choice = "Can I sell in bulk?" })
+                task.wait(0.6)
+                d_remote:FireServer({ choice = "Trinkets." })
+                task.wait(0.6)
+                d_remote:FireServer({ choice = "It's a deal." })
+                task.wait(0.8)
+
+                library:Notify("[Merchant] Bulk sold trinkets successfully!")
+                return true
+            end
+
+            local function find_xenyari_npc()
+                local npcs_folder = workspace:FindFirstChild("NPCs")
+                if not npcs_folder then return nil end
+                return npcs_folder:FindFirstChild("Xenyari")
+            end
+
+            local function execute_xenyari_gacha(current_day)
+                local xenyari = find_xenyari_npc()
+                if not xenyari then
+                    library:Notify("[Xenyari] Xenyari NPC not found in workspace.NPCs!")
+                    return false, false
+                end
+
+                local part = xenyari:FindFirstChild("HumanoidRootPart") or xenyari:FindFirstChild("Head") or xenyari:FindFirstChildWhichIsA("BasePart")
+                if part then
+                    SmoothTeleport(part.Position + Vector3.new(0, 0, 3))
+                    task.wait(0.5)
+                end
+
+                if Toggles.GachaUseChair and Toggles.GachaUseChair.Value then
+                    library:Notify("[Xenyari] Sitting on chair before rolling...")
+                    use_chair()
+                    task.wait(0.5)
+                end
+
+                local click_detector = xenyari:FindFirstChildWhichIsA("ClickDetector", true)
+                if not click_detector then
+                    library:Notify("[Xenyari] ClickDetector not found on Xenyari!")
+                    return false, false
+                end
+
+                local obtained_scroll = nil
+                local backpack = plr:FindFirstChildOfClass("Backpack")
+                local backpack_conn
+                if backpack then
+                    backpack_conn = backpack.ChildAdded:Connect(function(child)
+                        if child and (child.Name:lower():find("scroll") or child.Name == "Ice Essence") then
+                            obtained_scroll = child.Name
+                        end
+                    end)
+                end
+
+                local refused_study = false
+                local d_remote = dialogue_remote or (rps:FindFirstChild("Requests") and (rps.Requests:FindFirstChild("PostDialogue") or rps.Requests:FindFirstChild("SendDialogue") or rps.Requests:FindFirstChild("Dialogue")))
+                local dialogue_conn
+                if d_remote then
+                    dialogue_conn = d_remote.OnClientEvent:Connect(function(data)
+                        if type(data) == "table" and type(data.msg) == "string" then
+                            local lower_msg = data.msg:lower()
+                            if lower_msg:find("examine the scroll") or lower_msg:find("study") or lower_msg:find("studying") then
+                                refused_study = true
+                            end
+                        end
+                        if type(data) == "table" and type(data.choices) == "table" and #data.choices > 0 then
+                            task.wait(0.1)
+                            pcall(function()
+                                d_remote:FireServer({ choice = data.choices[1] })
+                            end)
+                        end
+                    end)
+                end
+
+                local player_gui = plr:FindFirstChildOfClass("PlayerGui")
+                local start_time = tick()
+                while tick() - start_time < 15 and not (player_gui and (player_gui:FindFirstChild("CaptchaLoad") or player_gui:FindFirstChild("Captcha"))) do
+                    if refused_study then break end
+                    fireclickdetector(click_detector)
+                    task.wait(0.5)
+                end
+
+                if refused_study then
+                    if dialogue_conn then dialogue_conn:Disconnect() end
+                    if backpack_conn then backpack_conn:Disconnect() end
+                    record_day_rolled(current_day, "studying_scroll")
+                    library:Notify(string.format("[Xenyari] Still studying current scroll - marked day %d as rolled.", current_day))
+                    return true, false
+                end
+
+                local captcha_gui = player_gui and player_gui:WaitForChild("Captcha", 10)
+                if not captcha_gui then
+                    if dialogue_conn then dialogue_conn:Disconnect() end
+                    if backpack_conn then backpack_conn:Disconnect() end
+                    library:Notify("[Xenyari] Captcha failed to appear!")
+                    return false, false
+                end
+
+                local solved, mob_answer = solve_captcha_gui(captcha_gui, false)
+                if not solved then
+                    library:Notify("[Xenyari] Failed to solve captcha: " .. tostring(mob_answer))
+                else
+                    library:Notify("[Xenyari] Solved Captcha: " .. tostring(mob_answer))
+                end
+
+                task.wait(2)
+                record_day_rolled(current_day, "rolled")
+
+                if dialogue_conn then dialogue_conn:Disconnect() end
+                if backpack_conn then backpack_conn:Disconnect() end
+
+                local should_stop_bot = false
+                if obtained_scroll then
+                    library:Notify(string.format("[Xenyari] Rolled %s on Day %d!", obtained_scroll, current_day))
+                    if utility and utility.plain_webhook then
+                        utility:plain_webhook(string.format("@everyone Rolled **%s** on Day **%d**!", obtained_scroll, current_day))
+                    end
+
+                    local stop_scrolls = Options.GachaStopRolls and Options.GachaStopRolls.Value or {}
+                    if stop_scrolls[obtained_scroll] or stop_scrolls["Any Scroll"] then
+                        library:Notify(string.format("[Xenyari] Target scroll obtained: %s! Stopping gacha.", obtained_scroll))
+                        should_stop_bot = true
+                    end
+                end
+
+                return true, should_stop_bot
+            end
+
+            local is_handling_gacha = false
+            local function handle_gacha_day_up(current_day)
+                if is_handling_gacha then return end
+                if not (Toggles.GachaOnDayUp and Toggles.GachaOnDayUp.Value) then return end
+                if has_day_been_rolled(current_day) then return end
+
+                is_handling_gacha = true
+                trinket_bot.is_gacha_in_progress = true
+
+                library:Notify(string.format("[Gacha Bot] Day %d arrived! Checking requirements...", current_day))
+
+                local current_silver = (Get and Get("Silver")) or 0
+                local trinket_val = get_trinket_sell_value()
+                local was_path_running = trinket_bot and trinket_bot.path_running
+
+                if current_silver < 250 then
+                    if not (Toggles.TrinketSellWhileGacha and Toggles.TrinketSellWhileGacha.Value) then
+                        library:Notify(string.format("[Gacha Bot] Silver too low (%d < 250) and Trinket Sell disabled. Skipping day %d.", current_silver, current_day))
+                        trinket_bot.is_gacha_in_progress = false
+                        is_handling_gacha = false
+                        return
+                    end
+
+                    if trinket_val < 250 and (current_silver + trinket_val) < 250 then
+                        library:Notify(string.format("[Gacha Bot] Trinket value (%d) + silver (%d) < 250. Skipping merchant path for day %d.", trinket_val, current_silver, current_day))
+                        trinket_bot.is_gacha_in_progress = false
+                        is_handling_gacha = false
+                        return
+                    end
+
+                    if was_path_running then
+                        trinket_bot.path_running = false
+                        task.wait(0.5)
+                    end
+
+                    library:Notify("[Gacha Bot] Gating to Shore 4 for bulk trinket sell...")
+                    local scan_dist = (Options.GachaScanDistance and Options.GachaScanDistance.Value) or 500
+                    local nearby_shore = scan_players_near_position(SHORE4_SCAN_CFRAME.Position, scan_dist)
+                    if #nearby_shore > 0 and not is_23_mode_safe() then
+                        library:Notify(string.format("[Gacha Bot] Player %s within %.0f studs of Shore 4 and not full 23 players! Aborting sell.", nearby_shore[1].player.Name, nearby_shore[1].distance))
+                        trinket_bot.is_gacha_in_progress = false
+                        is_handling_gacha = false
+                        if was_path_running then
+                            trinket_bot.skip_distance_check = true
+                            task.spawn(ExecutePath, false)
+                        end
+                        return
+                    end
+
+                    local gate_shore_ok = Gate("Shore 4", SHORE4_SCAN_CFRAME.Position)
+                    if not gate_shore_ok then
+                        library:Notify("[Gacha Bot] Failed to gate to Shore 4!")
+                        trinket_bot.is_gacha_in_progress = false
+                        is_handling_gacha = false
+                        if was_path_running then
+                            trinket_bot.skip_distance_check = true
+                            task.spawn(ExecutePath, false)
+                        end
+                        return
+                    end
+
+                    local after_gate_nearby = scan_players_near_position(plr.Character.HumanoidRootPart.Position, scan_dist)
+                    if #after_gate_nearby > 0 and not is_23_mode_safe() then
+                        library:Notify("[Gacha Bot] Player detected at Shore 4 after gating! Aborting sell.")
+                        trinket_bot.is_gacha_in_progress = false
+                        is_handling_gacha = false
+                        if was_path_running then
+                            trinket_bot.skip_distance_check = true
+                            task.spawn(ExecutePath, false)
+                        end
+                        return
+                    end
+
+                    execute_merchant_bulk_sell()
+
+                    current_silver = (Get and Get("Silver")) or 0
+                    if current_silver < 250 then
+                        library:Notify(string.format("[Gacha Bot] Silver still below 250 after selling (%d). Aborting gacha for day %d.", current_silver, current_day))
+                        trinket_bot.is_gacha_in_progress = false
+                        is_handling_gacha = false
+                        if was_path_running then
+                            trinket_bot.skip_distance_check = true
+                            task.spawn(ExecutePath, false)
+                        end
+                        return
+                    end
+                end
+
+                if was_path_running and trinket_bot and trinket_bot.path_running then
+                    trinket_bot.path_running = false
+                    task.wait(0.5)
+                end
+
+                library:Notify("[Gacha Bot] Gating to Skycastle for Xenyari roll...")
+                local scan_dist = (Options.GachaScanDistance and Options.GachaScanDistance.Value) or 500
+                local nearby_sky = scan_players_near_position(SKYCASTLE_SCAN_CFRAME.Position, scan_dist)
+                if #nearby_sky > 0 and not is_23_mode_safe() then
+                    library:Notify(string.format("[Gacha Bot] Player %s within %.0f studs of Skycastle and not full 23 players! Aborting gacha.", nearby_sky[1].player.Name, nearby_sky[1].distance))
+                    trinket_bot.is_gacha_in_progress = false
+                    is_handling_gacha = false
+                    if was_path_running then
+                        trinket_bot.skip_distance_check = true
+                        task.spawn(ExecutePath, false)
+                    end
+                    return
+                end
+
+                local gate_sky_ok = Gate("Skycastle", SKYCASTLE_SCAN_CFRAME.Position)
+                if not gate_sky_ok then
+                    library:Notify("[Gacha Bot] Failed to gate to Skycastle!")
+                    trinket_bot.is_gacha_in_progress = false
+                    is_handling_gacha = false
+                    if was_path_running then
+                        trinket_bot.skip_distance_check = true
+                        task.spawn(ExecutePath, false)
+                    end
+                    return
+                end
+
+                local after_sky_nearby = scan_players_near_position(plr.Character.HumanoidRootPart.Position, scan_dist)
+                if #after_sky_nearby > 0 and not is_23_mode_safe() then
+                    library:Notify("[Gacha Bot] Player detected at Skycastle after gating! Aborting roll.")
+                    trinket_bot.is_gacha_in_progress = false
+                    is_handling_gacha = false
+                    if was_path_running then
+                        trinket_bot.skip_distance_check = true
+                        task.spawn(ExecutePath, false)
+                    end
+                    return
+                end
+
+                local roll_success, should_stop = execute_xenyari_gacha(current_day)
+                if should_stop then
+                    library:Notify("[Gacha Bot] Target scroll obtained! Stopping bot.")
+                    if trinket_bot then trinket_bot.path_running = false end
+                    trinket_bot.is_gacha_in_progress = false
+                    is_handling_gacha = false
+                    return
+                end
+
+                library:Notify("[Gacha Bot] Gacha cycle complete for day " .. current_day .. "! Resuming botting...")
+                trinket_bot.is_gacha_in_progress = false
+                is_handling_gacha = false
+
+                if was_path_running then
+                    trinket_bot.skip_distance_check = true
+                    task.spawn(ExecutePath, false)
+                end
+            end
+
+            local function test_captcha_solver()
+                local player_gui = plr:FindFirstChildOfClass("PlayerGui")
+                local captcha_gui = player_gui and (player_gui:FindFirstChild("Captcha") or player_gui:FindFirstChild("CaptchaLoad"))
+                if not captcha_gui then
+                    library:Notify("No Captcha GUI found in PlayerGui! Open a captcha in-game to test.", 4)
+                    warn("No Captcha GUI currently open in PlayerGui.")
+                    return false
+                end
+
+                local main_frame = captcha_gui:FindFirstChild("MainFrame")
+                local viewport = main_frame and main_frame:FindFirstChild("Viewport")
+                local union = viewport and viewport:FindFirstChild("Union")
+                if not union then
+                    library:Notify("Captcha found, but Viewport.Union is not loaded yet.", 4)
+                    warn("Captcha found, but Viewport.Union is not loaded.")
+                    return false
+                end
+
+                local success, mob_name, score, button = solve_captcha_gui(captcha_gui, true)
+                if success and mob_name then
+                    local button_status = button and ("Button Found: " .. button.Name) or "Button Not Found"
+                    local msg = string.format("Identified: %s (Score: %.4f) | %s", mob_name, score or 0, button_status)
+                    library:Notify(msg, 5)
+                    warn(msg)
+                    return true
+                else
+                    local err_msg = string.format("Solver Failed: %s", tostring(mob_name))
+                    library:Notify(err_msg, 5)
+                    warn(err_msg)
+                    return false
+                end
+            end
+
+            cheat_client.read_csg_points = read_csg_points
+            cheat_client.solve_captcha = solve_captcha_gui
+            cheat_client.find_chair_tool = find_chair_tool
+            cheat_client.is_player_seated_on_chair = is_player_seated_on_chair
+            cheat_client.use_chair = use_chair
+            cheat_client.load_days_rolled = load_days_rolled
+            cheat_client.save_days_rolled = save_days_rolled
+            cheat_client.has_day_been_rolled = has_day_been_rolled
+            cheat_client.record_day_rolled = record_day_rolled
+            cheat_client.get_trinket_sell_value = get_trinket_sell_value
+            cheat_client.scan_players_near_position = scan_players_near_position
+            cheat_client.is_23_mode_safe = is_23_mode_safe
+            cheat_client.find_nearest_merchant = find_nearest_merchant
+            cheat_client.execute_merchant_bulk_sell = execute_merchant_bulk_sell
+            cheat_client.find_xenyari_npc = find_xenyari_npc
+            cheat_client.execute_xenyari_gacha = execute_xenyari_gacha
+            cheat_client.handle_gacha_day_up = handle_gacha_day_up
+            cheat_client.test_captcha_solver = test_captcha_solver
+
             local group_trinket_bot = Tabs.Botting:AddLeftGroupbox("Trinket Bot")
 
             group_trinket_bot:AddInput("PointWaitTime", {
@@ -20635,6 +21391,93 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 Rounding = 0
             })
 
+            local group_gacha_bot = Tabs.Botting:AddLeftGroupbox("Gacha Bot")
+
+            group_gacha_bot:AddToggle("GachaOnDayUp", {
+                Text = "Gacha on Day Up",
+                Default = cheat_client.config.gacha_on_day_up,
+                Tooltip = "Gates to Skycastle and rolls Xenyari gacha whenever the player days up and has over 250 silver"
+            })
+
+            group_gacha_bot:AddToggle("TrinketSellWhileGacha", {
+                Text = "Trinket Sell while Gacha Botting",
+                Default = cheat_client.config.trinket_sell_gacha,
+                Tooltip = "recommended use for 23s only"
+            })
+
+            group_gacha_bot:AddToggle("Gacha23Mode", {
+                Text = "23 Mode",
+                Default = cheat_client.config.gacha_23_mode,
+                Tooltip = "If 23 accounts are in server and none disconnected, bypasses player log distance check at Skycastle/Shore 4"
+            })
+
+            group_gacha_bot:AddToggle("GachaUseChair", {
+                Text = "Use Chair",
+                Default = cheat_client.config.gacha_use_chair,
+                Tooltip = "Sits on a chair from your bag before rolling"
+            })
+
+            group_gacha_bot:AddDropdown("GachaStopRolls", {
+                Text = "Stop on Scroll",
+                Values = {
+                    "Any Scroll",
+                    "Scroll of Fimbulvetr",
+                    "Scroll of Snarvindur",
+                    "Scroll of Percutiens",
+                    "Scroll of Hoppa",
+                    "Scroll of Manus Dei",
+                    "Scroll of Armis",
+                    "Scroll of Celeritas",
+                    "Scroll of Contrarium",
+                    "Scroll of Gelidus",
+                    "Scroll of Hystericus",
+                    "Scroll of Ignis",
+                    "Scroll of Nocere",
+                    "Scroll of Sagitta Sol",
+                    "Scroll of Scrupus",
+                    "Scroll of Telorum",
+                    "Scroll of Tenebris",
+                    "Scroll of Trahere",
+                    "Scroll of Trickstus",
+                    "Scroll of Velo",
+                    "Scroll of Viribus"
+                },
+                Default = cheat_client.config.gacha_stop_rolls or {},
+                Multi = true,
+                AllowNull = true,
+                Tooltip = "Stops rolling once any selected scroll is obtained"
+            })
+
+            group_gacha_bot:AddSlider("GachaScanDistance", {
+                Text = "Player Log Distance",
+                Default = cheat_client.config.gacha_scan_distance or 500,
+                Min = 100,
+                Max = 1500,
+                Rounding = 10,
+                Suffix = " studs",
+                Tooltip = "Proximity radius to scan for other players around Shore 4 and Skycastle"
+            })
+
+            group_gacha_bot:AddButton({
+                Text = "Reset Days Rolled",
+                Tooltip = "Clears the saved days rolled record so all days can be rolled again",
+                Func = function()
+                    cheat_client.save_days_rolled({})
+                    library:Notify("Cleared recorded days rolled history!")
+                end
+            })
+
+            group_gacha_bot:AddButton({
+                Text = "Manual Gacha Roll",
+                Tooltip = "Immediately executes the Xenyari gacha roll routine",
+                Func = function()
+                    local day = utility:getPlayerDays() or (Get and Get("DaysSurvived")) or 1
+                    task.spawn(function()
+                        cheat_client.handle_gacha_day_up(day)
+                    end)
+                end
+            })
+
             local group_trinket_config = Tabs.Botting:AddRightGroupbox("Trinket Bot Config")
             local current_path_label
             local function update_path_label(path_name)
@@ -20717,6 +21560,12 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 if Options.MinPlayerCount then Options.MinPlayerCount:SetValue(settings.min_player_count or 0) end
                 if Options.TrinketBotSpeed then Options.TrinketBotSpeed:SetValue(settings.speed or 100) end
                 if Toggles.show_in_artifact_stream then Toggles.show_in_artifact_stream:SetValue(settings.show_in_artifact_stream or false) end
+                if Toggles.GachaOnDayUp then Toggles.GachaOnDayUp:SetValue(settings.gacha_on_day_up or false) end
+                if Toggles.TrinketSellWhileGacha then Toggles.TrinketSellWhileGacha:SetValue(settings.trinket_sell_gacha or false) end
+                if Toggles.Gacha23Mode then Toggles.Gacha23Mode:SetValue(settings.gacha_23_mode or false) end
+                if Toggles.GachaUseChair then Toggles.GachaUseChair:SetValue(settings.gacha_use_chair or false) end
+                if Options.GachaStopRolls then Options.GachaStopRolls:SetValue(settings.gacha_stop_rolls or {}) end
+                if Options.GachaScanDistance then Options.GachaScanDistance:SetValue(settings.gacha_scan_distance or 500) end
 
                 if mem:HasItem("shared_settings") then
                     local httpService = Services.HttpService
@@ -21662,7 +22511,13 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                             critical_distance = Options.CriticalDistance and Options.CriticalDistance.Value or 60,
                             min_player_count = Options.MinPlayerCount and Options.MinPlayerCount.Value or 0,
                             speed = Options.TrinketBotSpeed and Options.TrinketBotSpeed.Value or 100,
-                            show_in_artifact_stream = Toggles.show_in_artifact_stream and Toggles.show_in_artifact_stream.Value or false
+                            show_in_artifact_stream = Toggles.show_in_artifact_stream and Toggles.show_in_artifact_stream.Value or false,
+                            gacha_on_day_up = Toggles.GachaOnDayUp and Toggles.GachaOnDayUp.Value or false,
+                            trinket_sell_gacha = Toggles.TrinketSellWhileGacha and Toggles.TrinketSellWhileGacha.Value or false,
+                            gacha_23_mode = Toggles.Gacha23Mode and Toggles.Gacha23Mode.Value or false,
+                            gacha_use_chair = Toggles.GachaUseChair and Toggles.GachaUseChair.Value or false,
+                            gacha_stop_rolls = Options.GachaStopRolls and Options.GachaStopRolls.Value or {},
+                            gacha_scan_distance = Options.GachaScanDistance and Options.GachaScanDistance.Value or 500
                         }
                     }
 
@@ -23561,6 +24416,81 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     update_debug_packet_log_text(true)
                 end
             end
+
+            local group_debug_captcha = Tabs.Debug:AddRightGroupbox("Interaction & Solver Debug", "bug")
+
+            group_debug_captcha:AddButton({
+                Text = "Test Captcha Solver",
+                Func = function()
+                    if cheat_client.test_captcha_solver then
+                        cheat_client.test_captcha_solver()
+                    else
+                        library:Notify("Captcha solver not initialized!", 3)
+                    end
+                end
+            })
+
+            group_debug_captcha:AddButton({
+                Text = "Use Chair",
+                Func = function()
+                    if cheat_client.use_chair then
+                        cheat_client.use_chair()
+                    else
+                        library:Notify("Chair utility not initialized!", 3)
+                    end
+                end
+            })
+
+            group_debug_captcha:AddButton({
+                Text = "Test Merchant Bulk Sell",
+                Func = function()
+                    if cheat_client.execute_merchant_bulk_sell then
+                        cheat_client.execute_merchant_bulk_sell()
+                    else
+                        library:Notify("Merchant utility not initialized!", 3)
+                    end
+                end
+            })
+
+            group_debug_captcha:AddButton({
+                Text = "Scan Skycastle Players",
+                Func = function()
+                    if cheat_client.scan_players_near_position then
+                        local SKYCASTLE_SCAN_CFRAME = CFrame.new(539.729858, 3699.88989, -48.7998047, 0, -1, -0, -1, 0, -0, 0, 0, -1)
+                        local scan_dist = (Options.GachaScanDistance and Options.GachaScanDistance.Value) or 500
+                        local nearby = cheat_client.scan_players_near_position(SKYCASTLE_SCAN_CFRAME.Position, scan_dist)
+                        if #nearby == 0 then
+                            library:Notify(string.format("Skycastle clear: 0 players within %d studs", scan_dist), 4)
+                        else
+                            local names = {}
+                            for _, entry in ipairs(nearby) do
+                                table.insert(names, string.format("%s (%.0fs)", entry.player.Name, entry.distance))
+                            end
+                            library:Notify(string.format("Skycastle: %d player(s): %s", #nearby, table.concat(names, ", ")), 5)
+                        end
+                    end
+                end
+            })
+
+            group_debug_captcha:AddButton({
+                Text = "Scan Shore 4 Players",
+                Func = function()
+                    if cheat_client.scan_players_near_position then
+                        local SHORE4_SCAN_CFRAME = CFrame.new(1469.35278, 434.696533, 2777.59888, -1.1920929e-07, 0, 1.00000012, 0, 1, 0, -1.00000012, 0, -1.1920929e-07)
+                        local scan_dist = (Options.GachaScanDistance and Options.GachaScanDistance.Value) or 500
+                        local nearby = cheat_client.scan_players_near_position(SHORE4_SCAN_CFRAME.Position, scan_dist)
+                        if #nearby == 0 then
+                            library:Notify(string.format("Shore 4 clear: 0 players within %d studs", scan_dist), 4)
+                        else
+                            local names = {}
+                            for _, entry in ipairs(nearby) do
+                                table.insert(names, string.format("%s (%.0fs)", entry.player.Name, entry.distance))
+                            end
+                            library:Notify(string.format("Shore 4: %d player(s): %s", #nearby, table.concat(names, ", ")), 5)
+                        end
+                    end
+                end
+            })
         end
 
         do
@@ -28935,9 +29865,18 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             end
 
             utility:Connection(rps.Requests.DaysSurvivedChanged.OnClientEvent, function(days)
+                playerDays = days
+
+                if Toggles and Toggles.GachaOnDayUp and Toggles.GachaOnDayUp.Value then
+                    task.spawn(function()
+                        if cheat_client and cheat_client.handle_gacha_day_up then
+                            cheat_client.handle_gacha_day_up(days)
+                        end
+                    end)
+                end
+
                 if not (Toggles and Toggles.day_farm and Toggles.day_farm.Value) then return end
                 
-                playerDays = days
                 utility:sound("rbxassetid://6729922069",4)
                 utility:plain_webhook(plr.Name .. " is now at " .. playerDays .. " days")
 
