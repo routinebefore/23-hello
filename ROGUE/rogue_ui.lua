@@ -9379,8 +9379,8 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
                 local indicator_container = Instance.new("Frame")
                 indicator_container.Name = "CommitIndicatorContainer"
-                indicator_container.AnchorPoint = Vector2.new(1, 0.5)
-                indicator_container.Position = UDim2.new(1, -28, 0.5, 0)
+                indicator_container.AnchorPoint = Vector2.new(0, 0.5)
+                indicator_container.Position = UDim2.new(0, 24, 0.5, 0)
                 indicator_container.Size = UDim2.new(0, 0, 1, 0)
                 indicator_container.AutomaticSize = Enum.AutomaticSize.X
                 indicator_container.BackgroundTransparency = 1
@@ -9389,7 +9389,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 local ind_layout = Instance.new("UIListLayout")
                 ind_layout.FillDirection = Enum.FillDirection.Horizontal
                 ind_layout.VerticalAlignment = Enum.VerticalAlignment.Center
-                ind_layout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+                ind_layout.HorizontalAlignment = Enum.HorizontalAlignment.Left
                 ind_layout.SortOrder = Enum.SortOrder.LayoutOrder
                 ind_layout.Padding = UDim.new(0, 5)
                 ind_layout.Parent = indicator_container
@@ -9453,8 +9453,8 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
                 local popup = Instance.new("TextButton")
                 popup.Name = "UpdatePopup"
-                popup.AnchorPoint = Vector2.new(1, 1)
-                popup.Position = UDim2.new(1, -10, 0, -5)
+                popup.AnchorPoint = Vector2.new(0, 1)
+                popup.Position = UDim2.new(0, 8, 0, -5)
                 popup.Size = UDim2.new(0, 150, 0, 22)
                 popup.BackgroundColor3 = Color3.fromRGB(24, 24, 27)
                 popup.BorderSizePixel = 0
@@ -20438,103 +20438,69 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             local SHORE4_SCAN_CFRAME = CFrame.new(1469.35278, 434.696533, 2777.59888, -1.1920929e-07, 0, 1.00000012, 0, 1, 0, -1.00000012, 0, -1.1920929e-07)
             local DAYS_ROLLED_PATH = "HYDROXIDE/days_rolled_" .. tostring(plr.UserId) .. ".json"
 
-            local function read_csg_points(union)
-                if not union or not union:IsA("BasePart") then return {} end
-                local raw_data = nil
-                if gethiddenproperty then
-                    local ok, prop = pcall(gethiddenproperty, union, "PhysicalConfigData")
-                    if ok and prop then
-                        if type(prop) == "table" and #prop >= 2 and type(prop[2]) == "string" then
-                            raw_data = prop[2]
-                        elseif type(prop) == "string" and #prop > 50 then
-                            raw_data = prop
-                        end
-                    end
-                    if not raw_data then
-                        for _, alt in ipairs({"BinaryData", "MeshData", "RawData", "ConfigData"}) do
-                            local s, d = pcall(gethiddenproperty, union, alt)
-                            if s and type(d) == "string" and #d > 50 then
-                                raw_data = d
-                                break
+            local cached_csgphs8 = nil
+            local function get_csgphs8()
+                if cached_csgphs8 then return cached_csgphs8 end
+                if isfile and readfile then
+                    local local_paths = { "DEPENDENCIES/captcha.lua", "captcha.lua" }
+                    for _, lp in ipairs(local_paths) do
+                        if isfile(lp) then
+                            local ok_rf, content = pcall(readfile, lp)
+                            if ok_rf and type(content) == "string" and #content > 500 then
+                                local fn = loadstring(content)
+                                if fn then
+                                    local success, mod = pcall(fn)
+                                    if success and type(mod) == "table" and mod.decode and mod.solve then
+                                        cached_csgphs8 = mod
+                                        return cached_csgphs8
+                                    end
+                                end
                             end
                         end
                     end
                 end
-                if not raw_data or type(raw_data) ~= "string" or #raw_data < 60 then
-                    return {}
-                end
-
-                local stream = raw_data
-                local function read_bytes(n)
-                    if #stream < n then return "" end
-                    local sub = stream:sub(1, n)
-                    stream = stream:sub(n + 1, #stream)
-                    return sub
-                end
-
-                read_bytes(51)
-                local points = {}
-                while #stream > 48 do
-                    read_bytes(20)
-                    read_bytes(20)
-                    local ok_unpack, vert_size = pcall(string.unpack, "ii", read_bytes(8))
-                    if not ok_unpack or not vert_size or vert_size <= 0 or vert_size > 100000 then
-                        break
-                    end
-
-                    local count = math.floor(vert_size / 3)
-                    for _ = 1, count do
-                        if #stream < 12 then break end
-                        local ok_f, x, y, z = pcall(string.unpack, "fff", read_bytes(12))
-                        if ok_f and x and y and z then
-                            table.insert(points, Vector3.new(x, y, z))
+                local urls = {
+                    "https://raw.githubusercontent.com/routinebefore/23-hello/refs/heads/main/DEPENDENCIES/captcha.lua",
+                    "https://git.fable.bz/zyu/sentinel-ui/raw/branch/main/dependencies/captcha.lua"
+                }
+                for _, url in ipairs(urls) do
+                    local ok, res = pcall(function()
+                        if game and game.HttpGet then
+                            return game:HttpGet(url, true)
+                        end
+                    end)
+                    if ok and type(res) == "string" and #res > 500 then
+                        local fn = loadstring(res)
+                        if fn then
+                            local success, mod = pcall(fn)
+                            if success and type(mod) == "table" and mod.decode and mod.solve then
+                                cached_csgphs8 = mod
+                                return cached_csgphs8
+                            end
                         end
                     end
-
-                    if #stream < 4 then break end
-                    local ok_face, face_size = pcall(string.unpack, "I", read_bytes(4))
-                    if ok_face and face_size and face_size > 0 and face_size < 100000 then
-                        read_bytes(face_size * 4)
-                    else
-                        break
-                    end
                 end
-
-                return points
+                return nil
             end
 
-            local MOB_SIGNATURES = {
-                ["Golem"] = { 6.943, 17.125, 21.224 },
-                ["Arocknid"] = { 6.220, 11.577, 11.729 },
-                ["Evil Eye"] = { 4.928, 6.636, 11.830 },
-                ["Howler"] = { 3.139, 6.833, 6.839 },
-                ["Zombie Scroom"] = { 4.400, 4.714, 4.793 },
-            }
-
-            local function classify_mob_dimensions(size_vec)
-                local dims = { math.abs(size_vec.X), math.abs(size_vec.Y), math.abs(size_vec.Z) }
-                table.sort(dims)
-
-                local best_mob = "Zombie Scroom"
-                local lowest_error = math.huge
-
-                for mob_name, sig in pairs(MOB_SIGNATURES) do
-                    local sorted_sig = { sig[1], sig[2], sig[3] }
-                    table.sort(sorted_sig)
-
-                    local error_score = 0
-                    for axis = 1, 3 do
-                        local ratio = dims[axis] / sorted_sig[axis]
-                        error_score = error_score + (math.log(math.max(ratio, 0.0001)))^2
+            local function get_union_mesh_data(union)
+                if not gethiddenproperty then return nil end
+                local ok, val = pcall(gethiddenproperty, union, "PhysicalConfigData")
+                if not ok then return nil end
+                if type(val) == "string" and #val > 50 then
+                    return val
+                end
+                if type(val) == "table" then
+                    if type(val[2]) == "string" and #val[2] > 50 then
+                        return val[2]
                     end
-
-                    if error_score < lowest_error then
-                        lowest_error = error_score
-                        best_mob = mob_name
+                    for _, v in pairs(val) do
+                        if type(v) == "string" and #v > 50 then
+                            return v
+                        end
                     end
                 end
-
-                return best_mob, lowest_error
+                return nil
             end
 
             local function solve_captcha_gui(captcha_gui, is_test_mode)
@@ -20548,15 +20514,28 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     return false, "Union or Options not found"
                 end
 
-                local points = read_csg_points(union)
-                if #points == 0 then
-                    return false, "Could not extract CSG points"
+                local csg = get_csgphs8()
+                if not csg then
+                    return false, "CSGPHS8 module could not be loaded"
+                end
+
+                local raw_data = get_union_mesh_data(union)
+                if not raw_data then
+                    return false, "PhysicalConfigData unreadable (gethiddenproperty missing or blocked)"
+                end
+
+                local decoded = nil
+                local ok_dec, err_dec = pcall(function()
+                    decoded = csg.decode(raw_data)
+                end)
+                if not (ok_dec and decoded) then
+                    return false, "CSG decode failed: " .. tostring(err_dec)
                 end
 
                 local camera_cframe = nil
                 if gethiddenproperty then
-                    local ok, cam = pcall(gethiddenproperty, viewport, "CameraCFrame")
-                    if ok and typeof(cam) == "CFrame" then
+                    local ok_cam, cam = pcall(gethiddenproperty, viewport, "CameraCFrame")
+                    if ok_cam and typeof(cam) == "CFrame" then
                         camera_cframe = cam
                     end
                 end
@@ -20564,99 +20543,46 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     camera_cframe = viewport.CurrentCamera.CFrame
                 end
                 if not camera_cframe then
-                    camera_cframe = union.CFrame * CFrame.new(0, 0, 15)
+                    return false, "CameraCFrame not found"
                 end
 
-                local center_point = points[1]
-                local min_ray_err = math.huge
-                for _, pt in ipairs(points) do
-                    local world_p = union.CFrame:PointToWorldSpace(pt)
-                    local offset = world_p - camera_cframe.Position
-                    local depth = offset:Dot(camera_cframe.LookVector)
-                    if depth > 0 then
-                        local perp_sq = math.max(offset:Dot(offset) - depth * depth, 0)
-                        local err = math.sqrt(perp_sq) / depth
-                        if err < min_ray_err then
-                            min_ray_err = err
-                            center_point = pt
-                        end
-                    end
+                local answer, score
+                local ok_sol, err_sol = pcall(function()
+                    local ans, vis_idx, ray_err, sig_score = csg.solve(decoded, union.CFrame, camera_cframe)
+                    answer = ans
+                    score = sig_score
+                end)
+                if not (ok_sol and answer) then
+                    return false, "CSG solve failed: " .. tostring(err_sol)
                 end
 
-                local far_point = points[1]
-                local max_dist = -1
-                for _, pt in ipairs(points) do
-                    local d = (pt - center_point).Magnitude
-                    if d > max_dist then
-                        max_dist = d
-                        far_point = pt
-                    end
+                local btn = options_frame:FindFirstChild(answer)
+                if not btn then
+                    return false, "No option button for " .. tostring(answer)
                 end
 
-                local c1 = center_point
-                local c2 = far_point or (center_point + Vector3.new(20, 20, 20))
-                local cluster1 = {}
-
-                for _ = 1, 10 do
-                    local sum1 = Vector3.zero
-                    local count1 = 0
-                    local sum2 = Vector3.zero
-                    local count2 = 0
-                    cluster1 = {}
-
-                    for _, pt in ipairs(points) do
-                        local d1 = (pt - c1).Magnitude
-                        local d2 = (pt - c2).Magnitude
-                        if d1 <= d2 then
-                            table.insert(cluster1, pt)
-                            sum1 = sum1 + pt
-                            count1 = count1 + 1
-                        else
-                            sum2 = sum2 + pt
-                            count2 = count2 + 1
-                        end
-                    end
-
-                    if count1 > 0 then c1 = sum1 / count1 end
-                    if count2 > 0 then c2 = sum2 / count2 end
-                end
-
-                if #cluster1 == 0 then
-                    cluster1 = points
-                end
-
-                local min_x, min_y, min_z = math.huge, math.huge, math.huge
-                local max_x, max_y, max_z = -math.huge, -math.huge, -math.huge
-
-                for _, pt in ipairs(cluster1) do
-                    min_x = math.min(min_x, pt.X)
-                    max_x = math.max(max_x, pt.X)
-                    min_y = math.min(min_y, pt.Y)
-                    max_y = math.max(max_y, pt.Y)
-                    min_z = math.min(min_z, pt.Z)
-                    max_z = math.max(max_z, pt.Z)
-                end
-
-                local mob_size = Vector3.new(max_x - min_x, max_y - min_y, max_z - min_z)
-                local best_mob, error_score = classify_mob_dimensions(mob_size)
-                local target_button = options_frame:FindFirstChild(best_mob)
-
-                if not is_test_mode and target_button then
+                if not is_test_mode then
+                    task.wait(0.3)
+                    local clicked = false
                     if firesignal then
-                        pcall(firesignal, target_button.MouseButton1Click)
+                        pcall(firesignal, btn.MouseButton1Click)
+                        clicked = true
                     end
-                    if vim then
-                        local pos = target_button.AbsolutePosition
-                        local sz = target_button.AbsoluteSize
+                    if replicatesignal then
+                        pcall(replicatesignal, btn.MouseButton1Click)
+                        clicked = true
+                    end
+                    if not clicked then
                         pcall(function()
-                            vim:SendMouseButtonEvent(pos.X + sz.X / 2, pos.Y + sz.Y / 2, 0, true, game, 0)
-                            task.wait(0.05)
-                            vim:SendMouseButtonEvent(pos.X + sz.X / 2, pos.Y + sz.Y / 2, 0, false, game, 0)
+                            for _, conn in ipairs(getconnections(btn.MouseButton1Click)) do
+                                conn:Fire()
+                                clicked = true
+                            end
                         end)
                     end
                 end
 
-                return true, best_mob, error_score, target_button
+                return true, answer, score, btn
             end
 
             local function find_chair_tool()
@@ -21632,33 +21558,175 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 Max = 300,
                 Rounding = 0
             })
-            end
 
-            do
-            local group_gacha_bot = Tabs.Botting:AddLeftGroupbox("Gacha Bot")
+            group_trinket_bot:AddDivider()
 
-            group_gacha_bot:AddToggle("GachaOnDayUp", {
+            group_trinket_bot:AddToggle("GachaOnDayUp", {
                 Text = "Gacha on Day Up",
                 Default = cheat_client.config.gacha_on_day_up,
                 Tooltip = "Gates to Skycastle and rolls Xenyari gacha whenever the player days up and has over 250 silver"
             })
 
-            group_gacha_bot:AddToggle("TrinketSellWhileGacha", {
-                Text = "Trinket Sell while Gacha Botting",
+            group_trinket_bot:AddToggle("TrinketSellWhileGacha", {
+                Text = "Trinket Sell",
                 Default = cheat_client.config.trinket_sell_gacha,
-                Tooltip = "recommended use for 23s only"
+                Tooltip = "Automatically sells trinkets at Shore 4 merchant when bag has trinkets or before gacha"
             })
 
-            group_gacha_bot:AddToggle("Gacha23Mode", {
+            group_trinket_bot:AddToggle("Gacha23Mode", {
                 Text = "23 Mode",
                 Default = cheat_client.config.gacha_23_mode,
                 Tooltip = "If 23 accounts are in server and none disconnected, bypasses player log distance check at Skycastle/Shore 4"
+            })
+            end
+
+            do
+            local group_gacha_bot = Tabs.Botting:AddLeftGroupbox("Gacha Bot")
+
+            local gacha_bot_running = false
+            local gacha_start_button
+            local gacha_stop_button
+            local gacha_status_label
+
+            local function set_gacha_status(txt)
+                if gacha_status_label and gacha_status_label.SetText then
+                    gacha_status_label:SetText("Status: " .. txt)
+                end
+            end
+
+            local function stop_gacha_bot()
+                if not gacha_bot_running then return end
+                gacha_bot_running = false
+                cheat_client.gacha_bot_running = false
+                if gacha_stop_button then gacha_stop_button:SetVisible(false) end
+                if gacha_start_button then gacha_start_button:SetVisible(true) end
+                set_gacha_status("Stopped")
+                library:Notify("[Gacha Bot] Bot stopped.")
+            end
+
+            local function start_gacha_bot()
+                if gacha_bot_running then return end
+                gacha_bot_running = true
+                cheat_client.gacha_bot_running = true
+                if gacha_start_button then gacha_start_button:SetVisible(false) end
+                if gacha_stop_button then gacha_stop_button:SetVisible(true) end
+                set_gacha_status("Running...")
+                library:Notify("[Gacha Bot] Started autonomous Gacha Bot!")
+
+                task.spawn(function()
+                    while gacha_bot_running and not shared.is_unloading do
+                        local spot_name = (Options.GachaSpot and Options.GachaSpot.Value) or "Sky Castle"
+                        local target_cframe = (spot_name == "Shore 4") and SHORE4_SCAN_CFRAME or SKYCASTLE_SCAN_CFRAME
+                        local char = plr.Character
+                        local hrp = char and FindFirstChild(char, "HumanoidRootPart")
+
+                        if not hrp then
+                            task.wait(1)
+                        else
+                            local scan_dist = (Options.GachaScanDistance and Options.GachaScanDistance.Value) or 500
+                            local nearby = scan_players_near_position(target_cframe.Position, scan_dist)
+                            local is_23_safe = (Toggles.Gacha23Mode and Toggles.Gacha23Mode.Value and is_23_mode_safe())
+
+                            if #nearby > 0 and not is_23_safe then
+                                local stay = (Toggles.GachaStayInServer and Toggles.GachaStayInServer.Value)
+                                if stay then
+                                    set_gacha_status(string.format("Player %s nearby - pausing", nearby[1].player.Name))
+                                    task.wait(3)
+                                else
+                                    set_gacha_status("Player proximity detected - hopping")
+                                    library:Notify(string.format("[Gacha Bot] Player %s within %.0f studs - serverhopping!", nearby[1].player.Name, nearby[1].distance))
+                                    stop_gacha_bot()
+                                    TrinketBotServerhop("Gacha Bot: Player proximity")
+                                    return
+                                end
+                            else
+                                if (hrp.Position - target_cframe.Position).Magnitude > 200 then
+                                    set_gacha_status("Gating to " .. spot_name)
+                                    library:Notify("[Gacha Bot] Gating to " .. spot_name .. "...")
+                                    Gate(spot_name)
+                                    task.wait(2)
+                                end
+
+                                if Toggles.GachaUseChair and Toggles.GachaUseChair.Value then
+                                    if not is_player_seated_on_chair() then
+                                        set_gacha_status("Sitting on chair...")
+                                        use_chair()
+                                        task.wait(1)
+                                    end
+                                end
+
+                                local current_day = utility:getPlayerDays() or (Get and Get("DaysSurvived")) or 1
+                                if not has_day_been_rolled(current_day) then
+                                    set_gacha_status(string.format("Rolling Gacha for Day %d...", current_day))
+                                    library:Notify(string.format("[Gacha Bot] Day %d arrived! Rolling gacha...", current_day))
+
+                                    local current_silver = (Get and Get("Silver")) or 0
+                                    if current_silver < 250 then
+                                        if Toggles.TrinketSellWhileGacha and Toggles.TrinketSellWhileGacha.Value then
+                                            set_gacha_status("Selling trinkets for silver...")
+                                            execute_merchant_bulk_sell()
+                                            task.wait(1)
+                                        end
+                                    end
+
+                                    local rolled, should_stop = execute_xenyari_gacha(current_day)
+                                    if should_stop then
+                                        set_gacha_status("Target Scroll Obtained! Stopped.")
+                                        library:Notify("[Gacha Bot] Target scroll obtained! Stopping bot.")
+                                        stop_gacha_bot()
+                                        return
+                                    end
+
+                                    if not (Toggles.GachaStayInServer and Toggles.GachaStayInServer.Value) then
+                                        set_gacha_status("Day rolled - serverhopping")
+                                        task.wait(1)
+                                        stop_gacha_bot()
+                                        TrinketBotServerhop("Gacha Bot: Day " .. tostring(current_day) .. " rolled")
+                                        return
+                                    end
+                                else
+                                    set_gacha_status(string.format("Waiting for Day Up (Day %d rolled)", current_day))
+                                end
+
+                                task.wait(2)
+                            end
+                        end
+
+                        task.wait(2)
+                    end
+                end)
+            end
+
+            gacha_start_button = group_gacha_bot:AddButton({
+                Text = "Start Gacha Bot",
+                Tooltip = "Starts autonomous Gacha / Day Farming bot just like Sentinel",
+                Func = function()
+                    start_gacha_bot()
+                end
+            })
+
+            gacha_stop_button = group_gacha_bot:AddButton({
+                Text = "Stop Gacha Bot",
+                Tooltip = "Stops the autonomous Gacha Bot",
+                Func = function()
+                    stop_gacha_bot()
+                end
+            })
+            gacha_stop_button:SetVisible(false)
+
+            gacha_status_label = group_gacha_bot:AddLabel("Status: Idle")
+
+            group_gacha_bot:AddDropdown("GachaSpot", {
+                Text = "Gacha Spot",
+                Values = { "Sky Castle", "Shore 4" },
+                Default = "Sky Castle",
+                Tooltip = "Location to wait and roll Xenyari gacha"
             })
 
             group_gacha_bot:AddToggle("GachaUseChair", {
                 Text = "Use Chair",
                 Default = cheat_client.config.gacha_use_chair,
-                Tooltip = "Sits on a chair from your bag before rolling"
+                Tooltip = "Sits on a chair from your bag while waiting / before rolling"
             })
 
             group_gacha_bot:AddDropdown("GachaStopRolls", {
@@ -21702,6 +21770,12 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 Tooltip = "Proximity radius to scan for other players around Shore 4 and Skycastle"
             })
 
+            group_gacha_bot:AddToggle("GachaStayInServer", {
+                Text = "Stay in Server",
+                Default = true,
+                Tooltip = "Stay in server waiting for next day instead of serverhopping"
+            })
+
             group_gacha_bot:AddButton({
                 Text = "Reset Days Rolled",
                 Tooltip = "Clears the saved days rolled record so all days can be rolled again",
@@ -21719,6 +21793,16 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     task.spawn(function()
                         cheat_client.handle_gacha_day_up(day)
                     end)
+                end
+            })
+
+            group_gacha_bot:AddButton({
+                Text = "Test Captcha Solver",
+                Tooltip = "Tests the CSGPHS8 solver against an open Captcha GUI",
+                Func = function()
+                    if cheat_client.test_captcha_solver then
+                        cheat_client.test_captcha_solver()
+                    end
                 end
             })
             end
