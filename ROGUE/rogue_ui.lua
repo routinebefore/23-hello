@@ -9363,11 +9363,22 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
         do
             task.defer(function()
                 if not (library and library.ScreenGui) then return end
-                local main_frame
-                for _, obj in ipairs(library.ScreenGui:GetChildren()) do
-                    if obj.Name == "Main" then
-                        main_frame = obj
-                        break
+                for _, obj in ipairs(library.ScreenGui:GetDescendants()) do
+                    if obj.Name == "CommitIndicatorContainer" or obj.Name == "UpdatePopup" then
+                        pcall(function() obj:Destroy() end)
+                    end
+                end
+
+                local main_frame = window and window.MainFrame
+                if not main_frame and library and library.MainFrame then
+                    main_frame = library.MainFrame
+                end
+                if not main_frame then
+                    for _, obj in ipairs(library.ScreenGui:GetChildren()) do
+                        if obj.Name == "Main" then
+                            main_frame = obj
+                            break
+                        end
                     end
                 end
                 if not main_frame then
@@ -9385,24 +9396,28 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         end
                     end
                 end
-                if not main_frame then return end
 
-                local bottom_bar
-                for _, child in ipairs(main_frame:GetChildren()) do
-                    if child:IsA("Frame") and child.AnchorPoint == Vector2.new(0, 1) and child.Position.Y.Scale == 1 then
-                        bottom_bar = child
-                        break
+                local bottom_bar = (window and window.BottomBar) or (library and library.BottomBar)
+                if not bottom_bar and main_frame then
+                    bottom_bar = main_frame:FindFirstChild("BottomBar")
+                end
+                if not bottom_bar and main_frame then
+                    for _, child in ipairs(main_frame:GetChildren()) do
+                        if child:IsA("Frame") and child.AnchorPoint == Vector2.new(0, 1) and child.Position.Y.Scale == 1 and child.Position.Y.Offset == 0 and child.Size.Y.Offset >= 15 then
+                            bottom_bar = child
+                            break
+                        end
                     end
                 end
                 if bottom_bar then
-                    bottom_bar.Size = UDim2.new(1, 0, 0, 22)
                     bottom_bar.ClipsDescendants = false
                 end
 
                 local target_parent = bottom_bar or main_frame
-                local target_pos = bottom_bar and UDim2.new(0, 14, 0.5, 0) or UDim2.new(0, 14, 1, -11)
+                if not target_parent then return end
+                local target_pos = bottom_bar and UDim2.new(0, 12, 0.5, 0) or UDim2.new(0, 12, 1, -10)
 
-                local running_commit = "a767f61"
+                local running_commit = "782ca0c"
 
                 local indicator_container = Instance.new("Frame")
                 indicator_container.Name = "CommitIndicatorContainer"
@@ -9411,7 +9426,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 indicator_container.Size = UDim2.new(0, 0, 1, 0)
                 indicator_container.AutomaticSize = Enum.AutomaticSize.X
                 indicator_container.BackgroundTransparency = 1
-                indicator_container.ZIndex = 25
+                indicator_container.ZIndex = 30
                 indicator_container.Parent = target_parent
 
                 local ind_layout = Instance.new("UIListLayout")
@@ -9491,7 +9506,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 popup.AutoButtonColor = false
                 popup.Text = ""
                 popup.Visible = false
-                popup.ZIndex = 30
+                popup.ZIndex = 35
                 popup.Parent = target_parent
 
                 local popup_corner = Instance.new("UICorner")
@@ -21617,7 +21632,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             group_trinket_bot:AddToggle("TrinketSellWhileGacha", {
                 Text = "Trinket Sell",
                 Default = cheat_client.config.trinket_sell_gacha,
-                Tooltip = "Automatically sells trinkets at Shore 4 merchant when bag has trinkets or before gacha"
+                Tooltip = "Automatically sells trinkets at Shore 4 only if Gacha on Day Up is enabled and silver is below 250"
             })
 
             group_trinket_bot:AddToggle("Gacha23Mode", {
@@ -21662,8 +21677,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
                 task.spawn(function()
                     while gacha_bot_running and not shared.is_unloading do
-                        local spot_name = (Options.GachaSpot and Options.GachaSpot.Value) or "Sky Castle"
-                        local target_cframe = (spot_name == "Shore 4") and SHORE4_SCAN_CFRAME or SKYCASTLE_SCAN_CFRAME
+                        local target_cframe = SKYCASTLE_SCAN_CFRAME
                         local char = plr.Character
                         local hrp = char and FindFirstChild(char, "HumanoidRootPart")
 
@@ -21687,10 +21701,11 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                                     return
                                 end
                             else
-                                if (hrp.Position - target_cframe.Position).Magnitude > 200 then
-                                    set_gacha_status("Gating to " .. spot_name)
-                                    library:Notify("[Gacha Bot] Gating to " .. spot_name .. "...")
-                                    Gate(spot_name)
+                                local bot_mode = (Options.GachaBotMode and Options.GachaBotMode.Value) or "Active"
+                                if bot_mode == "Active" and (hrp.Position - target_cframe.Position).Magnitude > 200 then
+                                    set_gacha_status("Gating to Sky Castle")
+                                    library:Notify("[Gacha Bot] Gating to Sky Castle...")
+                                    Gate("Sky Castle", target_cframe.Position)
                                     task.wait(2)
                                 end
 
@@ -21703,16 +21718,30 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                                 end
 
                                 local current_day = utility:getPlayerDays() or (Get and Get("DaysSurvived")) or 1
+                                local target_day_val = Options.GachaTargetDay and tonumber(Options.GachaTargetDay.Value)
+                                if target_day_val and target_day_val > 0 and current_day >= target_day_val then
+                                    set_gacha_status(string.format("Target Day %d Reached! Stopped.", target_day_val))
+                                    library:Notify(string.format("[Gacha Bot] Target day %d reached! Stopping bot.", target_day_val))
+                                    stop_gacha_bot()
+                                    return
+                                end
+
                                 if not has_day_been_rolled(current_day) then
                                     set_gacha_status(string.format("Rolling Gacha for Day %d...", current_day))
                                     library:Notify(string.format("[Gacha Bot] Day %d arrived! Rolling gacha...", current_day))
 
                                     local current_silver = (Get and Get("Silver")) or 0
                                     if current_silver < 250 then
-                                        if Toggles.TrinketSellWhileGacha and Toggles.TrinketSellWhileGacha.Value then
+                                        if Toggles.GachaOnDayUp and Toggles.GachaOnDayUp.Value and Toggles.TrinketSellWhileGacha and Toggles.TrinketSellWhileGacha.Value then
+                                            set_gacha_status("Gating to Shore 4 to sell trinkets...")
+                                            Gate("Shore 4", SHORE4_SCAN_CFRAME.Position)
+                                            task.wait(2)
                                             set_gacha_status("Selling trinkets for silver...")
                                             execute_merchant_bulk_sell()
                                             task.wait(1)
+                                            set_gacha_status("Returning to Sky Castle...")
+                                            Gate("Sky Castle", target_cframe.Position)
+                                            task.wait(2)
                                         end
                                     end
 
@@ -21746,7 +21775,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
             gacha_start_button = group_gacha_bot:AddButton({
                 Text = "Start Gacha Bot",
-                Tooltip = "Starts autonomous Gacha / Day Farming bot",
+                Tooltip = "Begins autonomous day progression and Xenyari gacha rolls",
                 Func = function()
                     start_gacha_bot()
                 end
@@ -21754,7 +21783,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
             gacha_stop_button = group_gacha_bot:AddButton({
                 Text = "Stop Gacha Bot",
-                Tooltip = "Stops the autonomous Gacha Bot",
+                Tooltip = "Halts the autonomous gacha routine",
                 Func = function()
                     stop_gacha_bot()
                 end
@@ -21763,17 +21792,41 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
             gacha_status_label = group_gacha_bot:AddLabel("Status: Idle")
 
-            group_gacha_bot:AddDropdown("GachaSpot", {
-                Text = "Gacha Spot",
-                Values = { "Sky Castle", "Shore 4" },
-                Default = "Sky Castle",
-                Tooltip = "Location to wait and roll Xenyari gacha"
+            group_gacha_bot:AddDropdown("GachaBotMode", {
+                Text = "Mode",
+                Values = { "Active", "Stealth" },
+                Default = "Active",
+                Tooltip = "Active proactively gates and moves to the gacha position; Stealth minimizes movement and stays seated"
+            })
+
+            group_gacha_bot:AddSlider("GachaScanDistance", {
+                Text = "Hop Distance",
+                Default = cheat_client.config.gacha_scan_distance or 500,
+                Min = 100,
+                Max = 2500,
+                Rounding = 10,
+                Suffix = " studs",
+                Tooltip = "Proximity threshold that triggers a safety server hop when another player enters range"
+            })
+
+            group_gacha_bot:AddInput("GachaTargetDay", {
+                Text = "Target Day",
+                Numeric = true,
+                Finished = true,
+                Placeholder = "999",
+                Tooltip = "Goal day count after which the bot halts or serverhops"
+            })
+
+            group_gacha_bot:AddToggle("GachaStayInServer", {
+                Text = "Stay in Server",
+                Default = true,
+                Tooltip = "Remains in current server between day cycles instead of hopping immediately"
             })
 
             group_gacha_bot:AddToggle("GachaUseChair", {
                 Text = "Use Chair",
                 Default = cheat_client.config.gacha_use_chair,
-                Tooltip = "Sits on a chair from your bag while waiting / before rolling"
+                Tooltip = "Places and sits on an inventory chair while awaiting day transitions"
             })
 
             group_gacha_bot:AddDropdown("GachaStopRolls", {
@@ -21804,28 +21857,12 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 Default = cheat_client.config.gacha_stop_rolls or {},
                 Multi = true,
                 AllowNull = true,
-                Tooltip = "Stops rolling once any selected scroll is obtained"
-            })
-
-            group_gacha_bot:AddSlider("GachaScanDistance", {
-                Text = "Player Log Distance",
-                Default = cheat_client.config.gacha_scan_distance or 500,
-                Min = 100,
-                Max = 1500,
-                Rounding = 10,
-                Suffix = " studs",
-                Tooltip = "Proximity radius to scan for other players around Shore 4 and Skycastle"
-            })
-
-            group_gacha_bot:AddToggle("GachaStayInServer", {
-                Text = "Stay in Server",
-                Default = true,
-                Tooltip = "Stay in server waiting for next day instead of serverhopping"
+                Tooltip = "Halts the gacha routine once any of the specified scrolls are acquired"
             })
 
             group_gacha_bot:AddButton({
                 Text = "Reset Days Rolled",
-                Tooltip = "Clears the saved days rolled record so all days can be rolled again",
+                Tooltip = "Clears recorded days rolled history to allow rolling previously completed days",
                 Func = function()
                     cheat_client.save_days_rolled({})
                     library:Notify("Cleared recorded days rolled history!")
@@ -21834,22 +21871,12 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
             group_gacha_bot:AddButton({
                 Text = "Manual Gacha Roll",
-                Tooltip = "Immediately executes the Xenyari gacha roll routine",
+                Tooltip = "Immediately executes the Xenyari gacha interaction routine",
                 Func = function()
                     local day = utility:getPlayerDays() or (Get and Get("DaysSurvived")) or 1
                     task.spawn(function()
                         cheat_client.handle_gacha_day_up(day)
                     end)
-                end
-            })
-
-            group_gacha_bot:AddButton({
-                Text = "Test Captcha Solver",
-                Tooltip = "Tests the CSGPHS8 solver against an open Captcha GUI",
-                Func = function()
-                    if cheat_client.test_captcha_solver then
-                        cheat_client.test_captcha_solver()
-                    end
                 end
             })
             end

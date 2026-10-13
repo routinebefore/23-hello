@@ -6276,10 +6276,13 @@ function Library:CreateWindow(WindowInfo)
             BackgroundColor3 = function()
                 return Library:GetBetterColor(Library.Scheme.BackgroundColor, 4)
             end,
+            Name = "BottomBar",
             Position = UDim2.fromScale(0, 1),
             Size = UDim2.new(1, 0, 0, 20),
             Parent = MainFrame,
         })
+        Library.BottomBar = BottomBar
+        Library.MainFrame = MainFrame
         do
             local Cover = Library:MakeCover(BottomBar, "Top")
             Library:AddToRegistry(Cover, {
@@ -7408,6 +7411,8 @@ function Library:CreateWindow(WindowInfo)
         Library.IsRobloxFocused = false
     end))
 
+    Window.BottomBar = BottomBar
+    Window.MainFrame = MainFrame
     return Window
 end
 
