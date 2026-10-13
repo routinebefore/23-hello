@@ -9360,6 +9360,246 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             end
         end)
 
+        do
+            task.defer(function()
+                if not (library and library.ScreenGui) then return end
+                local bottom_bar
+                for _, obj in ipairs(library.ScreenGui:GetDescendants()) do
+                    if obj:IsA("Frame") and obj.Parent and obj.Parent.Name == "Main" and obj.AnchorPoint == Vector2.new(0, 1) and obj.Position == UDim2.fromScale(0, 1) then
+                        bottom_bar = obj
+                        break
+                    end
+                end
+                if not bottom_bar then return end
+
+                bottom_bar.Size = UDim2.new(1, 0, 0, 22)
+                bottom_bar.ClipsDescendants = false
+
+                local running_commit = "a767f61"
+
+                local indicator_container = Instance.new("Frame")
+                indicator_container.Name = "CommitIndicatorContainer"
+                indicator_container.AnchorPoint = Vector2.new(1, 0.5)
+                indicator_container.Position = UDim2.new(1, -28, 0.5, 0)
+                indicator_container.Size = UDim2.new(0, 0, 1, 0)
+                indicator_container.AutomaticSize = Enum.AutomaticSize.X
+                indicator_container.BackgroundTransparency = 1
+                indicator_container.Parent = bottom_bar
+
+                local ind_layout = Instance.new("UIListLayout")
+                ind_layout.FillDirection = Enum.FillDirection.Horizontal
+                ind_layout.VerticalAlignment = Enum.VerticalAlignment.Center
+                ind_layout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+                ind_layout.SortOrder = Enum.SortOrder.LayoutOrder
+                ind_layout.Padding = UDim.new(0, 5)
+                ind_layout.Parent = indicator_container
+
+                local dot = Instance.new("Frame")
+                dot.Name = "CommitDot"
+                dot.LayoutOrder = 1
+                dot.Size = UDim2.fromOffset(6, 6)
+                dot.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
+                dot.BorderSizePixel = 0
+                dot.Parent = indicator_container
+
+                local dot_corner = Instance.new("UICorner")
+                dot_corner.CornerRadius = UDim.new(1, 0)
+                dot_corner.Parent = dot
+
+                local dot_stroke = Instance.new("UIStroke")
+                dot_stroke.Thickness = 1
+                dot_stroke.Color = Color3.fromRGB(20, 20, 20)
+                dot_stroke.Transparency = 0.5
+                dot_stroke.Parent = dot
+
+                local commit_text = Instance.new("TextLabel")
+                commit_text.Name = "CommitText"
+                commit_text.LayoutOrder = 2
+                commit_text.Size = UDim2.new(0, 0, 1, 0)
+                commit_text.AutomaticSize = Enum.AutomaticSize.X
+                commit_text.BackgroundTransparency = 1
+                commit_text.Font = Enum.Font.GothamMedium
+                commit_text.TextSize = 11
+                commit_text.TextColor3 = Color3.fromRGB(150, 150, 150)
+                commit_text.TextXAlignment = Enum.TextXAlignment.Left
+                commit_text.TextYAlignment = Enum.TextYAlignment.Center
+                commit_text.Text = running_commit
+                commit_text.Parent = indicator_container
+
+                local click_area = Instance.new("TextButton")
+                click_area.Name = "ClickArea"
+                click_area.Size = UDim2.fromScale(1, 1)
+                click_area.BackgroundTransparency = 1
+                click_area.Text = ""
+                click_area.ZIndex = 5
+                click_area.Parent = indicator_container
+
+                click_area.MouseEnter:Connect(function()
+                    commit_text.TextColor3 = Color3.fromRGB(225, 225, 225)
+                end)
+                click_area.MouseLeave:Connect(function()
+                    commit_text.TextColor3 = Color3.fromRGB(150, 150, 150)
+                end)
+                click_area.MouseButton1Click:Connect(function()
+                    pcall(function()
+                        if setclipboard then
+                            setclipboard(running_commit)
+                            if library and library.Notify then
+                                library:Notify("Copied commit ID (" .. tostring(running_commit) .. ") to clipboard", 3)
+                            end
+                        end
+                    end)
+                end)
+
+                local popup = Instance.new("TextButton")
+                popup.Name = "UpdatePopup"
+                popup.AnchorPoint = Vector2.new(1, 1)
+                popup.Position = UDim2.new(1, -10, 0, -5)
+                popup.Size = UDim2.new(0, 150, 0, 22)
+                popup.BackgroundColor3 = Color3.fromRGB(24, 24, 27)
+                popup.BorderSizePixel = 0
+                popup.AutoButtonColor = false
+                popup.Text = ""
+                popup.Visible = false
+                popup.ZIndex = 10
+                popup.Parent = bottom_bar
+
+                local popup_corner = Instance.new("UICorner")
+                popup_corner.CornerRadius = UDim.new(0, 5)
+                popup_corner.Parent = popup
+
+                local popup_stroke = Instance.new("UIStroke")
+                popup_stroke.Color = Color3.fromRGB(235, 75, 75)
+                popup_stroke.Thickness = 1
+                popup_stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+                popup_stroke.Parent = popup
+
+                local popup_layout = Instance.new("UIListLayout")
+                popup_layout.FillDirection = Enum.FillDirection.Horizontal
+                popup_layout.VerticalAlignment = Enum.VerticalAlignment.Center
+                popup_layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+                popup_layout.SortOrder = Enum.SortOrder.LayoutOrder
+                popup_layout.Padding = UDim.new(0, 6)
+                popup_layout.Parent = popup
+
+                local popup_dot = Instance.new("Frame")
+                popup_dot.Name = "PopupDot"
+                popup_dot.LayoutOrder = 1
+                popup_dot.Size = UDim2.fromOffset(6, 6)
+                popup_dot.BackgroundColor3 = Color3.fromRGB(235, 75, 75)
+                popup_dot.BorderSizePixel = 0
+                popup_dot.Parent = popup
+
+                local popup_dot_corner = Instance.new("UICorner")
+                popup_dot_corner.CornerRadius = UDim.new(1, 0)
+                popup_dot_corner.Parent = popup_dot
+
+                local popup_text = Instance.new("TextLabel")
+                popup_text.Name = "PopupText"
+                popup_text.LayoutOrder = 2
+                popup_text.AutomaticSize = Enum.AutomaticSize.XY
+                popup_text.BackgroundTransparency = 1
+                popup_text.Font = Enum.Font.GothamBold
+                popup_text.Text = "REFRESH FOR UPDATES"
+                popup_text.TextSize = 10
+                popup_text.TextColor3 = Color3.fromRGB(255, 110, 110)
+                popup_text.Parent = popup
+
+                popup.MouseEnter:Connect(function()
+                    popup.BackgroundColor3 = Color3.fromRGB(34, 34, 38)
+                    popup_text.TextColor3 = Color3.fromRGB(255, 140, 140)
+                end)
+                popup.MouseLeave:Connect(function()
+                    popup.BackgroundColor3 = Color3.fromRGB(24, 24, 27)
+                    popup_text.TextColor3 = Color3.fromRGB(255, 110, 110)
+                end)
+                popup.MouseButton1Click:Connect(function()
+                    if library and library.Notify then
+                        library:Notify("New update detected! Please re-run the loader script to reload.", 6)
+                    end
+                end)
+
+                local function fetch_remote_commit()
+                    local result = nil
+                    pcall(function()
+                        if game and game.HttpGet then
+                            local body = game:HttpGet("https://github.com/routinebefore/23-hello/commits/main.atom", true)
+                            if type(body) == "string" and #body > 0 then
+                                local sha = body:match("[Cc]ommit/([0-9a-fA-F]+)")
+                                if sha and #sha >= 7 then
+                                    result = sha:sub(1, 7):lower()
+                                    return
+                                end
+                            end
+                        end
+                    end)
+                    if result then return result end
+                    pcall(function()
+                        local req = http_request or request or (syn and syn.request)
+                        if req then
+                            local resp = req({
+                                Url = "https://github.com/routinebefore/23-hello/commits/main.atom",
+                                Method = "GET",
+                                Headers = {
+                                    ["Cache-Control"] = "no-cache"
+                                }
+                            })
+                            if resp and resp.Body then
+                                local sha = resp.Body:match("[Cc]ommit/([0-9a-fA-F]+)")
+                                if sha and #sha >= 7 then
+                                    result = sha:sub(1, 7):lower()
+                                    return
+                                end
+                            end
+                        end
+                    end)
+                    if result then return result end
+                    pcall(function()
+                        if game and game.HttpGet then
+                            local body = game:HttpGet("https://api.github.com/repos/routinebefore/23-hello/commits/main", true)
+                            if type(body) == "string" and #body > 0 then
+                                local sha = body:match('"sha"%s*:%s*"([0-9a-fA-F]+)"')
+                                if sha and #sha >= 7 then
+                                    result = sha:sub(1, 7):lower()
+                                end
+                            end
+                        end
+                    end)
+                    return result
+                end
+
+                local function update_state(is_latest, commit_id)
+                    if commit_id and #commit_id >= 7 then
+                        commit_text.Text = commit_id:sub(1, 7)
+                    end
+                    if is_latest then
+                        dot.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
+                        popup.Visible = false
+                    else
+                        dot.BackgroundColor3 = Color3.fromRGB(235, 75, 75)
+                        popup.Visible = true
+                    end
+                end
+
+                task.spawn(function()
+                    task.wait(1.5)
+                    local initial_sha = fetch_remote_commit()
+                    if initial_sha and #initial_sha >= 7 then
+                        running_commit = initial_sha
+                    end
+                    update_state(true, running_commit)
+
+                    while task.wait(60) do
+                        local latest = fetch_remote_commit()
+                        if latest and #latest >= 7 then
+                            local is_latest = (latest == running_commit)
+                            update_state(is_latest, running_commit)
+                        end
+                    end
+                end)
+            end)
+        end
+
         local Tabs = {
             Combat = window:AddTab("Combat", "sword"),
             Visuals = window:AddTab("Visuals", "eye"),
@@ -20193,7 +20433,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     end
                 end
             end
-
+            do
             local SKYCASTLE_SCAN_CFRAME = CFrame.new(539.729858, 3699.88989, -48.7998047, 0, -1, -0, -1, 0, -0, 0, 0, -1)
             local SHORE4_SCAN_CFRAME = CFrame.new(1469.35278, 434.696533, 2777.59888, -1.1920929e-07, 0, 1.00000012, 0, 1, 0, -1.00000012, 0, -1.1920929e-07)
             local DAYS_ROLLED_PATH = "HYDROXIDE/days_rolled_" .. tostring(plr.UserId) .. ".json"
@@ -20937,7 +21177,9 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             cheat_client.execute_xenyari_gacha = execute_xenyari_gacha
             cheat_client.handle_gacha_day_up = handle_gacha_day_up
             cheat_client.test_captcha_solver = test_captcha_solver
+            end
 
+            do
             local group_trinket_bot = Tabs.Botting:AddLeftGroupbox("Trinket Bot")
 
             group_trinket_bot:AddInput("PointWaitTime", {
@@ -21390,7 +21632,9 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 Max = 300,
                 Rounding = 0
             })
+            end
 
+            do
             local group_gacha_bot = Tabs.Botting:AddLeftGroupbox("Gacha Bot")
 
             group_gacha_bot:AddToggle("GachaOnDayUp", {
@@ -21477,7 +21721,9 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     end)
                 end
             })
+            end
 
+            do
             local group_trinket_config = Tabs.Botting:AddRightGroupbox("Trinket Bot Config")
             local current_path_label
             local function update_path_label(path_name)
@@ -22751,7 +22997,9 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     stop_button:SetVisible(is_running)
                 end
             end)
+            end
 
+            do
             local group_trinket_looping = Tabs.Botting:AddRightGroupbox("Looping Settings")
 
             group_trinket_looping:AddToggle("StayInServer", {
@@ -22781,8 +23029,10 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 Suffix = "m",
                 Tooltip = "Wait time before respawning and restarting path (in minutes)"
             })
+            end
 
             if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 then
+                do
                 local lives_table = {
                     ["Azael"] = 2,
                     ["Kasparan"] = 4,
@@ -22911,6 +23161,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         task.wait(15)
                     end
                 end)
+                end
             end
 
             local function drop_item(item)
