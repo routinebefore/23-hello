@@ -9363,28 +9363,56 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
         do
             task.defer(function()
                 if not (library and library.ScreenGui) then return end
-                local bottom_bar
-                for _, obj in ipairs(library.ScreenGui:GetDescendants()) do
-                    if obj:IsA("Frame") and obj.Parent and obj.Parent.Name == "Main" and obj.AnchorPoint == Vector2.new(0, 1) and obj.Position == UDim2.fromScale(0, 1) then
-                        bottom_bar = obj
+                local main_frame
+                for _, obj in ipairs(library.ScreenGui:GetChildren()) do
+                    if obj.Name == "Main" then
+                        main_frame = obj
                         break
                     end
                 end
-                if not bottom_bar then return end
+                if not main_frame then
+                    for _, obj in ipairs(library.ScreenGui:GetDescendants()) do
+                        if obj:IsA("TextLabel") and obj.Text == "SGW Hub | Alpha 1.6.7" then
+                            local p = obj.Parent
+                            while p and p ~= library.ScreenGui do
+                                if p.Name == "Main" or p.Parent == library.ScreenGui then
+                                    main_frame = p
+                                    break
+                                end
+                                p = p.Parent
+                            end
+                            break
+                        end
+                    end
+                end
+                if not main_frame then return end
 
-                bottom_bar.Size = UDim2.new(1, 0, 0, 22)
-                bottom_bar.ClipsDescendants = false
+                local bottom_bar
+                for _, child in ipairs(main_frame:GetChildren()) do
+                    if child:IsA("Frame") and child.AnchorPoint == Vector2.new(0, 1) and child.Position.Y.Scale == 1 then
+                        bottom_bar = child
+                        break
+                    end
+                end
+                if bottom_bar then
+                    bottom_bar.Size = UDim2.new(1, 0, 0, 22)
+                    bottom_bar.ClipsDescendants = false
+                end
+
+                local target_parent = bottom_bar or main_frame
+                local target_pos = bottom_bar and UDim2.new(0, 14, 0.5, 0) or UDim2.new(0, 14, 1, -11)
 
                 local running_commit = "a767f61"
 
                 local indicator_container = Instance.new("Frame")
                 indicator_container.Name = "CommitIndicatorContainer"
                 indicator_container.AnchorPoint = Vector2.new(0, 0.5)
-                indicator_container.Position = UDim2.new(0, 24, 0.5, 0)
+                indicator_container.Position = target_pos
                 indicator_container.Size = UDim2.new(0, 0, 1, 0)
                 indicator_container.AutomaticSize = Enum.AutomaticSize.X
                 indicator_container.BackgroundTransparency = 1
-                indicator_container.Parent = bottom_bar
+                indicator_container.ZIndex = 25
+                indicator_container.Parent = target_parent
 
                 local ind_layout = Instance.new("UIListLayout")
                 ind_layout.FillDirection = Enum.FillDirection.Horizontal
@@ -9400,6 +9428,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 dot.Size = UDim2.fromOffset(6, 6)
                 dot.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
                 dot.BorderSizePixel = 0
+                dot.ZIndex = 26
                 dot.Parent = indicator_container
 
                 local dot_corner = Instance.new("UICorner")
@@ -9424,6 +9453,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 commit_text.TextXAlignment = Enum.TextXAlignment.Left
                 commit_text.TextYAlignment = Enum.TextYAlignment.Center
                 commit_text.Text = running_commit
+                commit_text.ZIndex = 26
                 commit_text.Parent = indicator_container
 
                 local click_area = Instance.new("TextButton")
@@ -9431,7 +9461,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 click_area.Size = UDim2.fromScale(1, 1)
                 click_area.BackgroundTransparency = 1
                 click_area.Text = ""
-                click_area.ZIndex = 5
+                click_area.ZIndex = 27
                 click_area.Parent = indicator_container
 
                 click_area.MouseEnter:Connect(function()
@@ -9454,15 +9484,15 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 local popup = Instance.new("TextButton")
                 popup.Name = "UpdatePopup"
                 popup.AnchorPoint = Vector2.new(0, 1)
-                popup.Position = UDim2.new(0, 8, 0, -5)
+                popup.Position = bottom_bar and UDim2.new(0, 8, 0, -5) or UDim2.new(0, 8, 1, -25)
                 popup.Size = UDim2.new(0, 150, 0, 22)
                 popup.BackgroundColor3 = Color3.fromRGB(24, 24, 27)
                 popup.BorderSizePixel = 0
                 popup.AutoButtonColor = false
                 popup.Text = ""
                 popup.Visible = false
-                popup.ZIndex = 10
-                popup.Parent = bottom_bar
+                popup.ZIndex = 30
+                popup.Parent = target_parent
 
                 local popup_corner = Instance.new("UICorner")
                 popup_corner.CornerRadius = UDim.new(0, 5)
@@ -20561,26 +20591,43 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     return false, "No option button for " .. tostring(answer)
                 end
 
-                if not is_test_mode then
-                    task.wait(0.3)
-                    local clicked = false
-                    if firesignal then
-                        pcall(firesignal, btn.MouseButton1Click)
-                        clicked = true
-                    end
-                    if replicatesignal then
-                        pcall(replicatesignal, btn.MouseButton1Click)
-                        clicked = true
-                    end
-                    if not clicked then
-                        pcall(function()
-                            for _, conn in ipairs(getconnections(btn.MouseButton1Click)) do
-                                conn:Fire()
-                                clicked = true
-                            end
-                        end)
-                    end
+                task.wait(0.3)
+                local clicked = false
+                if firesignal then
+                    pcall(firesignal, btn.MouseButton1Click)
+                    pcall(firesignal, btn.MouseButton1Down)
+                    pcall(firesignal, btn.MouseButton1Up)
+                    pcall(firesignal, btn.Activated)
+                    clicked = true
                 end
+                if replicatesignal then
+                    pcall(replicatesignal, btn.MouseButton1Click)
+                    clicked = true
+                end
+                pcall(function()
+                    if getconnections then
+                        for _, conn in ipairs(getconnections(btn.MouseButton1Click)) do
+                            conn:Fire()
+                            clicked = true
+                        end
+                        for _, conn in ipairs(getconnections(btn.MouseButton1Down)) do
+                            conn:Fire()
+                        end
+                        for _, conn in ipairs(getconnections(btn.Activated)) do
+                            conn:Fire()
+                        end
+                    end
+                end)
+                pcall(function()
+                    local vim = game:GetService("VirtualInputManager")
+                    if vim and btn.AbsolutePosition and btn.AbsoluteSize then
+                        local pos = btn.AbsolutePosition + (btn.AbsoluteSize / 2)
+                        vim:SendMouseButtonEvent(pos.X, pos.Y, 0, true, game, 0)
+                        task.wait(0.05)
+                        vim:SendMouseButtonEvent(pos.X, pos.Y, 0, false, game, 0)
+                        clicked = true
+                    end
+                end)
 
                 return true, answer, score, btn
             end
@@ -21070,10 +21117,10 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     return false
                 end
 
-                local success, mob_name, score, button = solve_captcha_gui(captcha_gui, true)
+                local success, mob_name, score, button = solve_captcha_gui(captcha_gui, false)
                 if success and mob_name then
-                    local button_status = button and ("Button Found: " .. button.Name) or "Button Not Found"
-                    local msg = string.format("Identified: %s (Score: %.4f) | %s", mob_name, score or 0, button_status)
+                    local button_status = button and ("Clicked: " .. button.Name) or "Button Not Found"
+                    local msg = string.format("Identified & Clicked: %s (Score: %.4f) | %s", mob_name, score or 0, button_status)
                     library:Notify(msg, 5)
                     warn(msg)
                     return true
@@ -21699,7 +21746,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
             gacha_start_button = group_gacha_bot:AddButton({
                 Text = "Start Gacha Bot",
-                Tooltip = "Starts autonomous Gacha / Day Farming bot just like Sentinel",
+                Tooltip = "Starts autonomous Gacha / Day Farming bot",
                 Func = function()
                     start_gacha_bot()
                 end
