@@ -5960,6 +5960,11 @@ function Library:CreateWindow(WindowInfo)
     local ResizeButton
     local Tabs
     local Container
+    local BottomBar
+    local CommitIndicator
+    local CommitDot
+    local CommitLabel
+    local UpdatePopup
     do
         Library.KeybindFrame, Library.KeybindContainer = Library:AddDraggableMenu("Keybinds")
         Library.KeybindFrame.AnchorPoint = Vector2.new(0, 0.5)
@@ -6271,7 +6276,7 @@ function Library:CreateWindow(WindowInfo)
         end
 
         --// Bottom Bar \\--
-        local BottomBar = New("Frame", {
+        BottomBar = New("Frame", {
             AnchorPoint = Vector2.new(0, 1),
             BackgroundColor3 = function()
                 return Library:GetBetterColor(Library.Scheme.BackgroundColor, 4)
@@ -6281,6 +6286,7 @@ function Library:CreateWindow(WindowInfo)
             Size = UDim2.new(1, 0, 0, 20),
             Parent = MainFrame,
         })
+        BottomBar.ClipsDescendants = false
         Library.BottomBar = BottomBar
         Library.MainFrame = MainFrame
         do
@@ -6305,6 +6311,161 @@ function Library:CreateWindow(WindowInfo)
             TextTransparency = 0.5,
             Parent = BottomBar,
         })
+
+        --// Commit Indicator (Bottom Left) \\--
+        CommitIndicator = New("Frame", {
+            AnchorPoint = Vector2.new(0, 0.5),
+            BackgroundTransparency = 1,
+            Name = "CommitIndicator",
+            Position = UDim2.new(0, 10, 0.5, 0),
+            Size = UDim2.new(0, 0, 1, 0),
+            AutomaticSize = Enum.AutomaticSize.X,
+            ZIndex = 25,
+            Parent = BottomBar,
+        })
+
+        New("UIListLayout", {
+            FillDirection = Enum.FillDirection.Horizontal,
+            HorizontalAlignment = Enum.HorizontalAlignment.Left,
+            Padding = UDim.new(0, 5),
+            SortOrder = Enum.SortOrder.LayoutOrder,
+            VerticalAlignment = Enum.VerticalAlignment.Center,
+            Parent = CommitIndicator,
+        })
+
+        CommitDot = New("Frame", {
+            BackgroundColor3 = Color3.fromRGB(46, 204, 113),
+            BorderSizePixel = 0,
+            LayoutOrder = 1,
+            Name = "CommitDot",
+            Size = UDim2.fromOffset(6, 6),
+            ZIndex = 26,
+            Parent = CommitIndicator,
+        })
+        New("UICorner", {
+            CornerRadius = UDim.new(1, 0),
+            Parent = CommitDot,
+        })
+        New("UIStroke", {
+            Color = Color3.fromRGB(20, 20, 20),
+            Thickness = 1,
+            Transparency = 0.5,
+            Parent = CommitDot,
+        })
+
+        CommitLabel = New("TextLabel", {
+            AutomaticSize = Enum.AutomaticSize.X,
+            BackgroundTransparency = 1,
+            Font = Enum.Font.GothamMedium,
+            LayoutOrder = 2,
+            Name = "CommitLabel",
+            Size = UDim2.new(0, 0, 1, 0),
+            Text = "...",
+            TextColor3 = Color3.fromRGB(150, 150, 150),
+            TextSize = 11,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            TextYAlignment = Enum.TextYAlignment.Center,
+            ZIndex = 26,
+            Parent = CommitIndicator,
+        })
+
+        local CommitClickArea = New("TextButton", {
+            BackgroundTransparency = 1,
+            Name = "CommitClickArea",
+            Size = UDim2.fromScale(1, 1),
+            Text = "",
+            ZIndex = 27,
+            Parent = CommitIndicator,
+        })
+        CommitClickArea.MouseEnter:Connect(function()
+            CommitLabel.TextColor3 = Color3.fromRGB(235, 235, 235)
+        end)
+        CommitClickArea.MouseLeave:Connect(function()
+            CommitLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+        end)
+        CommitClickArea.MouseButton1Click:Connect(function()
+            pcall(function()
+                if setclipboard then
+                    setclipboard(CommitLabel.Text)
+                    Library:Notify("Copied commit SHA (" .. tostring(CommitLabel.Text) .. ") to clipboard", 3)
+                end
+            end)
+        end)
+
+        --// Update Available Popup \\--
+        UpdatePopup = New("TextButton", {
+            AnchorPoint = Vector2.new(0, 1),
+            AutoButtonColor = false,
+            BackgroundColor3 = Color3.fromRGB(24, 24, 27),
+            BorderSizePixel = 0,
+            Name = "UpdatePopup",
+            Position = UDim2.new(0, 8, 0, -6),
+            Size = UDim2.new(0, 168, 0, 26),
+            Text = "",
+            Visible = false,
+            ZIndex = 50,
+            Parent = BottomBar,
+        })
+        New("UICorner", {
+            CornerRadius = UDim.new(0, 6),
+            Parent = UpdatePopup,
+        })
+        New("UIStroke", {
+            ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+            Color = Color3.fromRGB(239, 68, 68),
+            Thickness = 1.2,
+            Parent = UpdatePopup,
+        })
+
+        New("UIListLayout", {
+            FillDirection = Enum.FillDirection.Horizontal,
+            HorizontalAlignment = Enum.HorizontalAlignment.Center,
+            Padding = UDim.new(0, 6),
+            SortOrder = Enum.SortOrder.LayoutOrder,
+            VerticalAlignment = Enum.VerticalAlignment.Center,
+            Parent = UpdatePopup,
+        })
+
+        local PopupDot = New("Frame", {
+            BackgroundColor3 = Color3.fromRGB(239, 68, 68),
+            BorderSizePixel = 0,
+            LayoutOrder = 1,
+            Name = "PopupDot",
+            Size = UDim2.fromOffset(6, 6),
+            ZIndex = 52,
+            Parent = UpdatePopup,
+        })
+        New("UICorner", {
+            CornerRadius = UDim.new(1, 0),
+            Parent = PopupDot,
+        })
+
+        local PopupText = New("TextLabel", {
+            BackgroundTransparency = 1,
+            Font = Enum.Font.GothamBold,
+            LayoutOrder = 2,
+            Name = "PopupText",
+            Size = UDim2.new(0, 130, 1, 0),
+            Text = "UPDATE AVAILABLE",
+            TextColor3 = Color3.fromRGB(255, 120, 120),
+            TextSize = 10,
+            TextXAlignment = Enum.TextXAlignment.Center,
+            TextYAlignment = Enum.TextYAlignment.Center,
+            ZIndex = 52,
+            Parent = UpdatePopup,
+        })
+
+        UpdatePopup.MouseEnter:Connect(function()
+            UpdatePopup.BackgroundColor3 = Color3.fromRGB(36, 36, 42)
+            PopupText.TextColor3 = Color3.fromRGB(255, 155, 155)
+        end)
+        UpdatePopup.MouseLeave:Connect(function()
+            UpdatePopup.BackgroundColor3 = Color3.fromRGB(24, 24, 27)
+            PopupText.TextColor3 = Color3.fromRGB(255, 120, 120)
+        end)
+        UpdatePopup.MouseButton1Click:Connect(function()
+            Library:Notify("New update detected! Please re-run the loader script to reload.", 6)
+        end)
 
         --// Resize Button
         if WindowInfo.Resizable then
@@ -7413,6 +7574,28 @@ function Library:CreateWindow(WindowInfo)
 
     Window.BottomBar = BottomBar
     Window.MainFrame = MainFrame
+    Window.CommitIndicator = CommitIndicator
+    Window.CommitDot = CommitDot
+    Window.CommitLabel = CommitLabel
+    Window.UpdatePopup = UpdatePopup
+
+    function Window:SetCommitStatus(CommitId, IsLatest)
+        if typeof(CommitId) == "string" and #CommitId >= 7 then
+            CommitLabel.Text = CommitId:sub(1, 7)
+        end
+        if IsLatest then
+            CommitDot.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
+            UpdatePopup.Visible = false
+        else
+            CommitDot.BackgroundColor3 = Color3.fromRGB(239, 68, 68)
+            UpdatePopup.Visible = true
+        end
+    end
+
+    Library.SetCommitStatus = function(self, CommitId, IsLatest)
+        Window:SetCommitStatus(CommitId, IsLatest)
+    end
+
     return Window
 end
 
