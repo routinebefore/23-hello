@@ -9361,6 +9361,88 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             end
         end)
 
+        local running_commit = "bc09798"
+        local running_date = "2026-10-14 00:17:19 UTC"
+        local running_message = "Add commit right-click details notification and redesign update popup to match Linoria UI"
+
+        local function format_date_with_relative(date_str)
+            if type(date_str) ~= "string" or #date_str == 0 or date_str == "Unknown" then
+                return tostring(date_str)
+            end
+            if date_str:find("%(") and date_str:find("%)") then
+                return date_str
+            end
+            local y, m, d, hh, mm, ss = date_str:match("(%d+)-(%d+)-(%d+)[T%s](%d+):(%d+):(%d+)")
+            if not (y and m and d and hh and mm and ss) then
+                return date_str
+            end
+            local base_date = string.format("%s-%s-%s %s:%s:%s UTC", y, m, d, hh, mm, ss)
+            local rel = ""
+            pcall(function()
+                local target_table = {
+                    year = tonumber(y),
+                    month = tonumber(m),
+                    day = tonumber(d),
+                    hour = tonumber(hh),
+                    min = tonumber(mm),
+                    sec = tonumber(ss)
+                }
+                local now = os.time()
+                local now_utc = os.date("!*t", now)
+                local diff = os.time(now_utc) - os.time(target_table)
+                if diff < 0 then
+                    rel = "just now"
+                elseif diff < 60 then
+                    rel = string.format("%d seconds ago", math.max(1, math.floor(diff)))
+                elseif diff < 120 then
+                    rel = "1 minute ago"
+                elseif diff < 3600 then
+                    rel = string.format("%d minutes ago", math.floor(diff / 60))
+                elseif diff < 7200 then
+                    rel = "1 hour ago"
+                elseif diff < 86400 then
+                    rel = string.format("%d hours ago", math.floor(diff / 3600))
+                elseif diff < 172800 then
+                    rel = "1 day ago"
+                elseif diff < 2592000 then
+                    rel = string.format("%d days ago", math.floor(diff / 86400))
+                elseif diff < 5184000 then
+                    rel = "1 month ago"
+                elseif diff < 31536000 then
+                    rel = string.format("%d months ago", math.floor(diff / 2592000))
+                else
+                    rel = string.format("%d years ago", math.floor(diff / 31536000))
+                end
+            end)
+            if #rel > 0 then
+                return string.format("%s (%s)", base_date, rel)
+            end
+            return base_date
+        end
+
+        local function get_relative_time(date_str)
+            if type(date_str) ~= "string" or #date_str == 0 or date_str == "Unknown" then
+                return nil
+            end
+            local formatted = format_date_with_relative(date_str)
+            if formatted then
+                local rel = formatted:match("%((.+)%)")
+                if rel and #rel > 0 then
+                    return rel
+                end
+            end
+            return nil
+        end
+
+        local function format_commit_sha_display(sha, date_str)
+            local s = tostring(sha or running_commit):sub(1, 7)
+            local rel = get_relative_time(date_str or running_date)
+            if rel and #rel > 0 then
+                return string.format("%s (%s)", s, rel)
+            end
+            return s
+        end
+
         do
             local original_toggle = library.Toggle
             local loading_animation_played = false
@@ -9406,7 +9488,6 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 local screen_gui = library.ScreenGui or main_frame.Parent
 
                 local bg_color = Color3.fromRGB(21, 21, 21)
-                local container_bg = Color3.fromRGB(25, 25, 25)
                 local main_color = Color3.fromRGB(33, 33, 33)
                 local accent_color = Color3.fromRGB(0, 240, 255)
                 local outline_color = Color3.fromRGB(56, 56, 56)
@@ -9451,6 +9532,8 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 right_half.ZIndex = 50
                 right_half.Parent = overlay
 
+                local initial_commit_display = format_commit_sha_display(running_commit, running_date)
+
                 local function build_canvas(parent_half, is_right)
                     local canvas = Instance.new("Frame")
                     canvas.Name = "Canvas"
@@ -9491,7 +9574,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
                     local top_title = Instance.new("TextLabel")
                     top_title.Name = "TopTitle"
-                    top_title.Size = UDim2.new(0.3, -8, 0, 48)
+                    top_title.Size = UDim2.new(1, -24, 0, 48)
                     top_title.Position = UDim2.new(0, 12, 0, 0)
                     top_title.BackgroundTransparency = 1
                     top_title.Text = "SGW Hub | Alpha 1.6.7"
@@ -9502,147 +9585,20 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     top_title.ZIndex = 52
                     top_title.Parent = canvas
 
-                    local top_tab_name = Instance.new("TextLabel")
-                    top_tab_name.Name = "TopTabName"
-                    top_tab_name.Size = UDim2.new(0.7, -49, 0, 16)
-                    top_tab_name.Position = UDim2.new(0.3, 8, 0, 8)
-                    top_tab_name.BackgroundTransparency = 1
-                    top_tab_name.Text = "Loader"
-                    top_tab_name.Font = font_main
-                    top_tab_name.TextSize = 14
-                    top_tab_name.TextColor3 = font_color
-                    top_tab_name.TextXAlignment = Enum.TextXAlignment.Left
-                    top_tab_name.ZIndex = 52
-                    top_tab_name.Parent = canvas
-
-                    local top_tab_desc = Instance.new("TextLabel")
-                    top_tab_desc.Name = "TopTabDesc"
-                    top_tab_desc.Size = UDim2.new(0.7, -49, 0, 14)
-                    top_tab_desc.Position = UDim2.new(0.3, 8, 0, 26)
-                    top_tab_desc.BackgroundTransparency = 1
-                    top_tab_desc.Text = "Initializing SGW Hub components..."
-                    top_tab_desc.Font = font_main
-                    top_tab_desc.TextSize = 12
-                    top_tab_desc.TextColor3 = sub_color
-                    top_tab_desc.TextXAlignment = Enum.TextXAlignment.Left
-                    top_tab_desc.ZIndex = 52
-                    top_tab_desc.Parent = canvas
-
-                    local vert_line = Instance.new("Frame")
-                    vert_line.Name = "SidebarDivider"
-                    vert_line.Size = UDim2.new(0, 1, 1, -69)
-                    vert_line.Position = UDim2.new(0.3, 0, 0, 48)
-                    vert_line.BackgroundColor3 = outline_color
-                    vert_line.BorderSizePixel = 0
-                    vert_line.ZIndex = 52
-                    vert_line.Parent = canvas
-
-                    local sidebar = Instance.new("Frame")
-                    sidebar.Name = "Sidebar"
-                    sidebar.Size = UDim2.new(0.3, 0, 1, -70)
-                    sidebar.Position = UDim2.fromOffset(0, 49)
-                    sidebar.BackgroundColor3 = bg_color
-                    sidebar.BorderSizePixel = 0
-                    sidebar.ZIndex = 51
-                    sidebar.Parent = canvas
-
-                    local tab_names = { "Combat", "Visuals", "World", "Automation", "Interface", "Config" }
-                    local sidebar_tabs = {}
-                    for i, name in ipairs(tab_names) do
-                        local t_btn = Instance.new("Frame")
-                        t_btn.Name = "Tab_" .. name
-                        t_btn.Size = UDim2.new(1, -12, 0, 28)
-                        t_btn.Position = UDim2.new(0, 6, 0, 6 + (i - 1) * 32)
-                        t_btn.BackgroundColor3 = (i == 1 and main_color or bg_color)
-                        t_btn.BackgroundTransparency = (i == 1 and 0 or 1)
-                        t_btn.BorderSizePixel = 0
-                        t_btn.ZIndex = 52
-                        t_btn.Parent = sidebar
-
-                        local t_corner = Instance.new("UICorner")
-                        t_corner.CornerRadius = UDim.new(0, 3)
-                        t_corner.Parent = t_btn
-
-                        local t_bar = Instance.new("Frame")
-                        t_bar.Name = "Bar"
-                        t_bar.Size = UDim2.new(0, 2, 1, -6)
-                        t_bar.Position = UDim2.new(0, 2, 0, 3)
-                        t_bar.BackgroundColor3 = accent_color
-                        t_bar.BorderSizePixel = 0
-                        t_bar.BackgroundTransparency = (i == 1 and 0 or 1)
-                        t_bar.ZIndex = 53
-                        t_bar.Parent = t_btn
-
-                        local t_lbl = Instance.new("TextLabel")
-                        t_lbl.Name = "Label"
-                        t_lbl.Size = UDim2.new(1, -12, 1, 0)
-                        t_lbl.Position = UDim2.new(0, 10, 0, 0)
-                        t_lbl.BackgroundTransparency = 1
-                        t_lbl.Text = name
-                        t_lbl.Font = font_main
-                        t_lbl.TextSize = 13
-                        t_lbl.TextColor3 = (i == 1 and font_color or sub_color)
-                        t_lbl.TextXAlignment = Enum.TextXAlignment.Left
-                        t_lbl.ZIndex = 53
-                        t_lbl.Parent = t_btn
-
-                        sidebar_tabs[i] = { frame = t_btn, bar = t_bar, label = t_lbl }
-                    end
-
-                    local container = Instance.new("Frame")
-                    container.Name = "MainContainer"
-                    container.Size = UDim2.new(0.7, -1, 1, -70)
-                    container.Position = UDim2.new(0.3, 1, 0, 49)
-                    container.BackgroundColor3 = container_bg
-                    container.BorderSizePixel = 0
-                    container.ZIndex = 51
-                    container.Parent = canvas
-
-                    local groupbox = Instance.new("Frame")
-                    groupbox.Name = "Groupbox"
-                    groupbox.Size = UDim2.new(1, -20, 0, 150)
-                    groupbox.Position = UDim2.new(0, 10, 0, 10)
-                    groupbox.BackgroundColor3 = bg_color
-                    groupbox.BorderSizePixel = 0
-                    groupbox.ZIndex = 52
-                    groupbox.Parent = container
-
-                    local gb_corner = Instance.new("UICorner")
-                    gb_corner.CornerRadius = UDim.new(0, 3)
-                    gb_corner.Parent = groupbox
-
-                    local gb_stroke = Instance.new("UIStroke")
-                    gb_stroke.Color = outline_color
-                    gb_stroke.Thickness = 1
-                    gb_stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-                    gb_stroke.Parent = groupbox
-
-                    local gb_title = Instance.new("TextLabel")
-                    gb_title.Name = "GBTitle"
-                    gb_title.Size = UDim2.new(1, -20, 0, 34)
-                    gb_title.Position = UDim2.new(0, 10, 0, 0)
-                    gb_title.BackgroundTransparency = 1
-                    gb_title.Text = "System Loader"
-                    gb_title.Font = font_main
-                    gb_title.TextSize = 15
-                    gb_title.TextColor3 = font_color
-                    gb_title.TextXAlignment = Enum.TextXAlignment.Left
-                    gb_title.ZIndex = 53
-                    gb_title.Parent = groupbox
-
-                    local gb_line = Instance.new("Frame")
-                    gb_line.Name = "GBLine"
-                    gb_line.Size = UDim2.new(1, 0, 0, 1)
-                    gb_line.Position = UDim2.fromOffset(0, 34)
-                    gb_line.BackgroundColor3 = outline_color
-                    gb_line.BorderSizePixel = 0
-                    gb_line.ZIndex = 53
-                    gb_line.Parent = groupbox
+                    local center_container = Instance.new("Frame")
+                    center_container.Name = "CenterContainer"
+                    center_container.Size = UDim2.new(1, -64, 0, 96)
+                    center_container.Position = UDim2.new(0.5, 0, 0.5, 14)
+                    center_container.AnchorPoint = Vector2.new(0.5, 0.5)
+                    center_container.BackgroundTransparency = 1
+                    center_container.BorderSizePixel = 0
+                    center_container.ZIndex = 52
+                    center_container.Parent = canvas
 
                     local status_label = Instance.new("TextLabel")
                     status_label.Name = "StatusLabel"
-                    status_label.Size = UDim2.new(1, -20, 0, 18)
-                    status_label.Position = UDim2.new(0, 10, 0, 44)
+                    status_label.Size = UDim2.new(1, 0, 0, 20)
+                    status_label.Position = UDim2.new(0, 0, 0, 0)
                     status_label.BackgroundTransparency = 1
                     status_label.Text = "Status: Initializing components..."
                     status_label.Font = font_main
@@ -9650,17 +9606,27 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     status_label.TextColor3 = sub_color
                     status_label.TextXAlignment = Enum.TextXAlignment.Left
                     status_label.ZIndex = 53
-                    status_label.Parent = groupbox
+                    status_label.Parent = center_container
 
                     local bar_bg = Instance.new("Frame")
                     bar_bg.Name = "BarBackground"
-                    bar_bg.Size = UDim2.new(1, -20, 0, 16)
-                    bar_bg.Position = UDim2.new(0, 10, 0, 68)
+                    bar_bg.Size = UDim2.new(1, 0, 0, 22)
+                    bar_bg.Position = UDim2.new(0, 0, 0, 26)
                     bar_bg.BackgroundColor3 = main_color
-                    bar_bg.BorderColor3 = outline_color
-                    bar_bg.BorderSizePixel = 1
+                    bar_bg.BorderSizePixel = 0
+                    bar_bg.ClipsDescendants = true
                     bar_bg.ZIndex = 53
-                    bar_bg.Parent = groupbox
+                    bar_bg.Parent = center_container
+
+                    local bar_corner = Instance.new("UICorner")
+                    bar_corner.CornerRadius = UDim.new(0, 3)
+                    bar_corner.Parent = bar_bg
+
+                    local bar_stroke = Instance.new("UIStroke")
+                    bar_stroke.Color = outline_color
+                    bar_stroke.Thickness = 1
+                    bar_stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+                    bar_stroke.Parent = bar_bg
 
                     local bar_fill = Instance.new("Frame")
                     bar_fill.Name = "BarFill"
@@ -9669,6 +9635,10 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     bar_fill.BorderSizePixel = 0
                     bar_fill.ZIndex = 54
                     bar_fill.Parent = bar_bg
+
+                    local fill_corner = Instance.new("UICorner")
+                    fill_corner.CornerRadius = UDim.new(0, 3)
+                    fill_corner.Parent = bar_fill
 
                     local bar_text = Instance.new("TextLabel")
                     bar_text.Name = "BarText"
@@ -9679,6 +9649,8 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     bar_text.Font = font_main
                     bar_text.TextSize = 12
                     bar_text.TextColor3 = font_color
+                    bar_text.TextXAlignment = Enum.TextXAlignment.Center
+                    bar_text.TextYAlignment = Enum.TextYAlignment.Center
                     bar_text.ZIndex = 55
                     bar_text.Parent = bar_bg
 
@@ -9689,8 +9661,9 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
                     local skip_btn = Instance.new("TextButton")
                     skip_btn.Name = "SkipButton"
-                    skip_btn.Size = UDim2.new(0, 100, 0, 22)
-                    skip_btn.Position = UDim2.new(0, 10, 0, 96)
+                    skip_btn.Size = UDim2.new(0, 110, 0, 24)
+                    skip_btn.Position = UDim2.new(0.5, 0, 0, 60)
+                    skip_btn.AnchorPoint = Vector2.new(0.5, 0)
                     skip_btn.BackgroundColor3 = main_color
                     skip_btn.BorderSizePixel = 0
                     skip_btn.Text = "Skip Loading"
@@ -9700,7 +9673,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     skip_btn.TextTransparency = 0.4
                     skip_btn.AutoButtonColor = false
                     skip_btn.ZIndex = 53
-                    skip_btn.Parent = groupbox
+                    skip_btn.Parent = center_container
 
                     local btn_corner = Instance.new("UICorner")
                     btn_corner.CornerRadius = UDim.new(0, 3)
@@ -9721,18 +9694,49 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     bot_line.ZIndex = 52
                     bot_line.Parent = canvas
 
+                    local bot_commit_btn = Instance.new("Frame")
+                    bot_commit_btn.Name = "BotCommitIndicator"
+                    bot_commit_btn.Size = UDim2.new(0.5, -12, 0, 20)
+                    bot_commit_btn.Position = UDim2.new(0, 10, 1, -20)
+                    bot_commit_btn.BackgroundTransparency = 1
+                    bot_commit_btn.ZIndex = 52
+                    bot_commit_btn.Parent = canvas
+
+                    local bot_layout = Instance.new("UIListLayout")
+                    bot_layout.FillDirection = Enum.FillDirection.Horizontal
+                    bot_layout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+                    bot_layout.VerticalAlignment = Enum.VerticalAlignment.Center
+                    bot_layout.Padding = UDim.new(0, 5)
+                    bot_layout.SortOrder = Enum.SortOrder.LayoutOrder
+                    bot_layout.Parent = bot_commit_btn
+
+                    local bot_dot = Instance.new("Frame")
+                    bot_dot.Name = "CommitDot"
+                    bot_dot.Size = UDim2.fromOffset(6, 6)
+                    bot_dot.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
+                    bot_dot.BorderSizePixel = 0
+                    bot_dot.LayoutOrder = 1
+                    bot_dot.ZIndex = 53
+                    bot_dot.Parent = bot_commit_btn
+
+                    local bot_dot_corner = Instance.new("UICorner")
+                    bot_dot_corner.CornerRadius = UDim.new(1, 0)
+                    bot_dot_corner.Parent = bot_dot
+
                     local bot_left = Instance.new("TextLabel")
                     bot_left.Name = "BotLeft"
-                    bot_left.Size = UDim2.new(0.5, -12, 0, 20)
-                    bot_left.Position = UDim2.new(0, 12, 1, -20)
+                    bot_left.Size = UDim2.new(0, 0, 1, 0)
+                    bot_left.AutomaticSize = Enum.AutomaticSize.X
+                    bot_left.LayoutOrder = 2
                     bot_left.BackgroundTransparency = 1
-                    bot_left.Text = "bc09798 (just now)"
-                    bot_left.Font = font_main
-                    bot_left.TextSize = 12
-                    bot_left.TextColor3 = sub_color
+                    bot_left.Text = initial_commit_display
+                    bot_left.Font = Enum.Font.GothamMedium
+                    bot_left.TextSize = 11
+                    bot_left.TextColor3 = Color3.fromRGB(150, 150, 150)
                     bot_left.TextXAlignment = Enum.TextXAlignment.Left
-                    bot_left.ZIndex = 52
-                    bot_left.Parent = canvas
+                    bot_left.TextYAlignment = Enum.TextYAlignment.Center
+                    bot_left.ZIndex = 53
+                    bot_left.Parent = bot_commit_btn
 
                     local bot_status = Instance.new("TextLabel")
                     bot_status.Name = "BotStatus"
@@ -9750,7 +9754,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     local welcome_label = Instance.new("TextLabel")
                     welcome_label.Name = "WelcomeLabel"
                     welcome_label.Size = UDim2.new(1, 0, 0, 50)
-                    welcome_label.Position = UDim2.new(0.5, 0, 0.5, 0)
+                    welcome_label.Position = UDim2.new(0.5, 0, 0.5, 14)
                     welcome_label.AnchorPoint = Vector2.new(0.5, 0.5)
                     welcome_label.BackgroundTransparency = 1
                     welcome_label.Text = "Welcome to SGW Hub"
@@ -9773,23 +9777,17 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         top_accent = top_accent,
                         top_line = top_line,
                         top_title = top_title,
-                        top_tab_name = top_tab_name,
-                        top_tab_desc = top_tab_desc,
-                        vert_line = vert_line,
-                        sidebar = sidebar,
-                        sidebar_tabs = sidebar_tabs,
-                        container = container,
-                        groupbox = groupbox,
-                        gb_stroke = gb_stroke,
-                        gb_title = gb_title,
-                        gb_line = gb_line,
+                        center_container = center_container,
                         status_label = status_label,
                         bar_bg = bar_bg,
+                        bar_stroke = bar_stroke,
                         bar_fill = bar_fill,
                         bar_text = bar_text,
+                        bar_text_stroke = bar_text_stroke,
                         skip_btn = skip_btn,
                         btn_stroke = btn_stroke,
                         bot_line = bot_line,
+                        bot_dot = bot_dot,
                         bot_left = bot_left,
                         bot_status = bot_status,
                         welcome_label = welcome_label,
@@ -9871,32 +9869,22 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
                     local fade_info = TweenInfo.new(0.18, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out)
                     local fade_keys = {
-                        "top_line", "top_title", "top_tab_name", "top_tab_desc",
-                        "vert_line", "sidebar", "container", "groupbox",
-                        "gb_stroke", "gb_title", "gb_line", "status_label",
-                        "bar_bg", "bar_fill", "bar_text", "skip_btn",
-                        "btn_stroke", "bot_line", "bot_left", "bot_status"
+                        "top_line", "top_title", "status_label",
+                        "bar_bg", "bar_fill", "bar_text", "bar_stroke", "bar_text_stroke",
+                        "skip_btn", "btn_stroke", "bot_line", "bot_dot",
+                        "bot_left", "bot_status"
                     }
                     for _, key in ipairs(fade_keys) do
                         pcall(function()
-                            if left_ui[key]:IsA("TextLabel") or left_ui[key]:IsA("TextButton") then
+                            local obj = left_ui[key]
+                            if obj:IsA("TextLabel") or obj:IsA("TextButton") then
                                 sync_tween(key, fade_info, { TextTransparency = 1, BackgroundTransparency = 1 })
-                            elseif left_ui[key]:IsA("UIStroke") then
+                            elseif obj:IsA("UIStroke") then
                                 sync_tween(key, fade_info, { Transparency = 1 })
                             else
                                 sync_tween(key, fade_info, { BackgroundTransparency = 1 })
                             end
                         end)
-                    end
-
-                    for _, s in ipairs({ left_ui, right_ui }) do
-                        for _, tab_item in ipairs(s.sidebar_tabs) do
-                            pcall(function()
-                                tween_service:Create(tab_item.frame, fade_info, { BackgroundTransparency = 1 }):Play()
-                                tween_service:Create(tab_item.bar, fade_info, { BackgroundTransparency = 1 }):Play()
-                                tween_service:Create(tab_item.label, fade_info, { TextTransparency = 1 }):Play()
-                            end)
-                        end
                     end
 
                     sync_tween("welcome_label", TweenInfo.new(0.20, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
@@ -9972,75 +9960,23 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     end
                 end
 
-                local running_commit = "bc09798"
-                local running_date = "2026-10-14 00:17:19 UTC"
-                local running_message = "Add commit right-click details notification and redesign update popup to match Linoria UI"
-
-                local function format_date_with_relative(date_str)
-                    if type(date_str) ~= "string" or #date_str == 0 or date_str == "Unknown" then
-                        return tostring(date_str)
-                    end
-                    if date_str:find("%(") and date_str:find("%)") then
-                        return date_str
-                    end
-                    local y, m, d, hh, mm, ss = date_str:match("(%d+)-(%d+)-(%d+)[T%s](%d+):(%d+):(%d+)")
-                    if not (y and m and d and hh and mm and ss) then
-                        return date_str
-                    end
-                    local base_date = string.format("%s-%s-%s %s:%s:%s UTC", y, m, d, hh, mm, ss)
-                    local rel = ""
-                    pcall(function()
-                        local target_table = {
-                            year = tonumber(y),
-                            month = tonumber(m),
-                            day = tonumber(d),
-                            hour = tonumber(hh),
-                            min = tonumber(mm),
-                            sec = tonumber(ss)
-                        }
-                        local now = os.time()
-                        local now_utc = os.date("!*t", now)
-                        local diff = os.time(now_utc) - os.time(target_table)
-                        if diff < 0 then
-                            rel = "just now"
-                        elseif diff < 60 then
-                            rel = string.format("%d seconds ago", math.max(1, math.floor(diff)))
-                        elseif diff < 120 then
-                            rel = "1 minute ago"
-                        elseif diff < 3600 then
-                            rel = string.format("%d minutes ago", math.floor(diff / 60))
-                        elseif diff < 7200 then
-                            rel = "1 hour ago"
-                        elseif diff < 86400 then
-                            rel = string.format("%d hours ago", math.floor(diff / 3600))
-                        elseif diff < 172800 then
-                            rel = "1 day ago"
-                        elseif diff < 2592000 then
-                            rel = string.format("%d days ago", math.floor(diff / 86400))
-                        elseif diff < 5184000 then
-                            rel = "1 month ago"
-                        elseif diff < 31536000 then
-                            rel = string.format("%d months ago", math.floor(diff / 2592000))
-                        else
-                            rel = string.format("%d years ago", math.floor(diff / 31536000))
-                        end
-                    end)
-                    if #rel > 0 then
-                        return string.format("%s (%s)", base_date, rel)
-                    end
-                    return base_date
-                end
 
                 local function apply_commit_status(commit_id, is_latest, commit_date, commit_msg)
                     local c_id = commit_id or running_commit
                     local c_date = commit_date or running_date
                     local c_msg = commit_msg or running_message
+                    local commit_disp = format_commit_sha_display(c_id, c_date)
 
                     if window and window.SetCommitStatus then
                         window:SetCommitStatus(c_id, is_latest, c_date, c_msg)
+                        if window.CommitLabel then
+                            window.CommitLabel.Text = commit_disp
+                        end
                         if window.CommitIndicator then
                             local bad = window.CommitIndicator:FindFirstChild("CommitClickArea")
                             if bad then pcall(function() bad:Destroy() end) end
+                            local c_lbl = window.CommitIndicator:FindFirstChild("CommitLabel")
+                            if c_lbl then c_lbl.Text = commit_disp end
                             window.CommitIndicator.Position = UDim2.new(0, 10, 0.5, 0)
                             window.CommitIndicator.AnchorPoint = Vector2.new(0, 0.5)
                             window.CommitIndicator:SetAttribute("CommitId", c_id)
@@ -10084,7 +10020,12 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     end
                     if library and library.SetCommitStatus then
                         library:SetCommitStatus(c_id, is_latest, c_date, c_msg)
+                        if library.CommitLabel then
+                            library.CommitLabel.Text = commit_disp
+                        end
                         if library.CommitIndicator then
+                            local c_lbl = library.CommitIndicator:FindFirstChild("CommitLabel")
+                            if c_lbl then c_lbl.Text = commit_disp end
                             local bad = library.CommitIndicator:FindFirstChild("CommitClickArea")
                             if bad then pcall(function() bad:Destroy() end) end
                             library.CommitIndicator.Position = UDim2.new(0, 10, 0.5, 0)
@@ -10190,7 +10131,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         lbl.TextColor3 = Color3.fromRGB(150, 150, 150)
                         lbl.TextXAlignment = Enum.TextXAlignment.Left
                         lbl.TextYAlignment = Enum.TextYAlignment.Center
-                        lbl.Text = c_id:sub(1, 7)
+                        lbl.Text = commit_disp
                         lbl.ZIndex = 26
                         lbl.Parent = ind
 
@@ -10343,7 +10284,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     local cur_dot = ind:FindFirstChild("CommitDot")
                     local cur_lbl = ind:FindFirstChild("CommitLabel")
                     if cur_lbl and c_id and #c_id >= 7 then
-                        cur_lbl.Text = c_id:sub(1, 7)
+                        cur_lbl.Text = commit_disp
                     end
                     if is_latest then
                         if cur_dot then cur_dot.BackgroundColor3 = Color3.fromRGB(46, 204, 113) end
@@ -10515,10 +10456,11 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
                     while task.wait(60) do
                         local latest = fetch_remote_commit()
+                        local is_latest = true
                         if latest and latest.sha and #latest.sha >= 7 then
-                            local is_latest = (latest.sha == running_commit)
-                            apply_commit_status(running_commit, is_latest, running_date, running_message)
+                            is_latest = (latest.sha == running_commit)
                         end
+                        apply_commit_status(running_commit, is_latest, running_date, running_message)
                     end
                 end)
             end)

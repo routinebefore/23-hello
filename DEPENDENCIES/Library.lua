@@ -6024,6 +6024,16 @@ function Library:CreateWindow(WindowInfo)
         return base_date
     end
 
+    local function FormatCommitDisplay(commit_id, commit_date)
+        local id_short = tostring(commit_id or CurrentCommitId or "bc09798"):sub(1, 7)
+        local formatted = FormatDateWithRelative(commit_date or CurrentCommitDate)
+        local rel = formatted and formatted:match("%((.+)%)")
+        if rel and #rel > 0 then
+            return string.format("%s (%s)", id_short, rel)
+        end
+        return id_short
+    end
+
     do
         Library.KeybindFrame, Library.KeybindContainer = Library:AddDraggableMenu("Keybinds")
         Library.KeybindFrame.AnchorPoint = Vector2.new(0, 0.5)
@@ -6422,7 +6432,7 @@ function Library:CreateWindow(WindowInfo)
             LayoutOrder = 2,
             Name = "CommitLabel",
             Size = UDim2.new(0, 0, 1, 0),
-            Text = CurrentCommitId:sub(1, 7),
+            Text = FormatCommitDisplay(CurrentCommitId, CurrentCommitDate),
             TextColor3 = Color3.fromRGB(150, 150, 150),
             TextSize = 11,
             TextXAlignment = Enum.TextXAlignment.Left,
@@ -6488,6 +6498,9 @@ function Library:CreateWindow(WindowInfo)
                         or (Window and Window.CommitId)
                         or CommitIndicator:GetAttribute("CommitId")
                         or CommitLabel.Text
+                    if type(id) == "string" then
+                        id = id:match("^(%x+)") or id
+                    end
                     setclipboard(id)
                     Library:Notify("Copied commit SHA (" .. tostring(id):sub(1, 7) .. ") to clipboard", 3)
                 end
@@ -7680,14 +7693,6 @@ function Library:CreateWindow(WindowInfo)
     Window.CommitMsg = CurrentCommitMsg
 
     function Window:SetCommitStatus(CommitId, IsLatest, CommitDate, CommitMsg)
-        if typeof(CommitId) == "string" and #CommitId >= 7 then
-            CommitLabel.Text = CommitId:sub(1, 7)
-            CurrentCommitId = CommitId
-            Window.CommitId = CommitId
-            if CommitIndicator then
-                CommitIndicator:SetAttribute("CommitId", CommitId)
-            end
-        end
         if typeof(CommitDate) == "string" and #CommitDate > 0 then
             CurrentCommitDate = CommitDate
             Window.CommitDate = CommitDate
@@ -7701,6 +7706,16 @@ function Library:CreateWindow(WindowInfo)
             if CommitIndicator then
                 CommitIndicator:SetAttribute("CommitMsg", CommitMsg)
             end
+        end
+        if typeof(CommitId) == "string" and #CommitId >= 7 then
+            CurrentCommitId = CommitId
+            Window.CommitId = CommitId
+            if CommitIndicator then
+                CommitIndicator:SetAttribute("CommitId", CommitId)
+            end
+        end
+        if CommitLabel then
+            CommitLabel.Text = FormatCommitDisplay(CurrentCommitId, CurrentCommitDate)
         end
         if IsLatest then
             CommitDot.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
