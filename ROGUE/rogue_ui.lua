@@ -9361,9 +9361,10 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             end
         end)
 
-        local running_commit = "bc09798"
-        local running_date = "2026-10-14 00:17:19 UTC"
-        local running_message = "Add commit right-click details notification and redesign update popup to match Linoria UI"
+        local running_commit = "8eed4ff"
+        local running_date = "2026-10-14 02:55:58 UTC"
+        local running_message = "Center loading screen, add bouncing SGW wave indicator, and extend duration"
+        local active_loading_commit_updater = nil
 
         local function format_date_with_relative(date_str)
             if type(date_str) ~= "string" or #date_str == 0 or date_str == "Unknown" then
@@ -9441,6 +9442,153 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 return string.format("%s (%s)", s, rel)
             end
             return s
+        end
+
+        local function parse_atom_entry(body)
+            if type(body) ~= "string" or #body == 0 then return nil end
+            local entry = body:match("<entry>(.-)</entry>")
+            if not entry then return nil end
+            local sha = entry:match("[Cc]ommit/([0-9a-fA-F]+)")
+            if not sha or #sha < 7 then return nil end
+            sha = sha:sub(1, 7):lower()
+
+            local date_raw = entry:match("<updated>%s*(.-)%s*</updated>")
+            local date_str = "Unknown"
+            if date_raw then
+                local y, m, d, hh, mm, ss = date_raw:match("(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)")
+                if y and m and d and hh and mm and ss then
+                    date_str = string.format("%s-%s-%s %s:%s:%s UTC", y, m, d, hh, mm, ss)
+                else
+                    date_str = date_raw
+                end
+            end
+
+            local pre = entry:match("&lt;pre.-&gt;(.-)&lt;/pre&gt;")
+            local title = entry:match("<title>%s*(.-)%s*</title>")
+            local msg = pre or title or "No commit message"
+            msg = msg:gsub("&lt;", "<"):gsub("&gt;", ">"):gsub("&amp;", "&"):gsub("&quot;", '"'):gsub("&#39;", "'")
+            msg = msg:gsub("<[^>]+>", "")
+            msg = msg:match("^%s*(.-)%s*$")
+            if not msg or #msg == 0 then msg = "No commit message" end
+
+            return {
+                sha = sha,
+                date = date_str,
+                message = msg
+            }
+        end
+
+        local function parse_json_entry(body)
+            if type(body) ~= "string" or #body == 0 then return nil end
+            local parsed = nil
+            pcall(function()
+                if game and game.GetService then
+                    local hs = game:GetService("HttpService")
+                    if hs and hs.JSONDecode then
+                        local data = hs:JSONDecode(body)
+                        if data and data.sha and #data.sha >= 7 then
+                            local sha = data.sha:sub(1, 7):lower()
+                            local d_raw = data.commit and data.commit.author and data.commit.author.date
+                            local d_str = "Unknown"
+                            if d_raw then
+                                local y, m, d, hh, mm, ss = d_raw:match("(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)")
+                                if y and m and d and hh and mm and ss then
+                                    d_str = string.format("%s-%s-%s %s:%s:%s UTC", y, m, d, hh, mm, ss)
+                                else
+                                    d_str = d_raw
+                                end
+                            end
+                            local msg = (data.commit and data.commit.message) or "No commit message"
+                            msg = msg:match("^%s*(.-)%s*$")
+                            if not msg or #msg == 0 then msg = "No commit message" end
+                            parsed = {
+                                sha = sha,
+                                date = d_str,
+                                message = msg
+                            }
+                        end
+                    end
+                end
+            end)
+            if parsed then return parsed end
+
+            local sha = body:match('"sha"%s*:%s*"([0-9a-fA-F]+)"')
+            if not sha or #sha < 7 then return nil end
+            sha = sha:sub(1, 7):lower()
+
+            local date_raw = body:match('"date"%s*:%s*"([^"]+)"')
+            local date_str = "Unknown"
+            if date_raw then
+                local y, m, d, hh, mm, ss = date_raw:match("(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)")
+                if y and m and d and hh and mm and ss then
+                    date_str = string.format("%s-%s-%s %s:%s:%s UTC", y, m, d, hh, mm, ss)
+                else
+                    date_str = date_raw
+                end
+            end
+
+            local msg = body:match('"message"%s*:%s*"(.-)"')
+            if msg then
+                msg = msg:gsub("\\n", "\n"):gsub('\\"', '"'):gsub("\\\\", "\\")
+                msg = msg:match("^%s*(.-)%s*$")
+            end
+            if not msg or #msg == 0 then msg = "No commit message" end
+
+            return {
+                sha = sha,
+                date = date_str,
+                message = msg
+            }
+        end
+
+        local function fetch_remote_commit()
+            local result = nil
+            pcall(function()
+                if game and game.HttpGet then
+                    local body = game:HttpGet("https://github.com/routinebefore/23-hello/commits/main.atom?t=" .. tostring(os.time()), true)
+                    result = parse_atom_entry(body)
+                end
+            end)
+            if result then return result end
+            pcall(function()
+                local req = http_request or request or (syn and syn.request)
+                if req then
+                    local resp = req({
+                        Url = "https://github.com/routinebefore/23-hello/commits/main.atom?t=" .. tostring(os.time()),
+                        Method = "GET",
+                        Headers = {
+                            ["Cache-Control"] = "no-cache"
+                        }
+                    })
+                    if resp and resp.Body then
+                        result = parse_atom_entry(resp.Body)
+                    end
+                end
+            end)
+            if result then return result end
+            pcall(function()
+                if game and game.HttpGet then
+                    local body = game:HttpGet("https://api.github.com/repos/routinebefore/23-hello/commits/main?t=" .. tostring(os.time()), true)
+                    result = parse_json_entry(body)
+                end
+            end)
+            if result then return result end
+            pcall(function()
+                local req = http_request or request or (syn and syn.request)
+                if req then
+                    local resp = req({
+                        Url = "https://api.github.com/repos/routinebefore/23-hello/commits/main?t=" .. tostring(os.time()),
+                        Method = "GET",
+                        Headers = {
+                            ["Cache-Control"] = "no-cache"
+                        }
+                    })
+                    if resp and resp.Body then
+                        result = parse_json_entry(resp.Body)
+                    end
+                end
+            end)
+            return result
         end
 
         do
@@ -9600,7 +9748,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     status_label.Size = UDim2.new(1, 0, 0, 20)
                     status_label.Position = UDim2.new(0, 0, 0, 0)
                     status_label.BackgroundTransparency = 1
-                    status_label.Text = "Status: Initializing components..."
+                    status_label.Text = "Status: Initializing core framework..."
                     status_label.Font = font_main
                     status_label.TextSize = 13
                     status_label.TextColor3 = sub_color
@@ -9847,6 +9995,28 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 local left_ui = build_canvas(left_half, false)
                 local right_ui = build_canvas(right_half, true)
 
+                active_loading_commit_updater = function(c_id, c_date)
+                    local text = format_commit_sha_display(c_id or running_commit, c_date or running_date)
+                    pcall(function()
+                        if left_ui and left_ui.bot_left then left_ui.bot_left.Text = text end
+                        if right_ui and right_ui.bot_left then right_ui.bot_left.Text = text end
+                    end)
+                end
+
+                task.spawn(function()
+                    if fetch_remote_commit then
+                        local info = fetch_remote_commit()
+                        if info and info.sha and #info.sha >= 7 then
+                            running_commit = info.sha
+                            running_date = info.date or running_date
+                            running_message = info.message or running_message
+                            if active_loading_commit_updater then
+                                active_loading_commit_updater(running_commit, running_date)
+                            end
+                        end
+                    end
+                end)
+
                 local tween_service = Services.TweenService
                 local is_skipped = false
 
@@ -9882,18 +10052,46 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     end
                 end)
 
-                local bounce_conn
-                local bounce_running = true
-                local bounce_start = tick()
+                local current_progress = 0
+                local target_progress = 0.05
+                local current_title = "Core Framework"
+                local loading_finished = false
+                local anim_start = tick()
+                local anim_conn
 
-                bounce_conn = Services.RunService.Heartbeat:Connect(function()
-                    if not bounce_running then return end
-                    local elapsed = tick() - bounce_start
+                anim_conn = Services.RunService.Heartbeat:Connect(function(dt)
+                    if loading_finished then return end
+                    local elapsed = tick() - anim_start
+
+                    if is_skipped then
+                        current_progress = 1.0
+                    else
+                        local step_speed = (target_progress >= 1.0) and 12 or 7
+                        current_progress = current_progress + (target_progress - current_progress) * math.clamp(dt * step_speed, 0, 1)
+                        if math.abs(target_progress - current_progress) < 0.002 then
+                            current_progress = target_progress
+                        end
+                    end
+
+                    local pct = math.clamp(math.floor(current_progress * 100 + 0.5), 0, 100)
+                    local bar_size = UDim2.new(current_progress, 0, 1, 0)
+                    local bar_display = string.format("[ %d%% ] - %s", pct, current_title)
+
+                    left_ui.bar_fill.Size = bar_size
+                    right_ui.bar_fill.Size = bar_size
+                    left_ui.bar_text.Text = bar_display
+                    right_ui.bar_text.Text = bar_display
+
                     for idx = 1, 3 do
-                        local wave = math.sin(elapsed * 5.5 - (idx - 1) * 0.9)
-                        local y_off = -wave * 4.5
-                        local alpha = (wave + 1) * 0.5
-                        local col = sub_color:Lerp(accent_color, alpha)
+                        local phase = (elapsed * 5.0 - (idx - 1) * 0.82) % (math.pi * 2)
+                        local raw = math.sin(phase)
+                        local y_off = 0
+                        local col = sub_color
+                        if raw > 0 then
+                            local hop = (raw ^ 1.5) * 6.5
+                            y_off = -hop
+                            col = sub_color:Lerp(accent_color, raw)
+                        end
 
                         local left_lbl = left_ui.bounce_letters[idx]
                         local right_lbl = right_ui.bounce_letters[idx]
@@ -9908,38 +10106,43 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 end)
 
                 task.spawn(function()
-                    local stages = {
-                        { progress = 0.28, text = "[ 28% ] - Core Framework", status = "Status: Initializing core framework...", duration = 0.65 },
-                        { progress = 0.58, text = "[ 58% ] - Configurations", status = "Status: Loading saved profiles...", duration = 0.70 },
-                        { progress = 0.86, text = "[ 86% ] - Security System", status = "Status: Verifying anti-cheat bypass...", duration = 0.70 },
-                        { progress = 1.00, text = "[ 100% ] - Ready", status = "Status: SGW Hub initialized", duration = 0.55 }
+                    local milestones = {
+                        { target = 0.32, text = "Core Framework", status = "Status: Initializing core framework...", delay = 0.65 },
+                        { target = 0.65, text = "Configurations", status = "Status: Loading profiles & settings...", delay = 0.70 },
+                        { target = 0.88, text = "Security System", status = "Status: Verifying anti-cheat bypass...", delay = 0.65 },
+                        { target = 1.00, text = "Ready", status = "Status: SGW Hub initialized", delay = 0.55 }
                     }
 
-                    for _, stage in ipairs(stages) do
+                    for _, m in ipairs(milestones) do
                         if is_skipped then break end
-
-                        left_ui.status_label.Text = stage.status
-                        right_ui.status_label.Text = stage.status
-                        left_ui.bar_text.Text = stage.text
-                        right_ui.bar_text.Text = stage.text
-                        left_ui.bot_status.Text = stage.status
-                        right_ui.bot_status.Text = stage.status
-
-                        sync_tween("bar_fill", TweenInfo.new(stage.duration, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
-                            Size = UDim2.new(stage.progress, 0, 1, 0)
-                        })
+                        target_progress = m.target
+                        current_title = m.text
+                        left_ui.status_label.Text = m.status
+                        right_ui.status_label.Text = m.status
+                        left_ui.bot_status.Text = m.status
+                        right_ui.bot_status.Text = m.status
 
                         local step_start = tick()
-                        while (tick() - step_start) < stage.duration do
+                        while (tick() - step_start) < m.delay do
                             if is_skipped then break end
                             task.wait(0.02)
                         end
                     end
 
-                    bounce_running = false
-                    if bounce_conn then
-                        pcall(function() bounce_conn:Disconnect() end)
-                        bounce_conn = nil
+                    if not is_skipped then
+                        target_progress = 1.0
+                        local wait_start = tick()
+                        while current_progress < 0.999 and (tick() - wait_start) < 0.5 do
+                            if is_skipped then break end
+                            task.wait(0.02)
+                        end
+                        task.wait(0.20)
+                    end
+
+                    loading_finished = true
+                    if anim_conn then
+                        pcall(function() anim_conn:Disconnect() end)
+                        anim_conn = nil
                     end
 
                     if uis_conn then
@@ -9947,7 +10150,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         uis_conn = nil
                     end
 
-                    local fade_info = TweenInfo.new(0.18, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out)
+                    local fade_info = TweenInfo.new(is_skipped and 0.12 or 0.20, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
                     local fade_keys = {
                         "top_line", "top_title", "status_label",
                         "bar_bg", "bar_fill", "bar_text", "bar_stroke", "bar_text_stroke",
@@ -9970,37 +10173,30 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         end)
                     end
 
-                    sync_tween("welcome_label", TweenInfo.new(0.20, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
+                    sync_tween("welcome_label", TweenInfo.new(is_skipped and 0.12 or 0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
                         TextTransparency = 0
                     })
-                    sync_tween("welcome_stroke", TweenInfo.new(0.20, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
+                    sync_tween("welcome_stroke", TweenInfo.new(is_skipped and 0.12 or 0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
                         Transparency = 0
                     })
 
-                    local pause_time = is_skipped and 0.15 or 0.35
+                    local pause_time = is_skipped and 0.12 or 0.36
                     local pause_start = tick()
                     while (tick() - pause_start) < pause_time do
                         task.wait(0.02)
                     end
 
-                    local split_info = TweenInfo.new(0.65, Enum.EasingStyle.Quart, Enum.EasingDirection.InOut)
+                    local split_time = is_skipped and 0.45 or 0.68
+                    local split_info = TweenInfo.new(split_time, Enum.EasingStyle.Quart, Enum.EasingDirection.InOut)
                     local left_tween = tween_service:Create(left_half, split_info, { Position = UDim2.new(-0.5, 0, 0, 0) })
                     local right_tween = tween_service:Create(right_half, split_info, { Position = UDim2.new(1.0, 0, 0, 0) })
-                    sync_tween("canvas", split_info, { BackgroundTransparency = 1 })
-                    sync_tween("stroke", split_info, { Transparency = 1 })
-                    sync_tween("top_accent", split_info, { BackgroundTransparency = 1 })
-                    sync_tween("welcome_label", split_info, { TextTransparency = 1 })
-                    sync_tween("welcome_stroke", split_info, { Transparency = 1 })
 
                     left_tween:Play()
                     right_tween:Play()
 
                     left_tween.Completed:Wait()
 
-                    if bounce_conn then
-                        pcall(function() bounce_conn:Disconnect() end)
-                        bounce_conn = nil
-                    end
+                    active_loading_commit_updater = nil
                     pcall(function() pos_conn:Disconnect() end)
                     pcall(function() size_conn:Disconnect() end)
                     pcall(function() overlay:Destroy() end)
@@ -10011,6 +10207,21 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     end
                 end)
             end
+
+            cheat_client.play_sgw_loading_screen = function(on_finish)
+                if loading_animation_running then
+                    if skip_loading_func then
+                        pcall(skip_loading_func)
+                    end
+                    task.wait(0.05)
+                end
+                loading_animation_running = true
+                play_sgw_loading_screen(function()
+                    loading_animation_running = false
+                    if on_finish then pcall(on_finish) end
+                end)
+            end
+            library.PlayLoadingScreen = cheat_client.play_sgw_loading_screen
 
             library.Toggle = function(...)
                 if loading_animation_running then
@@ -10053,6 +10264,10 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     local c_date = commit_date or running_date
                     local c_msg = commit_msg or running_message
                     local commit_disp = format_commit_sha_display(c_id, c_date)
+
+                    if active_loading_commit_updater then
+                        pcall(active_loading_commit_updater, c_id, c_date)
+                    end
 
                     if window and window.SetCommitStatus then
                         window:SetCommitStatus(c_id, is_latest, c_date, c_msg)
@@ -10383,153 +10598,6 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 end
 
                 apply_commit_status(running_commit, true, running_date, running_message)
-
-                local function parse_atom_entry(body)
-                    if type(body) ~= "string" or #body == 0 then return nil end
-                    local entry = body:match("<entry>(.-)</entry>")
-                    if not entry then return nil end
-                    local sha = entry:match("[Cc]ommit/([0-9a-fA-F]+)")
-                    if not sha or #sha < 7 then return nil end
-                    sha = sha:sub(1, 7):lower()
-
-                    local date_raw = entry:match("<updated>%s*(.-)%s*</updated>")
-                    local date_str = "Unknown"
-                    if date_raw then
-                        local y, m, d, hh, mm, ss = date_raw:match("(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)")
-                        if y and m and d and hh and mm and ss then
-                            date_str = string.format("%s-%s-%s %s:%s:%s UTC", y, m, d, hh, mm, ss)
-                        else
-                            date_str = date_raw
-                        end
-                    end
-
-                    local pre = entry:match("&lt;pre.-&gt;(.-)&lt;/pre&gt;")
-                    local title = entry:match("<title>%s*(.-)%s*</title>")
-                    local msg = pre or title or "No commit message"
-                    msg = msg:gsub("&lt;", "<"):gsub("&gt;", ">"):gsub("&amp;", "&"):gsub("&quot;", '"'):gsub("&#39;", "'")
-                    msg = msg:gsub("<[^>]+>", "")
-                    msg = msg:match("^%s*(.-)%s*$")
-                    if not msg or #msg == 0 then msg = "No commit message" end
-
-                    return {
-                        sha = sha,
-                        date = date_str,
-                        message = msg
-                    }
-                end
-
-                local function parse_json_entry(body)
-                    if type(body) ~= "string" or #body == 0 then return nil end
-                    local parsed = nil
-                    pcall(function()
-                        if game and game.GetService then
-                            local hs = game:GetService("HttpService")
-                            if hs and hs.JSONDecode then
-                                local data = hs:JSONDecode(body)
-                                if data and data.sha and #data.sha >= 7 then
-                                    local sha = data.sha:sub(1, 7):lower()
-                                    local d_raw = data.commit and data.commit.author and data.commit.author.date
-                                    local d_str = "Unknown"
-                                    if d_raw then
-                                        local y, m, d, hh, mm, ss = d_raw:match("(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)")
-                                        if y and m and d and hh and mm and ss then
-                                            d_str = string.format("%s-%s-%s %s:%s:%s UTC", y, m, d, hh, mm, ss)
-                                        else
-                                            d_str = d_raw
-                                        end
-                                    end
-                                    local msg = (data.commit and data.commit.message) or "No commit message"
-                                    msg = msg:match("^%s*(.-)%s*$")
-                                    if not msg or #msg == 0 then msg = "No commit message" end
-                                    parsed = {
-                                        sha = sha,
-                                        date = d_str,
-                                        message = msg
-                                    }
-                                end
-                            end
-                        end
-                    end)
-                    if parsed then return parsed end
-
-                    local sha = body:match('"sha"%s*:%s*"([0-9a-fA-F]+)"')
-                    if not sha or #sha < 7 then return nil end
-                    sha = sha:sub(1, 7):lower()
-
-                    local date_raw = body:match('"date"%s*:%s*"([^"]+)"')
-                    local date_str = "Unknown"
-                    if date_raw then
-                        local y, m, d, hh, mm, ss = date_raw:match("(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)")
-                        if y and m and d and hh and mm and ss then
-                            date_str = string.format("%s-%s-%s %s:%s:%s UTC", y, m, d, hh, mm, ss)
-                        else
-                            date_str = date_raw
-                        end
-                    end
-
-                    local msg = body:match('"message"%s*:%s*"(.-)"[,\r\n]') or body:match('"message"%s*:%s*"(.-)"')
-                    if msg then
-                        msg = msg:gsub("\\n", "\n"):gsub('\\"', '"'):gsub("\\\\", "\\")
-                        msg = msg:match("^%s*(.-)%s*$")
-                    end
-                    if not msg or #msg == 0 then msg = "No commit message" end
-
-                    return {
-                        sha = sha,
-                        date = date_str,
-                        message = msg
-                    }
-                end
-
-                local function fetch_remote_commit()
-                    local result = nil
-                    pcall(function()
-                        if game and game.HttpGet then
-                            local body = game:HttpGet("https://github.com/routinebefore/23-hello/commits/main.atom?t=" .. tostring(os.time()), true)
-                            result = parse_atom_entry(body)
-                        end
-                    end)
-                    if result then return result end
-                    pcall(function()
-                        local req = http_request or request or (syn and syn.request)
-                        if req then
-                            local resp = req({
-                                Url = "https://github.com/routinebefore/23-hello/commits/main.atom?t=" .. tostring(os.time()),
-                                Method = "GET",
-                                Headers = {
-                                    ["Cache-Control"] = "no-cache"
-                                }
-                            })
-                            if resp and resp.Body then
-                                result = parse_atom_entry(resp.Body)
-                            end
-                        end
-                    end)
-                    if result then return result end
-                    pcall(function()
-                        if game and game.HttpGet then
-                            local body = game:HttpGet("https://api.github.com/repos/routinebefore/23-hello/commits/main?t=" .. tostring(os.time()), true)
-                            result = parse_json_entry(body)
-                        end
-                    end)
-                    if result then return result end
-                    pcall(function()
-                        local req = http_request or request or (syn and syn.request)
-                        if req then
-                            local resp = req({
-                                Url = "https://api.github.com/repos/routinebefore/23-hello/commits/main?t=" .. tostring(os.time()),
-                                Method = "GET",
-                                Headers = {
-                                    ["Cache-Control"] = "no-cache"
-                                }
-                            })
-                            if resp and resp.Body then
-                                result = parse_json_entry(resp.Body)
-                            end
-                        end
-                    end)
-                    return result
-                end
 
                 task.spawn(function()
                     task.wait(1.5)
@@ -25873,6 +25941,16 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             end
 
             local group_debug_captcha = Tabs.Debug:AddRightGroupbox("Interaction & Solver Debug", "bug")
+
+            group_debug_captcha:AddButton({
+                Text = "Replay Loading Screen",
+                Func = function()
+                    if cheat_client.play_sgw_loading_screen then
+                        cheat_client.play_sgw_loading_screen()
+                    end
+                end,
+                Tooltip = "Replays the SGW Hub boot loading animation"
+            })
 
             group_debug_captcha:AddButton({
                 Text = "Test Captcha Solver",
