@@ -5965,6 +5965,65 @@ function Library:CreateWindow(WindowInfo)
     local CommitDot
     local CommitLabel
     local UpdatePopup
+    local CurrentCommitId = "bc09798"
+    local CurrentCommitDate = "2026-10-14 00:17:19 UTC"
+    local CurrentCommitMsg = "Add commit right-click details notification and redesign update popup to match Linoria UI"
+
+    local function FormatDateWithRelative(date_str)
+        if type(date_str) ~= "string" or #date_str == 0 or date_str == "Unknown" then
+            return tostring(date_str)
+        end
+        if date_str:find("%(") and date_str:find("%)") then
+            return date_str
+        end
+        local y, m, d, hh, mm, ss = date_str:match("(%d+)-(%d+)-(%d+)[T%s](%d+):(%d+):(%d+)")
+        if not (y and m and d and hh and mm and ss) then
+            return date_str
+        end
+        local base_date = string.format("%s-%s-%s %s:%s:%s UTC", y, m, d, hh, mm, ss)
+        local rel = ""
+        pcall(function()
+            local target_table = {
+                year = tonumber(y),
+                month = tonumber(m),
+                day = tonumber(d),
+                hour = tonumber(hh),
+                min = tonumber(mm),
+                sec = tonumber(ss)
+            }
+            local now = os.time()
+            local now_utc = os.date("!*t", now)
+            local diff = os.time(now_utc) - os.time(target_table)
+            if diff < 0 then
+                rel = "just now"
+            elseif diff < 60 then
+                rel = string.format("%d seconds ago", math.max(1, math.floor(diff)))
+            elseif diff < 120 then
+                rel = "1 minute ago"
+            elseif diff < 3600 then
+                rel = string.format("%d minutes ago", math.floor(diff / 60))
+            elseif diff < 7200 then
+                rel = "1 hour ago"
+            elseif diff < 86400 then
+                rel = string.format("%d hours ago", math.floor(diff / 3600))
+            elseif diff < 172800 then
+                rel = "1 day ago"
+            elseif diff < 2592000 then
+                rel = string.format("%d days ago", math.floor(diff / 86400))
+            elseif diff < 5184000 then
+                rel = "1 month ago"
+            elseif diff < 31536000 then
+                rel = string.format("%d months ago", math.floor(diff / 2592000))
+            else
+                rel = string.format("%d years ago", math.floor(diff / 31536000))
+            end
+        end)
+        if #rel > 0 then
+            return string.format("%s (%s)", base_date, rel)
+        end
+        return base_date
+    end
+
     do
         Library.KeybindFrame, Library.KeybindContainer = Library:AddDraggableMenu("Keybinds")
         Library.KeybindFrame.AnchorPoint = Vector2.new(0, 0.5)
@@ -6363,7 +6422,7 @@ function Library:CreateWindow(WindowInfo)
             LayoutOrder = 2,
             Name = "CommitLabel",
             Size = UDim2.new(0, 0, 1, 0),
-            Text = "...",
+            Text = CurrentCommitId:sub(1, 7),
             TextColor3 = Color3.fromRGB(150, 150, 150),
             TextSize = 11,
             TextXAlignment = Enum.TextXAlignment.Left,
@@ -6372,24 +6431,38 @@ function Library:CreateWindow(WindowInfo)
             Parent = CommitIndicator,
         })
 
-        local currentCommitId = "..."
-        local currentCommitDate = "Unknown"
-        local currentCommitMsg = "No commit message"
+        CommitIndicator:SetAttribute("CommitId", CurrentCommitId)
+        CommitIndicator:SetAttribute("CommitDate", CurrentCommitDate)
+        CommitIndicator:SetAttribute("CommitMsg", CurrentCommitMsg)
+        CommitIndicator:SetAttribute("RCBound", true)
 
         local function showCommitDetails()
-            local id = currentCommitId or (CommitLabel and CommitLabel.Text) or "Unknown"
-            local d = currentCommitDate or "Unknown"
-            local m = currentCommitMsg or "No commit message"
+            local id = (CurrentCommitId ~= "..." and CurrentCommitId)
+                or (Window and Window.CommitId)
+                or CommitIndicator:GetAttribute("CommitId")
+                or (CommitLabel and CommitLabel.Text ~= "..." and CommitLabel.Text)
+                or "Unknown"
+            local d = (CurrentCommitDate ~= "Unknown" and CurrentCommitDate)
+                or (Window and Window.CommitDate)
+                or CommitIndicator:GetAttribute("CommitDate")
+                or "Unknown"
+            local m = (CurrentCommitMsg ~= "No commit message" and CurrentCommitMsg)
+                or (Window and Window.CommitMsg)
+                or CommitIndicator:GetAttribute("CommitMsg")
+                or "No commit message"
+
+            local formatted_date = FormatDateWithRelative(d)
+
             local ok = pcall(function()
                 Library:Notify({
                     Title = "Commit " .. tostring(id):sub(1, 7),
-                    Description = string.format("Date: %s\nMessage: %s", tostring(d), tostring(m)),
+                    Description = string.format("Date: %s\nMessage: %s", tostring(formatted_date), tostring(m)),
                     Time = 8
                 })
             end)
             if not ok then
                 pcall(function()
-                    Library:Notify(string.format("Commit %s (%s): %s", tostring(id):sub(1, 7), tostring(d), tostring(m)), 8)
+                    Library:Notify(string.format("Commit %s (%s): %s", tostring(id):sub(1, 7), tostring(formatted_date), tostring(m)), 8)
                 end)
             end
         end
@@ -6411,8 +6484,12 @@ function Library:CreateWindow(WindowInfo)
         CommitIndicator.MouseButton1Click:Connect(function()
             pcall(function()
                 if setclipboard then
-                    setclipboard(currentCommitId or CommitLabel.Text)
-                    Library:Notify("Copied commit SHA (" .. tostring(CommitLabel.Text) .. ") to clipboard", 3)
+                    local id = (CurrentCommitId ~= "..." and CurrentCommitId)
+                        or (Window and Window.CommitId)
+                        or CommitIndicator:GetAttribute("CommitId")
+                        or CommitLabel.Text
+                    setclipboard(id)
+                    Library:Notify("Copied commit SHA (" .. tostring(id):sub(1, 7) .. ") to clipboard", 3)
                 end
             end)
         end)
@@ -7620,17 +7697,32 @@ function Library:CreateWindow(WindowInfo)
     Window.CommitDot = CommitDot
     Window.CommitLabel = CommitLabel
     Window.UpdatePopup = UpdatePopup
+    Window.CommitId = CurrentCommitId
+    Window.CommitDate = CurrentCommitDate
+    Window.CommitMsg = CurrentCommitMsg
 
     function Window:SetCommitStatus(CommitId, IsLatest, CommitDate, CommitMsg)
         if typeof(CommitId) == "string" and #CommitId >= 7 then
             CommitLabel.Text = CommitId:sub(1, 7)
-            currentCommitId = CommitId
+            CurrentCommitId = CommitId
+            Window.CommitId = CommitId
+            if CommitIndicator then
+                CommitIndicator:SetAttribute("CommitId", CommitId)
+            end
         end
         if typeof(CommitDate) == "string" and #CommitDate > 0 then
-            currentCommitDate = CommitDate
+            CurrentCommitDate = CommitDate
+            Window.CommitDate = CommitDate
+            if CommitIndicator then
+                CommitIndicator:SetAttribute("CommitDate", CommitDate)
+            end
         end
         if typeof(CommitMsg) == "string" and #CommitMsg > 0 then
-            currentCommitMsg = CommitMsg
+            CurrentCommitMsg = CommitMsg
+            Window.CommitMsg = CommitMsg
+            if CommitIndicator then
+                CommitIndicator:SetAttribute("CommitMsg", CommitMsg)
+            end
         end
         if IsLatest then
             CommitDot.BackgroundColor3 = Color3.fromRGB(46, 204, 113)

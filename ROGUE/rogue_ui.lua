@@ -9376,9 +9376,64 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     end
                 end
 
-                local running_commit = "edf5d97"
-                local running_date = "2026-10-13 23:57:08 UTC"
-                local running_message = "Fix commit indicator horizontal layout displacement and align bottom-left"
+                local running_commit = "bc09798"
+                local running_date = "2026-10-14 00:17:19 UTC"
+                local running_message = "Add commit right-click details notification and redesign update popup to match Linoria UI"
+
+                local function format_date_with_relative(date_str)
+                    if type(date_str) ~= "string" or #date_str == 0 or date_str == "Unknown" then
+                        return tostring(date_str)
+                    end
+                    if date_str:find("%(") and date_str:find("%)") then
+                        return date_str
+                    end
+                    local y, m, d, hh, mm, ss = date_str:match("(%d+)-(%d+)-(%d+)[T%s](%d+):(%d+):(%d+)")
+                    if not (y and m and d and hh and mm and ss) then
+                        return date_str
+                    end
+                    local base_date = string.format("%s-%s-%s %s:%s:%s UTC", y, m, d, hh, mm, ss)
+                    local rel = ""
+                    pcall(function()
+                        local target_table = {
+                            year = tonumber(y),
+                            month = tonumber(m),
+                            day = tonumber(d),
+                            hour = tonumber(hh),
+                            min = tonumber(mm),
+                            sec = tonumber(ss)
+                        }
+                        local now = os.time()
+                        local now_utc = os.date("!*t", now)
+                        local diff = os.time(now_utc) - os.time(target_table)
+                        if diff < 0 then
+                            rel = "just now"
+                        elseif diff < 60 then
+                            rel = string.format("%d seconds ago", math.max(1, math.floor(diff)))
+                        elseif diff < 120 then
+                            rel = "1 minute ago"
+                        elseif diff < 3600 then
+                            rel = string.format("%d minutes ago", math.floor(diff / 60))
+                        elseif diff < 7200 then
+                            rel = "1 hour ago"
+                        elseif diff < 86400 then
+                            rel = string.format("%d hours ago", math.floor(diff / 3600))
+                        elseif diff < 172800 then
+                            rel = "1 day ago"
+                        elseif diff < 2592000 then
+                            rel = string.format("%d days ago", math.floor(diff / 86400))
+                        elseif diff < 5184000 then
+                            rel = "1 month ago"
+                        elseif diff < 31536000 then
+                            rel = string.format("%d months ago", math.floor(diff / 2592000))
+                        else
+                            rel = string.format("%d years ago", math.floor(diff / 31536000))
+                        end
+                    end)
+                    if #rel > 0 then
+                        return string.format("%s (%s)", base_date, rel)
+                    end
+                    return base_date
+                end
 
                 local function apply_commit_status(commit_id, is_latest, commit_date, commit_msg)
                     local c_id = commit_id or running_commit
@@ -9392,6 +9447,42 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                             if bad then pcall(function() bad:Destroy() end) end
                             window.CommitIndicator.Position = UDim2.new(0, 10, 0.5, 0)
                             window.CommitIndicator.AnchorPoint = Vector2.new(0, 0.5)
+                            window.CommitIndicator:SetAttribute("CommitId", c_id)
+                            window.CommitIndicator:SetAttribute("CommitDate", c_date)
+                            window.CommitIndicator:SetAttribute("CommitMsg", c_msg)
+                            if not window.CommitIndicator:GetAttribute("RCBound") then
+                                window.CommitIndicator:SetAttribute("RCBound", true)
+                                local last_c_rc = 0
+                                local function on_ci_rc()
+                                    local now = os.clock()
+                                    if now - last_c_rc < 0.4 then return end
+                                    last_c_rc = now
+                                    local rc_id = window.CommitIndicator:GetAttribute("CommitId") or c_id or "Unknown"
+                                    local rc_date = window.CommitIndicator:GetAttribute("CommitDate") or c_date or "Unknown"
+                                    local rc_msg = window.CommitIndicator:GetAttribute("CommitMsg") or c_msg or "No commit message"
+                                    local formatted_date = format_date_with_relative(rc_date)
+                                    if library and library.Notify then
+                                        local ok = pcall(function()
+                                            library:Notify({
+                                                Title = "Commit " .. tostring(rc_id):sub(1, 7),
+                                                Description = string.format("Date: %s\nMessage: %s", tostring(formatted_date), tostring(rc_msg)),
+                                                Time = 8
+                                            })
+                                        end)
+                                        if not ok then
+                                            pcall(function()
+                                                library:Notify(string.format("Commit %s (%s): %s", tostring(rc_id):sub(1, 7), tostring(formatted_date), tostring(rc_msg)), 8)
+                                            end)
+                                        end
+                                    end
+                                end
+                                window.CommitIndicator.MouseButton2Click:Connect(on_ci_rc)
+                                window.CommitIndicator.InputBegan:Connect(function(input)
+                                    if input.UserInputType == Enum.UserInputType.MouseButton2 then
+                                        on_ci_rc()
+                                    end
+                                end)
+                            end
                         end
                         return
                     end
@@ -9402,6 +9493,9 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                             if bad then pcall(function() bad:Destroy() end) end
                             library.CommitIndicator.Position = UDim2.new(0, 10, 0.5, 0)
                             library.CommitIndicator.AnchorPoint = Vector2.new(0, 0.5)
+                            library.CommitIndicator:SetAttribute("CommitId", c_id)
+                            library.CommitIndicator:SetAttribute("CommitDate", c_date)
+                            library.CommitIndicator:SetAttribute("CommitMsg", c_msg)
                         end
                         return
                     end
@@ -9530,17 +9624,18 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                             local cur_id = ind:GetAttribute("CommitId") or c_id or "Unknown"
                             local cur_date = ind:GetAttribute("CommitDate") or c_date or "Unknown"
                             local cur_msg = ind:GetAttribute("CommitMsg") or c_msg or "No commit message"
+                            local formatted_date = format_date_with_relative(cur_date)
                             if library and library.Notify then
                                 local ok = pcall(function()
                                     library:Notify({
                                         Title = "Commit " .. tostring(cur_id):sub(1, 7),
-                                        Description = string.format("Date: %s\nMessage: %s", tostring(cur_date), tostring(cur_msg)),
+                                        Description = string.format("Date: %s\nMessage: %s", tostring(formatted_date), tostring(cur_msg)),
                                         Time = 8
                                     })
                                 end)
                                 if not ok then
                                     pcall(function()
-                                        library:Notify(string.format("Commit %s (%s): %s", tostring(cur_id):sub(1, 7), tostring(cur_date), tostring(cur_msg)), 8)
+                                        library:Notify(string.format("Commit %s (%s): %s", tostring(cur_id):sub(1, 7), tostring(formatted_date), tostring(cur_msg)), 8)
                                     end)
                                 end
                             end
