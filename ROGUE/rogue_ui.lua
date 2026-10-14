@@ -9362,6 +9362,325 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
         end)
 
         do
+            local original_toggle = library.Toggle
+            local loading_animation_played = false
+            local loading_animation_running = false
+
+            local function is_fresh_execution()
+                if mem then
+                    if mem:HasItem("botstarted") and mem:GetItem("botstarted") == "true" then
+                        return false
+                    end
+                    if mem:HasItem("dayfarming") and mem:GetItem("dayfarming") == "true" then
+                        return false
+                    end
+                    if mem:HasItem("serverhop_count") then
+                        local count = tonumber(mem:GetItem("serverhop_count")) or 0
+                        if count > 0 then
+                            return false
+                        end
+                    end
+                    if mem:HasItem("serverhopping") and mem:GetItem("serverhopping") == "true" then
+                        return false
+                    end
+                    if mem:HasItem("trinket_bot_path") or mem:HasItem("lastPlayerPosition") then
+                        return false
+                    end
+                end
+                if getgenv then
+                    if getgenv().serverhopping or getgenv().is_serverhopping or getgenv().botting then
+                        return false
+                    end
+                end
+                return true
+            end
+
+            local function play_sgw_loading_screen(callback)
+                local target_parent = (gethui and gethui()) or Services.CoreGui or plr:FindFirstChildOfClass("PlayerGui")
+                local screen_gui = Instance.new("ScreenGui")
+                screen_gui.Name = "SGW_LoadingScreen"
+                screen_gui.DisplayOrder = 999999
+                screen_gui.IgnoreGuiInset = true
+                screen_gui.ResetOnSpawn = false
+                screen_gui.Parent = target_parent
+
+                local bg_color = (library and library.Scheme and library.Scheme.BackgroundColor) or Color3.fromRGB(15, 15, 18)
+                local main_color = (library and library.Scheme and library.Scheme.MainColor) or Color3.fromRGB(24, 24, 28)
+                local outline_color = (library and library.Scheme and library.Scheme.OutlineColor) or Color3.fromRGB(42, 42, 50)
+                local font_color = (library and library.Scheme and library.Scheme.FontColor) or Color3.fromRGB(245, 245, 250)
+                local sub_color = Color3.fromRGB(155, 155, 170)
+                local accent_color = (library and library.Scheme and library.Scheme.AccentColor) or (library and library.Options and library.Options.AccentColor and library.Options.AccentColor.Value) or Color3.fromRGB(255, 65, 65)
+                local font_main = (library and library.Font) or Enum.Font.GothamBold
+                local font_sub = Enum.Font.GothamMedium
+
+                local left_half = Instance.new("Frame")
+                left_half.Name = "LeftHalf"
+                left_half.Size = UDim2.new(0.5, 0, 1, 0)
+                left_half.Position = UDim2.new(0, 0, 0, 0)
+                left_half.BackgroundColor3 = bg_color
+                left_half.BorderSizePixel = 0
+                left_half.ClipsDescendants = true
+                left_half.Parent = screen_gui
+
+                local right_half = Instance.new("Frame")
+                right_half.Name = "RightHalf"
+                right_half.Size = UDim2.new(0.5, 0, 1, 0)
+                right_half.Position = UDim2.new(0.5, 0, 0, 0)
+                right_half.BackgroundColor3 = bg_color
+                right_half.BorderSizePixel = 0
+                right_half.ClipsDescendants = true
+                right_half.Parent = screen_gui
+
+                local function create_canvas(parent_half, is_right)
+                    local canvas = Instance.new("Frame")
+                    canvas.Name = "Canvas"
+                    canvas.Size = UDim2.new(2, 0, 1, 0)
+                    canvas.Position = is_right and UDim2.new(-1, 0, 0, 0) or UDim2.new(0, 0, 0, 0)
+                    canvas.BackgroundTransparency = 1
+                    canvas.BorderSizePixel = 0
+                    canvas.Parent = parent_half
+
+                    local top_line = Instance.new("Frame")
+                    top_line.Name = "TopLine"
+                    top_line.Size = UDim2.new(1, 0, 0, 2)
+                    top_line.Position = UDim2.new(0, 0, 0, 0)
+                    top_line.BackgroundColor3 = accent_color
+                    top_line.BorderSizePixel = 0
+                    top_line.Parent = canvas
+
+                    local bot_line = Instance.new("Frame")
+                    bot_line.Name = "BottomLine"
+                    bot_line.Size = UDim2.new(1, 0, 0, 1)
+                    bot_line.Position = UDim2.new(0, 0, 1, -1)
+                    bot_line.BackgroundColor3 = outline_color
+                    bot_line.BorderSizePixel = 0
+                    bot_line.Parent = canvas
+
+                    local center = Instance.new("Frame")
+                    center.Name = "CenterContainer"
+                    center.Size = UDim2.new(0, 520, 0, 220)
+                    center.Position = UDim2.new(0.5, 0, 0.5, 0)
+                    center.AnchorPoint = Vector2.new(0.5, 0.5)
+                    center.BackgroundTransparency = 1
+                    center.BorderSizePixel = 0
+                    center.Parent = canvas
+
+                    local title = Instance.new("TextLabel")
+                    title.Name = "TitleLabel"
+                    title.Size = UDim2.new(1, 0, 0, 42)
+                    title.Position = UDim2.new(0.5, 0, 0.32, 0)
+                    title.AnchorPoint = Vector2.new(0.5, 0.5)
+                    title.BackgroundTransparency = 1
+                    title.Text = "SGW HUB"
+                    title.Font = font_main
+                    title.TextSize = 28
+                    title.TextColor3 = font_color
+                    title.TextStrokeTransparency = 0.85
+                    title.TextStrokeColor3 = Color3.fromRGB(20, 20, 25)
+                    title.Parent = center
+
+                    local status = Instance.new("TextLabel")
+                    status.Name = "StatusLabel"
+                    status.Size = UDim2.new(1, 0, 0, 20)
+                    status.Position = UDim2.new(0.5, 0, 0.49, 0)
+                    status.AnchorPoint = Vector2.new(0.5, 0.5)
+                    status.BackgroundTransparency = 1
+                    status.Text = "Initializing components..."
+                    status.Font = font_sub
+                    status.TextSize = 13
+                    status.TextColor3 = sub_color
+                    status.Parent = center
+
+                    local bar_bg = Instance.new("Frame")
+                    bar_bg.Name = "BarBackground"
+                    bar_bg.Size = UDim2.new(0, 320, 0, 6)
+                    bar_bg.Position = UDim2.new(0.5, 0, 0.60, 0)
+                    bar_bg.AnchorPoint = Vector2.new(0.5, 0.5)
+                    bar_bg.BackgroundColor3 = main_color
+                    bar_bg.BorderSizePixel = 0
+                    bar_bg.Parent = center
+
+                    local bar_corner = Instance.new("UICorner")
+                    bar_corner.CornerRadius = UDim.new(1, 0)
+                    bar_corner.Parent = bar_bg
+
+                    local bar_stroke = Instance.new("UIStroke")
+                    bar_stroke.Thickness = 1
+                    bar_stroke.Color = outline_color
+                    bar_stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+                    bar_stroke.Parent = bar_bg
+
+                    local bar_fill = Instance.new("Frame")
+                    bar_fill.Name = "BarFill"
+                    bar_fill.Size = UDim2.new(0, 0, 1, 0)
+                    bar_fill.Position = UDim2.new(0, 0, 0, 0)
+                    bar_fill.BackgroundColor3 = accent_color
+                    bar_fill.BorderSizePixel = 0
+                    bar_fill.Parent = bar_bg
+
+                    local fill_corner = Instance.new("UICorner")
+                    fill_corner.CornerRadius = UDim.new(1, 0)
+                    fill_corner.Parent = bar_fill
+
+                    local fill_grad = Instance.new("UIGradient")
+                    fill_grad.Color = ColorSequence.new({
+                        ColorSequenceKeypoint.new(0, accent_color),
+                        ColorSequenceKeypoint.new(1, accent_color:Lerp(Color3.fromRGB(255, 255, 255), 0.2))
+                    })
+                    fill_grad.Parent = bar_fill
+
+                    local skip_btn = Instance.new("TextButton")
+                    skip_btn.Name = "SkipButton"
+                    skip_btn.Size = UDim2.new(0, 84, 0, 24)
+                    skip_btn.Position = UDim2.new(0.5, 0, 0.77, 0)
+                    skip_btn.AnchorPoint = Vector2.new(0.5, 0.5)
+                    skip_btn.BackgroundColor3 = main_color
+                    skip_btn.BorderSizePixel = 0
+                    skip_btn.Text = "Skip"
+                    skip_btn.Font = font_sub
+                    skip_btn.TextSize = 12
+                    skip_btn.TextColor3 = font_color
+                    skip_btn.TextTransparency = 0.35
+                    skip_btn.AutoButtonColor = false
+                    skip_btn.Parent = center
+
+                    local btn_corner = Instance.new("UICorner")
+                    btn_corner.CornerRadius = UDim.new(0, 4)
+                    btn_corner.Parent = skip_btn
+
+                    local btn_stroke = Instance.new("UIStroke")
+                    btn_stroke.Thickness = 1
+                    btn_stroke.Color = outline_color
+                    btn_stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+                    btn_stroke.Parent = skip_btn
+
+                    return {
+                        title = title,
+                        status = status,
+                        bar_bg = bar_bg,
+                        bar_stroke = bar_stroke,
+                        bar_fill = bar_fill,
+                        skip_btn = skip_btn,
+                        btn_stroke = btn_stroke
+                    }
+                end
+
+                local left_ui = create_canvas(left_half, false)
+                local right_ui = create_canvas(right_half, true)
+
+                local is_skipped = false
+                local tween_service = Services.TweenService
+
+                local function sync_tween(key, tween_info, props)
+                    pcall(function()
+                        tween_service:Create(left_ui[key], tween_info, props):Play()
+                        tween_service:Create(right_ui[key], tween_info, props):Play()
+                    end)
+                end
+
+                local function skip_loading()
+                    is_skipped = true
+                end
+
+                for _, ui_set in ipairs({ left_ui, right_ui }) do
+                    ui_set.skip_btn.MouseEnter:Connect(function()
+                        sync_tween("skip_btn", TweenInfo.new(0.15), { TextTransparency = 0 })
+                        sync_tween("btn_stroke", TweenInfo.new(0.15), { Color = accent_color })
+                    end)
+                    ui_set.skip_btn.MouseLeave:Connect(function()
+                        sync_tween("skip_btn", TweenInfo.new(0.15), { TextTransparency = 0.35 })
+                        sync_tween("btn_stroke", TweenInfo.new(0.15), { Color = outline_color })
+                    end)
+                    ui_set.skip_btn.MouseButton1Click:Connect(skip_loading)
+                end
+
+                local uis_conn
+                uis_conn = Services.UserInputService.InputBegan:Connect(function(input, gpe)
+                    if gpe then return end
+                    if input.KeyCode == Enum.KeyCode.Space or input.KeyCode == Enum.KeyCode.Return or input.KeyCode == Enum.KeyCode.Escape or input.KeyCode == Enum.KeyCode.RightShift then
+                        skip_loading()
+                    end
+                end)
+
+                task.spawn(function()
+                    local stages = {
+                        { progress = 0.28, text = "Initializing components...", duration = 0.35 },
+                        { progress = 0.58, text = "Loading configurations...", duration = 0.40 },
+                        { progress = 0.86, text = "Checking security...", duration = 0.40 },
+                        { progress = 1.00, text = "Ready!", duration = 0.35 }
+                    }
+
+                    for _, stage in ipairs(stages) do
+                        if is_skipped then break end
+                        left_ui.status.Text = stage.text
+                        right_ui.status.Text = stage.text
+                        sync_tween("bar_fill", TweenInfo.new(stage.duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                            Size = UDim2.new(stage.progress, 0, 1, 0)
+                        })
+                        local step_start = tick()
+                        while (tick() - step_start) < stage.duration do
+                            if is_skipped then break end
+                            task.wait(0.03)
+                        end
+                    end
+
+                    if uis_conn then
+                        pcall(function() uis_conn:Disconnect() end)
+                        uis_conn = nil
+                    end
+
+                    local fade_info = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+                    sync_tween("bar_bg", fade_info, { BackgroundTransparency = 1 })
+                    sync_tween("bar_fill", fade_info, { BackgroundTransparency = 1 })
+                    sync_tween("bar_stroke", fade_info, { Transparency = 1 })
+                    sync_tween("status", fade_info, { TextTransparency = 1 })
+                    sync_tween("skip_btn", fade_info, { BackgroundTransparency = 1, TextTransparency = 1 })
+                    sync_tween("btn_stroke", fade_info, { Transparency = 1 })
+
+                    left_ui.title.Text = "Welcome to SGW Hub"
+                    right_ui.title.Text = "Welcome to SGW Hub"
+
+                    local center_info = TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+                    sync_tween("title", center_info, {
+                        Position = UDim2.new(0.5, 0, 0.5, 0),
+                        TextSize = 32
+                    })
+
+                    task.wait(is_skipped and 0.20 or 0.65)
+
+                    if callback then
+                        pcall(callback)
+                    end
+
+                    local split_info = TweenInfo.new(0.75, Enum.EasingStyle.Quart, Enum.EasingDirection.InOut)
+                    local left_tween = tween_service:Create(left_half, split_info, { Position = UDim2.new(-0.5, 0, 0, 0) })
+                    local right_tween = tween_service:Create(right_half, split_info, { Position = UDim2.new(1, 0, 0, 0) })
+                    left_tween:Play()
+                    right_tween:Play()
+
+                    left_tween.Completed:Wait()
+                    pcall(function() screen_gui:Destroy() end)
+                end)
+            end
+
+            library.Toggle = function(...)
+                if loading_animation_running then
+                    return
+                end
+                if not loading_animation_played and is_fresh_execution() then
+                    loading_animation_running = true
+                    loading_animation_played = true
+                    play_sgw_loading_screen(function()
+                        loading_animation_running = false
+                        original_toggle(library, true)
+                    end)
+                    return
+                end
+                return original_toggle(...)
+            end
+        end
+
+        do
             task.defer(function()
                 if library and library.ScreenGui then
                     for _, obj in ipairs(library.ScreenGui:GetDescendants()) do
