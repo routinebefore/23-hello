@@ -6372,6 +6372,36 @@ function Library:CreateWindow(WindowInfo)
             Parent = CommitIndicator,
         })
 
+        local currentCommitId = "..."
+        local currentCommitDate = "Unknown"
+        local currentCommitMsg = "No commit message"
+
+        local function showCommitDetails()
+            local id = currentCommitId or (CommitLabel and CommitLabel.Text) or "Unknown"
+            local d = currentCommitDate or "Unknown"
+            local m = currentCommitMsg or "No commit message"
+            local ok = pcall(function()
+                Library:Notify({
+                    Title = "Commit " .. tostring(id):sub(1, 7),
+                    Description = string.format("Date: %s\nMessage: %s", tostring(d), tostring(m)),
+                    Time = 8
+                })
+            end)
+            if not ok then
+                pcall(function()
+                    Library:Notify(string.format("Commit %s (%s): %s", tostring(id):sub(1, 7), tostring(d), tostring(m)), 8)
+                end)
+            end
+        end
+
+        local lastRightClick = 0
+        local function onRightClick()
+            local now = os.clock()
+            if now - lastRightClick < 0.4 then return end
+            lastRightClick = now
+            showCommitDetails()
+        end
+
         CommitIndicator.MouseEnter:Connect(function()
             CommitLabel.TextColor3 = Color3.fromRGB(235, 235, 235)
         end)
@@ -6381,34 +6411,40 @@ function Library:CreateWindow(WindowInfo)
         CommitIndicator.MouseButton1Click:Connect(function()
             pcall(function()
                 if setclipboard then
-                    setclipboard(CommitLabel.Text)
+                    setclipboard(currentCommitId or CommitLabel.Text)
                     Library:Notify("Copied commit SHA (" .. tostring(CommitLabel.Text) .. ") to clipboard", 3)
                 end
             end)
+        end)
+        CommitIndicator.MouseButton2Click:Connect(onRightClick)
+        CommitIndicator.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton2 then
+                onRightClick()
+            end
         end)
 
         --// Update Available Popup \\--
         UpdatePopup = New("TextButton", {
             AnchorPoint = Vector2.new(0, 1),
             AutoButtonColor = false,
-            BackgroundColor3 = Color3.fromRGB(24, 24, 27),
+            BackgroundColor3 = "MainColor",
             BorderSizePixel = 0,
             Name = "UpdatePopup",
-            Position = UDim2.new(0, 8, 0, -6),
-            Size = UDim2.new(0, 168, 0, 26),
+            Position = UDim2.new(0, 10, 0, -4),
+            Size = UDim2.new(0, 136, 0, 20),
             Text = "",
             Visible = false,
-            ZIndex = 50,
+            ZIndex = 40,
             Parent = BottomBar,
         })
         New("UICorner", {
-            CornerRadius = UDim.new(0, 6),
+            CornerRadius = UDim.new(0, math.max(3, (Library.CornerRadius or 4) - 1)),
             Parent = UpdatePopup,
         })
-        New("UIStroke", {
+        local UpdateStroke = New("UIStroke", {
             ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-            Color = Color3.fromRGB(239, 68, 68),
-            Thickness = 1.2,
+            Color = "OutlineColor",
+            Thickness = 1,
             Parent = UpdatePopup,
         })
 
@@ -6422,12 +6458,12 @@ function Library:CreateWindow(WindowInfo)
         })
 
         local PopupDot = New("Frame", {
-            BackgroundColor3 = Color3.fromRGB(239, 68, 68),
+            BackgroundColor3 = Color3.fromRGB(235, 85, 85),
             BorderSizePixel = 0,
             LayoutOrder = 1,
             Name = "PopupDot",
-            Size = UDim2.fromOffset(6, 6),
-            ZIndex = 52,
+            Size = UDim2.fromOffset(5, 5),
+            ZIndex = 42,
             Parent = UpdatePopup,
         })
         New("UICorner", {
@@ -6437,31 +6473,40 @@ function Library:CreateWindow(WindowInfo)
 
         local PopupText = New("TextLabel", {
             BackgroundTransparency = 1,
-            Font = Enum.Font.GothamBold,
-            FontFace = Font.fromEnum(Enum.Font.GothamBold),
+            Font = Enum.Font.GothamMedium,
+            FontFace = Font.fromEnum(Enum.Font.GothamMedium),
             LayoutOrder = 2,
             Name = "PopupText",
-            Size = UDim2.new(0, 130, 1, 0),
-            Text = "UPDATE AVAILABLE",
-            TextColor3 = Color3.fromRGB(255, 120, 120),
-            TextSize = 10,
+            Size = UDim2.new(0, 102, 1, 0),
+            Text = "Update Available",
+            TextColor3 = "FontColor",
+            TextSize = 11,
+            TextTransparency = 0.2,
             TextWrapped = false,
-            TextXAlignment = Enum.TextXAlignment.Center,
+            TextXAlignment = Enum.TextXAlignment.Left,
             TextYAlignment = Enum.TextYAlignment.Center,
-            ZIndex = 52,
+            ZIndex = 42,
             Parent = UpdatePopup,
         })
 
         UpdatePopup.MouseEnter:Connect(function()
-            UpdatePopup.BackgroundColor3 = Color3.fromRGB(36, 36, 42)
-            PopupText.TextColor3 = Color3.fromRGB(255, 155, 155)
+            UpdatePopup.BackgroundColor3 = Color3.fromRGB(36, 36, 36)
+            UpdateStroke.Color = Color3.fromRGB(65, 65, 65)
+            PopupText.TextTransparency = 0
+            PopupText.TextColor3 = Color3.fromRGB(255, 255, 255)
         end)
         UpdatePopup.MouseLeave:Connect(function()
-            UpdatePopup.BackgroundColor3 = Color3.fromRGB(24, 24, 27)
-            PopupText.TextColor3 = Color3.fromRGB(255, 120, 120)
+            UpdatePopup.BackgroundColor3 = Library.Scheme.MainColor or Color3.fromRGB(25, 25, 25)
+            UpdateStroke.Color = Library.Scheme.OutlineColor or Color3.fromRGB(40, 40, 40)
+            PopupText.TextTransparency = 0.2
+            PopupText.TextColor3 = Library.Scheme.FontColor or Color3.fromRGB(220, 220, 220)
         end)
         UpdatePopup.MouseButton1Click:Connect(function()
-            Library:Notify("New update detected! Please re-run the loader script to reload.", 6)
+            Library:Notify({
+                Title = "Update Available",
+                Description = "A newer version is available on GitHub. Please re-run the loader script to reload.",
+                Time = 6
+            })
         end)
 
         --// Resize Button
@@ -7576,9 +7621,16 @@ function Library:CreateWindow(WindowInfo)
     Window.CommitLabel = CommitLabel
     Window.UpdatePopup = UpdatePopup
 
-    function Window:SetCommitStatus(CommitId, IsLatest)
+    function Window:SetCommitStatus(CommitId, IsLatest, CommitDate, CommitMsg)
         if typeof(CommitId) == "string" and #CommitId >= 7 then
             CommitLabel.Text = CommitId:sub(1, 7)
+            currentCommitId = CommitId
+        end
+        if typeof(CommitDate) == "string" and #CommitDate > 0 then
+            currentCommitDate = CommitDate
+        end
+        if typeof(CommitMsg) == "string" and #CommitMsg > 0 then
+            currentCommitMsg = CommitMsg
         end
         if IsLatest then
             CommitDot.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
@@ -7589,8 +7641,8 @@ function Library:CreateWindow(WindowInfo)
         end
     end
 
-    Library.SetCommitStatus = function(self, CommitId, IsLatest)
-        Window:SetCommitStatus(CommitId, IsLatest)
+    Library.SetCommitStatus = function(self, CommitId, IsLatest, CommitDate, CommitMsg)
+        Window:SetCommitStatus(CommitId, IsLatest, CommitDate, CommitMsg)
     end
 
     return Window

@@ -9376,11 +9376,17 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     end
                 end
 
-                local running_commit = "5df1044"
+                local running_commit = "edf5d97"
+                local running_date = "2026-10-13 23:57:08 UTC"
+                local running_message = "Fix commit indicator horizontal layout displacement and align bottom-left"
 
-                local function apply_commit_status(commit_id, is_latest)
+                local function apply_commit_status(commit_id, is_latest, commit_date, commit_msg)
+                    local c_id = commit_id or running_commit
+                    local c_date = commit_date or running_date
+                    local c_msg = commit_msg or running_message
+
                     if window and window.SetCommitStatus then
-                        window:SetCommitStatus(commit_id, is_latest)
+                        window:SetCommitStatus(c_id, is_latest, c_date, c_msg)
                         if window.CommitIndicator then
                             local bad = window.CommitIndicator:FindFirstChild("CommitClickArea")
                             if bad then pcall(function() bad:Destroy() end) end
@@ -9390,7 +9396,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         return
                     end
                     if library and library.SetCommitStatus then
-                        library:SetCommitStatus(commit_id, is_latest)
+                        library:SetCommitStatus(c_id, is_latest, c_date, c_msg)
                         if library.CommitIndicator then
                             local bad = library.CommitIndicator:FindFirstChild("CommitClickArea")
                             if bad then pcall(function() bad:Destroy() end) end
@@ -9494,7 +9500,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         lbl.TextColor3 = Color3.fromRGB(150, 150, 150)
                         lbl.TextXAlignment = Enum.TextXAlignment.Left
                         lbl.TextYAlignment = Enum.TextYAlignment.Center
-                        lbl.Text = commit_id:sub(1, 7)
+                        lbl.Text = c_id:sub(1, 7)
                         lbl.ZIndex = 26
                         lbl.Parent = ind
 
@@ -9507,12 +9513,43 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         ind.MouseButton1Click:Connect(function()
                             pcall(function()
                                 if setclipboard then
-                                    setclipboard(commit_id)
+                                    local cur = ind:GetAttribute("CommitId") or c_id
+                                    setclipboard(cur)
                                     if library and library.Notify then
-                                        library:Notify("Copied commit SHA (" .. tostring(commit_id) .. ") to clipboard", 3)
+                                        library:Notify("Copied commit SHA (" .. tostring(cur):sub(1, 7) .. ") to clipboard", 3)
                                     end
                                 end
                             end)
+                        end)
+
+                        local last_rc = 0
+                        local function handle_right_click()
+                            local now = os.clock()
+                            if now - last_rc < 0.4 then return end
+                            last_rc = now
+                            local cur_id = ind:GetAttribute("CommitId") or c_id or "Unknown"
+                            local cur_date = ind:GetAttribute("CommitDate") or c_date or "Unknown"
+                            local cur_msg = ind:GetAttribute("CommitMsg") or c_msg or "No commit message"
+                            if library and library.Notify then
+                                local ok = pcall(function()
+                                    library:Notify({
+                                        Title = "Commit " .. tostring(cur_id):sub(1, 7),
+                                        Description = string.format("Date: %s\nMessage: %s", tostring(cur_date), tostring(cur_msg)),
+                                        Time = 8
+                                    })
+                                end)
+                                if not ok then
+                                    pcall(function()
+                                        library:Notify(string.format("Commit %s (%s): %s", tostring(cur_id):sub(1, 7), tostring(cur_date), tostring(cur_msg)), 8)
+                                    end)
+                                end
+                            end
+                        end
+                        ind.MouseButton2Click:Connect(handle_right_click)
+                        ind.InputBegan:Connect(function(input)
+                            if input.UserInputType == Enum.UserInputType.MouseButton2 then
+                                handle_right_click()
+                            end
                         end)
                     else
                         local bad_btn = ind:FindFirstChild("CommitClickArea")
@@ -9523,28 +9560,32 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         ind.AnchorPoint = Vector2.new(0, 0.5)
                     end
 
+                    ind:SetAttribute("CommitId", c_id)
+                    ind:SetAttribute("CommitDate", c_date)
+                    ind:SetAttribute("CommitMsg", c_msg)
+
                     local pop = target:FindFirstChild("UpdatePopup")
                     if not pop then
                         pop = Instance.new("TextButton")
                         pop.Name = "UpdatePopup"
                         pop.AnchorPoint = Vector2.new(0, 1)
-                        pop.Position = bottom_bar and UDim2.new(0, 8, 0, -6) or UDim2.new(0, 8, 1, -26)
-                        pop.Size = UDim2.new(0, 168, 0, 26)
-                        pop.BackgroundColor3 = Color3.fromRGB(24, 24, 27)
+                        pop.Position = bottom_bar and UDim2.new(0, 10, 0, -4) or UDim2.new(0, 10, 1, -24)
+                        pop.Size = UDim2.new(0, 136, 0, 20)
+                        pop.BackgroundColor3 = (library and library.Scheme and library.Scheme.MainColor) or Color3.fromRGB(25, 25, 25)
                         pop.BorderSizePixel = 0
                         pop.AutoButtonColor = false
                         pop.Text = ""
                         pop.Visible = false
-                        pop.ZIndex = 50
+                        pop.ZIndex = 40
                         pop.Parent = target
 
                         local pop_c = Instance.new("UICorner")
-                        pop_c.CornerRadius = UDim.new(0, 6)
+                        pop_c.CornerRadius = UDim.new(0, (library and library.CornerRadius and math.max(3, library.CornerRadius - 2)) or 4)
                         pop_c.Parent = pop
 
                         local pop_s = Instance.new("UIStroke")
-                        pop_s.Color = Color3.fromRGB(239, 68, 68)
-                        pop_s.Thickness = 1.2
+                        pop_s.Color = (library and library.Scheme and library.Scheme.OutlineColor) or Color3.fromRGB(40, 40, 40)
+                        pop_s.Thickness = 1
                         pop_s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
                         pop_s.Parent = pop
 
@@ -9559,10 +9600,10 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         local pdot = Instance.new("Frame")
                         pdot.Name = "PopupDot"
                         pdot.LayoutOrder = 1
-                        pdot.Size = UDim2.fromOffset(6, 6)
-                        pdot.BackgroundColor3 = Color3.fromRGB(239, 68, 68)
+                        pdot.Size = UDim2.fromOffset(5, 5)
+                        pdot.BackgroundColor3 = Color3.fromRGB(235, 85, 85)
                         pdot.BorderSizePixel = 0
-                        pdot.ZIndex = 52
+                        pdot.ZIndex = 42
                         pdot.Parent = pop
 
                         local pdot_c = Instance.new("UICorner")
@@ -9572,37 +9613,46 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         local ptxt = Instance.new("TextLabel")
                         ptxt.Name = "PopupText"
                         ptxt.LayoutOrder = 2
-                        ptxt.Size = UDim2.new(0, 130, 1, 0)
+                        ptxt.Size = UDim2.new(0, 102, 1, 0)
                         ptxt.BackgroundTransparency = 1
-                        ptxt.Font = Enum.Font.GothamBold
-                        ptxt.Text = "UPDATE AVAILABLE"
-                        ptxt.TextSize = 10
-                        ptxt.TextColor3 = Color3.fromRGB(255, 120, 120)
-                        ptxt.TextXAlignment = Enum.TextXAlignment.Center
+                        ptxt.Font = Enum.Font.GothamMedium
+                        ptxt.Text = "Update Available"
+                        ptxt.TextSize = 11
+                        ptxt.TextTransparency = 0.2
+                        ptxt.TextColor3 = (library and library.Scheme and library.Scheme.FontColor) or Color3.fromRGB(220, 220, 220)
+                        ptxt.TextXAlignment = Enum.TextXAlignment.Left
                         ptxt.TextYAlignment = Enum.TextYAlignment.Center
                         ptxt.TextWrapped = false
-                        ptxt.ZIndex = 52
+                        ptxt.ZIndex = 42
                         ptxt.Parent = pop
 
                         pop.MouseEnter:Connect(function()
-                            pop.BackgroundColor3 = Color3.fromRGB(36, 36, 42)
-                            ptxt.TextColor3 = Color3.fromRGB(255, 155, 155)
+                            pop.BackgroundColor3 = Color3.fromRGB(36, 36, 36)
+                            pop_s.Color = Color3.fromRGB(65, 65, 65)
+                            ptxt.TextTransparency = 0
+                            ptxt.TextColor3 = Color3.fromRGB(255, 255, 255)
                         end)
                         pop.MouseLeave:Connect(function()
-                            pop.BackgroundColor3 = Color3.fromRGB(24, 24, 27)
-                            ptxt.TextColor3 = Color3.fromRGB(255, 120, 120)
+                            pop.BackgroundColor3 = (library and library.Scheme and library.Scheme.MainColor) or Color3.fromRGB(25, 25, 25)
+                            pop_s.Color = (library and library.Scheme and library.Scheme.OutlineColor) or Color3.fromRGB(40, 40, 40)
+                            ptxt.TextTransparency = 0.2
+                            ptxt.TextColor3 = (library and library.Scheme and library.Scheme.FontColor) or Color3.fromRGB(220, 220, 220)
                         end)
                         pop.MouseButton1Click:Connect(function()
                             if library and library.Notify then
-                                library:Notify("New update detected! Please re-run the loader script to reload.", 6)
+                                library:Notify({
+                                    Title = "Update Available",
+                                    Description = "A newer version is available on GitHub. Please re-run the loader script to reload.",
+                                    Time = 6
+                                })
                             end
                         end)
                     end
 
                     local cur_dot = ind:FindFirstChild("CommitDot")
                     local cur_lbl = ind:FindFirstChild("CommitLabel")
-                    if cur_lbl and commit_id and #commit_id >= 7 then
-                        cur_lbl.Text = commit_id:sub(1, 7)
+                    if cur_lbl and c_id and #c_id >= 7 then
+                        cur_lbl.Text = c_id:sub(1, 7)
                     end
                     if is_latest then
                         if cur_dot then cur_dot.BackgroundColor3 = Color3.fromRGB(46, 204, 113) end
@@ -9613,20 +9663,111 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     end
                 end
 
-                apply_commit_status(running_commit, true)
+                apply_commit_status(running_commit, true, running_date, running_message)
+
+                local function parse_atom_entry(body)
+                    if type(body) ~= "string" or #body == 0 then return nil end
+                    local entry = body:match("<entry>(.-)</entry>")
+                    if not entry then return nil end
+                    local sha = entry:match("[Cc]ommit/([0-9a-fA-F]+)")
+                    if not sha or #sha < 7 then return nil end
+                    sha = sha:sub(1, 7):lower()
+
+                    local date_raw = entry:match("<updated>%s*(.-)%s*</updated>")
+                    local date_str = "Unknown"
+                    if date_raw then
+                        local y, m, d, hh, mm, ss = date_raw:match("(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)")
+                        if y and m and d and hh and mm and ss then
+                            date_str = string.format("%s-%s-%s %s:%s:%s UTC", y, m, d, hh, mm, ss)
+                        else
+                            date_str = date_raw
+                        end
+                    end
+
+                    local pre = entry:match("&lt;pre.-&gt;(.-)&lt;/pre&gt;")
+                    local title = entry:match("<title>%s*(.-)%s*</title>")
+                    local msg = pre or title or "No commit message"
+                    msg = msg:gsub("&lt;", "<"):gsub("&gt;", ">"):gsub("&amp;", "&"):gsub("&quot;", '"'):gsub("&#39;", "'")
+                    msg = msg:gsub("<[^>]+>", "")
+                    msg = msg:match("^%s*(.-)%s*$")
+                    if not msg or #msg == 0 then msg = "No commit message" end
+
+                    return {
+                        sha = sha,
+                        date = date_str,
+                        message = msg
+                    }
+                end
+
+                local function parse_json_entry(body)
+                    if type(body) ~= "string" or #body == 0 then return nil end
+                    local parsed = nil
+                    pcall(function()
+                        if game and game.GetService then
+                            local hs = game:GetService("HttpService")
+                            if hs and hs.JSONDecode then
+                                local data = hs:JSONDecode(body)
+                                if data and data.sha and #data.sha >= 7 then
+                                    local sha = data.sha:sub(1, 7):lower()
+                                    local d_raw = data.commit and data.commit.author and data.commit.author.date
+                                    local d_str = "Unknown"
+                                    if d_raw then
+                                        local y, m, d, hh, mm, ss = d_raw:match("(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)")
+                                        if y and m and d and hh and mm and ss then
+                                            d_str = string.format("%s-%s-%s %s:%s:%s UTC", y, m, d, hh, mm, ss)
+                                        else
+                                            d_str = d_raw
+                                        end
+                                    end
+                                    local msg = (data.commit and data.commit.message) or "No commit message"
+                                    msg = msg:match("^%s*(.-)%s*$")
+                                    if not msg or #msg == 0 then msg = "No commit message" end
+                                    parsed = {
+                                        sha = sha,
+                                        date = d_str,
+                                        message = msg
+                                    }
+                                end
+                            end
+                        end
+                    end)
+                    if parsed then return parsed end
+
+                    local sha = body:match('"sha"%s*:%s*"([0-9a-fA-F]+)"')
+                    if not sha or #sha < 7 then return nil end
+                    sha = sha:sub(1, 7):lower()
+
+                    local date_raw = body:match('"date"%s*:%s*"([^"]+)"')
+                    local date_str = "Unknown"
+                    if date_raw then
+                        local y, m, d, hh, mm, ss = date_raw:match("(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)")
+                        if y and m and d and hh and mm and ss then
+                            date_str = string.format("%s-%s-%s %s:%s:%s UTC", y, m, d, hh, mm, ss)
+                        else
+                            date_str = date_raw
+                        end
+                    end
+
+                    local msg = body:match('"message"%s*:%s*"(.-)"[,\r\n]') or body:match('"message"%s*:%s*"(.-)"')
+                    if msg then
+                        msg = msg:gsub("\\n", "\n"):gsub('\\"', '"'):gsub("\\\\", "\\")
+                        msg = msg:match("^%s*(.-)%s*$")
+                    end
+                    if not msg or #msg == 0 then msg = "No commit message" end
+
+                    return {
+                        sha = sha,
+                        date = date_str,
+                        message = msg
+                    }
+                end
 
                 local function fetch_remote_commit()
                     local result = nil
                     pcall(function()
                         if game and game.HttpGet then
                             local body = game:HttpGet("https://github.com/routinebefore/23-hello/commits/main.atom?t=" .. tostring(os.time()), true)
-                            if type(body) == "string" and #body > 0 then
-                                local sha = body:match("[Cc]ommit/([0-9a-fA-F]+)")
-                                if sha and #sha >= 7 then
-                                    result = sha:sub(1, 7):lower()
-                                    return
-                                end
-                            end
+                            result = parse_atom_entry(body)
                         end
                     end)
                     if result then return result end
@@ -9641,11 +9782,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                                 }
                             })
                             if resp and resp.Body then
-                                local sha = resp.Body:match("[Cc]ommit/([0-9a-fA-F]+)")
-                                if sha and #sha >= 7 then
-                                    result = sha:sub(1, 7):lower()
-                                    return
-                                end
+                                result = parse_atom_entry(resp.Body)
                             end
                         end
                     end)
@@ -9653,11 +9790,22 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     pcall(function()
                         if game and game.HttpGet then
                             local body = game:HttpGet("https://api.github.com/repos/routinebefore/23-hello/commits/main?t=" .. tostring(os.time()), true)
-                            if type(body) == "string" and #body > 0 then
-                                local sha = body:match('"sha"%s*:%s*"([0-9a-fA-F]+)"')
-                                if sha and #sha >= 7 then
-                                    result = sha:sub(1, 7):lower()
-                                end
+                            result = parse_json_entry(body)
+                        end
+                    end)
+                    if result then return result end
+                    pcall(function()
+                        local req = http_request or request or (syn and syn.request)
+                        if req then
+                            local resp = req({
+                                Url = "https://api.github.com/repos/routinebefore/23-hello/commits/main?t=" .. tostring(os.time()),
+                                Method = "GET",
+                                Headers = {
+                                    ["Cache-Control"] = "no-cache"
+                                }
+                            })
+                            if resp and resp.Body then
+                                result = parse_json_entry(resp.Body)
                             end
                         end
                     end)
@@ -9666,17 +9814,19 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
                 task.spawn(function()
                     task.wait(1.5)
-                    local initial_sha = fetch_remote_commit()
-                    if initial_sha and #initial_sha >= 7 then
-                        running_commit = initial_sha
+                    local initial_info = fetch_remote_commit()
+                    if initial_info and initial_info.sha and #initial_info.sha >= 7 then
+                        running_commit = initial_info.sha
+                        running_date = initial_info.date or running_date
+                        running_message = initial_info.message or running_message
                     end
-                    apply_commit_status(running_commit, true)
+                    apply_commit_status(running_commit, true, running_date, running_message)
 
                     while task.wait(60) do
                         local latest = fetch_remote_commit()
-                        if latest and #latest >= 7 then
-                            local is_latest = (latest == running_commit)
-                            apply_commit_status(running_commit, is_latest)
+                        if latest and latest.sha and #latest.sha >= 7 then
+                            local is_latest = (latest.sha == running_commit)
+                            apply_commit_status(running_commit, is_latest, running_date, running_message)
                         end
                     end
                 end)
