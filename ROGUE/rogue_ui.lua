@@ -9635,13 +9635,13 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
                 local screen_gui = library.ScreenGui or main_frame.Parent
 
-                local bg_color = Color3.fromRGB(21, 21, 21)
-                local main_color = Color3.fromRGB(33, 33, 33)
-                local accent_color = Color3.fromRGB(0, 240, 255)
-                local outline_color = Color3.fromRGB(56, 56, 56)
-                local font_color = Color3.fromRGB(238, 255, 255)
+                local bg_color = (library and library.Scheme and library.Scheme.BackgroundColor) or Color3.fromRGB(21, 21, 21)
+                local main_color = (library and library.Scheme and library.Scheme.MainColor) or Color3.fromRGB(33, 33, 33)
+                local accent_color = (library and library.Scheme and library.Scheme.AccentColor) or Color3.fromRGB(0, 240, 255)
+                local outline_color = (library and library.Scheme and library.Scheme.OutlineColor) or Color3.fromRGB(56, 56, 56)
+                local font_color = (library and library.Scheme and library.Scheme.FontColor) or Color3.fromRGB(238, 255, 255)
                 local sub_color = Color3.fromRGB(150, 175, 180)
-                local font_main = (library and library.Font) or Enum.Font.Code
+                local font_main = (library and library.Font) or (library and library.Scheme and library.Scheme.Font) or Enum.Font.Code
 
                 local overlay = Instance.new("Frame")
                 overlay.Name = "SGW_HubLoadingOverlay"
@@ -9658,6 +9658,53 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 end)
                 local size_conn = main_frame:GetPropertyChangedSignal("Size"):Connect(function()
                     overlay.Size = main_frame.Size
+                end)
+
+                local drag_bar = Instance.new("Frame")
+                drag_bar.Name = "LoadingDragBar"
+                drag_bar.Size = UDim2.new(1, 0, 0, 48)
+                drag_bar.Position = UDim2.new(0, 0, 0, 0)
+                drag_bar.BackgroundTransparency = 1
+                drag_bar.BorderSizePixel = 0
+                drag_bar.ZIndex = 65
+                drag_bar.Parent = overlay
+
+                local is_dragging = false
+                local drag_start = nil
+                local frame_start = nil
+
+                drag_bar.InputBegan:Connect(function(input)
+                    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                        is_dragging = true
+                        drag_start = input.Position
+                        frame_start = main_frame.Position
+
+                        local conn
+                        conn = input.Changed:Connect(function()
+                            if input.UserInputState == Enum.UserInputState.End then
+                                is_dragging = false
+                                if conn then
+                                    conn:Disconnect()
+                                    conn = nil
+                                end
+                            end
+                        end)
+                    end
+                end)
+
+                local drag_move_conn
+                drag_move_conn = Services.UserInputService.InputChanged:Connect(function(input)
+                    if is_dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+                        local delta = input.Position - drag_start
+                        local new_pos = UDim2.new(
+                            frame_start.X.Scale,
+                            frame_start.X.Offset + delta.X,
+                            frame_start.Y.Scale,
+                            frame_start.Y.Offset + delta.Y
+                        )
+                        main_frame.Position = new_pos
+                        overlay.Position = new_pos
+                    end
                 end)
 
                 local left_half = Instance.new("Frame")
@@ -9693,7 +9740,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     canvas.Parent = parent_half
 
                     local corner = Instance.new("UICorner")
-                    corner.CornerRadius = UDim.new(0, 3)
+                    corner.CornerRadius = UDim.new(0, (library and library.CornerRadius or 6) - 1)
                     corner.Parent = canvas
 
                     local stroke = Instance.new("UIStroke")
@@ -9722,14 +9769,15 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
                     local top_title = Instance.new("TextLabel")
                     top_title.Name = "TopTitle"
-                    top_title.Size = UDim2.new(1, -24, 0, 48)
-                    top_title.Position = UDim2.new(0, 12, 0, 0)
+                    top_title.Size = UDim2.new(1, -16, 0, 48)
+                    top_title.Position = UDim2.new(0, 8, 0, 0)
                     top_title.BackgroundTransparency = 1
                     top_title.Text = "SGW Hub | Alpha 1.6.7"
                     top_title.Font = font_main
-                    top_title.TextSize = 16
+                    top_title.TextSize = 20
                     top_title.TextColor3 = font_color
                     top_title.TextXAlignment = Enum.TextXAlignment.Left
+                    top_title.TextYAlignment = Enum.TextYAlignment.Center
                     top_title.ZIndex = 52
                     top_title.Parent = canvas
 
@@ -9787,6 +9835,13 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     local fill_corner = Instance.new("UICorner")
                     fill_corner.CornerRadius = UDim.new(0, 3)
                     fill_corner.Parent = bar_fill
+
+                    local fill_grad = Instance.new("UIGradient")
+                    fill_grad.Color = ColorSequence.new({
+                        ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 200, 235)),
+                        ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 245, 255))
+                    })
+                    fill_grad.Parent = bar_fill
 
                     local bar_text = Instance.new("TextLabel")
                     bar_text.Name = "BarText"
@@ -10041,6 +10096,9 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         sync_tween("skip_btn", TweenInfo.new(0.12), { TextTransparency = 0.4 })
                         sync_tween("btn_stroke", TweenInfo.new(0.12), { Color = outline_color })
                     end)
+                    ui_set.skip_btn.MouseButton1Down:Connect(function()
+                        sync_tween("skip_btn", TweenInfo.new(0.08), { TextTransparency = 0.1 })
+                    end)
                     ui_set.skip_btn.MouseButton1Click:Connect(skip_loading)
                 end
 
@@ -10186,6 +10244,11 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         task.wait(0.02)
                     end
 
+                    if drag_bar then
+                        drag_bar.Visible = false
+                    end
+                    is_dragging = false
+
                     local split_time = is_skipped and 0.45 or 0.68
                     local split_info = TweenInfo.new(split_time, Enum.EasingStyle.Quart, Enum.EasingDirection.InOut)
                     local left_tween = tween_service:Create(left_half, split_info, { Position = UDim2.new(-0.5, 0, 0, 0) })
@@ -10197,6 +10260,10 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     left_tween.Completed:Wait()
 
                     active_loading_commit_updater = nil
+                    if drag_move_conn then
+                        pcall(function() drag_move_conn:Disconnect() end)
+                        drag_move_conn = nil
+                    end
                     pcall(function() pos_conn:Disconnect() end)
                     pcall(function() size_conn:Disconnect() end)
                     pcall(function() overlay:Destroy() end)
