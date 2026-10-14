@@ -9406,8 +9406,10 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 local screen_gui = library.ScreenGui or main_frame.Parent
 
                 local bg_color = Color3.fromRGB(21, 21, 21)
+                local card_color = Color3.fromRGB(26, 26, 30)
                 local main_color = Color3.fromRGB(33, 33, 33)
                 local accent_color = Color3.fromRGB(0, 240, 255)
+                local accent_light = Color3.fromRGB(180, 255, 255)
                 local outline_color = Color3.fromRGB(56, 56, 56)
                 local font_color = Color3.fromRGB(238, 255, 255)
                 local sub_color = Color3.fromRGB(150, 175, 180)
@@ -9420,7 +9422,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 overlay.BackgroundTransparency = 1
                 overlay.BorderSizePixel = 0
                 overlay.ZIndex = 50
-                overlay.ClipsDescendants = false
+                overlay.ClipsDescendants = true
                 overlay.Parent = screen_gui
 
                 local pos_conn = main_frame:GetPropertyChangedSignal("Position"):Connect(function()
@@ -9488,156 +9490,136 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     top_line.ZIndex = 52
                     top_line.Parent = canvas
 
-                    local top_title = Instance.new("TextLabel")
-                    top_title.Name = "TopTitle"
-                    top_title.Size = UDim2.new(1, -24, 0, 32)
-                    top_title.Position = UDim2.new(0.5, 0, 0, 24)
-                    top_title.AnchorPoint = Vector2.new(0.5, 0.5)
-                    top_title.BackgroundTransparency = 1
-                    top_title.Text = "SGW Hub | Alpha 1.6.7"
-                    top_title.Font = font_main
-                    top_title.TextSize = 16
-                    top_title.TextColor3 = font_color
-                    top_title.TextXAlignment = Enum.TextXAlignment.Center
-                    top_title.ZIndex = 52
-                    top_title.Parent = canvas
+                    local top_brand = Instance.new("TextLabel")
+                    top_brand.Name = "TopBrand"
+                    top_brand.Size = UDim2.new(0.5, -16, 0, 48)
+                    top_brand.Position = UDim2.new(0, 16, 0, 0)
+                    top_brand.BackgroundTransparency = 1
+                    top_brand.Text = "SGW Hub | Alpha 1.6.7"
+                    top_brand.Font = font_main
+                    top_brand.TextSize = 14
+                    top_brand.TextColor3 = font_color
+                    top_brand.TextXAlignment = Enum.TextXAlignment.Left
+                    top_brand.ZIndex = 52
+                    top_brand.Parent = canvas
 
-                    local vert_line = Instance.new("Frame")
-                    vert_line.Name = "SidebarDivider"
-                    vert_line.Size = UDim2.new(0, 1, 1, -68)
-                    vert_line.Position = UDim2.new(0.3, 0, 0, 48)
-                    vert_line.BackgroundColor3 = outline_color
-                    vert_line.BorderSizePixel = 0
-                    vert_line.ZIndex = 52
-                    vert_line.Parent = canvas
+                    local top_badge = Instance.new("TextLabel")
+                    top_badge.Name = "TopBadge"
+                    top_badge.Size = UDim2.new(0.5, -16, 0, 48)
+                    top_badge.Position = UDim2.new(0.5, 0, 0, 0)
+                    top_badge.BackgroundTransparency = 1
+                    top_badge.Text = "[ INITIALIZING ]"
+                    top_badge.Font = font_main
+                    top_badge.TextSize = 12
+                    top_badge.TextColor3 = accent_color
+                    top_badge.TextXAlignment = Enum.TextXAlignment.Right
+                    top_badge.ZIndex = 52
+                    top_badge.Parent = canvas
 
-                    local sidebar = Instance.new("Frame")
-                    sidebar.Name = "Sidebar"
-                    sidebar.Size = UDim2.new(0.3, 0, 1, -69)
-                    sidebar.Position = UDim2.fromOffset(0, 49)
-                    sidebar.BackgroundColor3 = bg_color
-                    sidebar.BorderSizePixel = 0
-                    sidebar.ZIndex = 51
-                    sidebar.Parent = canvas
+                    local bot_line = Instance.new("Frame")
+                    bot_line.Name = "BottomDivider"
+                    bot_line.Size = UDim2.new(1, 0, 0, 1)
+                    bot_line.Position = UDim2.new(0, 0, 1, -22)
+                    bot_line.BackgroundColor3 = outline_color
+                    bot_line.BorderSizePixel = 0
+                    bot_line.ZIndex = 52
+                    bot_line.Parent = canvas
 
-                    local tab_items = {}
-                    local tab_names = { "Core Engine", "Configurations", "Security Guard", "Ready" }
-                    for i, name in ipairs(tab_names) do
-                        local tab_frame = Instance.new("Frame")
-                        tab_frame.Name = "Tab_" .. i
-                        tab_frame.Size = UDim2.new(1, -12, 0, 28)
-                        tab_frame.Position = UDim2.new(0, 6, 0, 8 + (i - 1) * 32)
-                        tab_frame.BackgroundColor3 = main_color
-                        tab_frame.BackgroundTransparency = 1
-                        tab_frame.BorderSizePixel = 0
-                        tab_frame.ZIndex = 52
-                        tab_frame.Parent = sidebar
+                    local bot_left = Instance.new("TextLabel")
+                    bot_left.Name = "BotLeft"
+                    bot_left.Size = UDim2.new(0.5, -16, 0, 22)
+                    bot_left.Position = UDim2.new(0, 16, 1, -22)
+                    bot_left.BackgroundTransparency = 1
+                    bot_left.Text = "SGW Hub | Core Framework"
+                    bot_left.Font = font_main
+                    bot_left.TextSize = 11
+                    bot_left.TextColor3 = sub_color
+                    bot_left.TextXAlignment = Enum.TextXAlignment.Left
+                    bot_left.ZIndex = 52
+                    bot_left.Parent = canvas
 
-                        local tab_corner = Instance.new("UICorner")
-                        tab_corner.CornerRadius = UDim.new(0, 3)
-                        tab_corner.Parent = tab_frame
+                    local bot_pct = Instance.new("TextLabel")
+                    bot_pct.Name = "BotPct"
+                    bot_pct.Size = UDim2.new(0.5, -16, 0, 22)
+                    bot_pct.Position = UDim2.new(0.5, 0, 1, -22)
+                    bot_pct.BackgroundTransparency = 1
+                    bot_pct.Text = "[ 0% ]"
+                    bot_pct.Font = font_main
+                    bot_pct.TextSize = 11
+                    bot_pct.TextColor3 = accent_color
+                    bot_pct.TextXAlignment = Enum.TextXAlignment.Right
+                    bot_pct.ZIndex = 52
+                    bot_pct.Parent = canvas
 
-                        local tab_bar = Instance.new("Frame")
-                        tab_bar.Name = "Bar"
-                        tab_bar.Size = UDim2.new(0, 2, 1, -6)
-                        tab_bar.Position = UDim2.new(0, 2, 0, 3)
-                        tab_bar.BackgroundColor3 = accent_color
-                        tab_bar.BorderSizePixel = 0
-                        tab_bar.BackgroundTransparency = 1
-                        tab_bar.ZIndex = 53
-                        tab_bar.Parent = tab_frame
+                    local center_card = Instance.new("Frame")
+                    center_card.Name = "CenterCard"
+                    center_card.Size = UDim2.new(0, 360, 0, 172)
+                    center_card.Position = UDim2.new(0.5, 0, 0.5, 0)
+                    center_card.AnchorPoint = Vector2.new(0.5, 0.5)
+                    center_card.BackgroundColor3 = card_color
+                    center_card.BorderSizePixel = 0
+                    center_card.ZIndex = 53
+                    center_card.Parent = canvas
 
-                        local tab_label = Instance.new("TextLabel")
-                        tab_label.Name = "Label"
-                        tab_label.Size = UDim2.new(1, -14, 1, 0)
-                        tab_label.Position = UDim2.new(0, 10, 0, 0)
-                        tab_label.BackgroundTransparency = 1
-                        tab_label.Text = string.format("[0%d] %s", i, name)
-                        tab_label.Font = font_main
-                        tab_label.TextSize = 12
-                        tab_label.TextColor3 = sub_color
-                        tab_label.TextXAlignment = Enum.TextXAlignment.Left
-                        tab_label.ZIndex = 53
-                        tab_label.Parent = tab_frame
+                    local card_corner = Instance.new("UICorner")
+                    card_corner.CornerRadius = UDim.new(0, 5)
+                    card_corner.Parent = center_card
 
-                        tab_items[i] = { frame = tab_frame, bar = tab_bar, label = tab_label }
-                    end
+                    local card_stroke = Instance.new("UIStroke")
+                    card_stroke.Color = outline_color
+                    card_stroke.Thickness = 1
+                    card_stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+                    card_stroke.Parent = center_card
 
-                    local container = Instance.new("Frame")
-                    container.Name = "MainContainer"
-                    container.Size = UDim2.new(0.7, -1, 1, -69)
-                    container.Position = UDim2.new(0.3, 1, 0, 49)
-                    container.BackgroundColor3 = main_color
-                    container.BorderSizePixel = 0
-                    container.ZIndex = 51
-                    container.Parent = canvas
+                    local card_glow = Instance.new("Frame")
+                    card_glow.Name = "CardGlow"
+                    card_glow.Size = UDim2.new(1, 0, 0, 2)
+                    card_glow.Position = UDim2.new(0, 0, 0, 0)
+                    card_glow.BackgroundColor3 = accent_color
+                    card_glow.BorderSizePixel = 0
+                    card_glow.ZIndex = 54
+                    card_glow.Parent = center_card
 
-                    local groupbox = Instance.new("Frame")
-                    groupbox.Name = "Groupbox"
-                    groupbox.Size = UDim2.new(1, -20, 1, -20)
-                    groupbox.Position = UDim2.new(0.5, 0, 0.5, 0)
-                    groupbox.AnchorPoint = Vector2.new(0.5, 0.5)
-                    groupbox.BackgroundColor3 = bg_color
-                    groupbox.BorderSizePixel = 0
-                    groupbox.ZIndex = 52
-                    groupbox.Parent = container
+                    local title = Instance.new("TextLabel")
+                    title.Name = "TitleLabel"
+                    title.Size = UDim2.new(1, 0, 0, 30)
+                    title.Position = UDim2.new(0.5, 0, 0, 24)
+                    title.AnchorPoint = Vector2.new(0.5, 0.5)
+                    title.BackgroundTransparency = 1
+                    title.Text = "SGW HUB"
+                    title.Font = font_main
+                    title.TextSize = 20
+                    title.TextColor3 = font_color
+                    title.TextStrokeTransparency = 0.8
+                    title.TextStrokeColor3 = accent_color
+                    title.ZIndex = 55
+                    title.Parent = center_card
 
-                    local gb_corner = Instance.new("UICorner")
-                    gb_corner.CornerRadius = UDim.new(0, 3)
-                    gb_corner.Parent = groupbox
-
-                    local gb_stroke = Instance.new("UIStroke")
-                    gb_stroke.Color = outline_color
-                    gb_stroke.Thickness = 1
-                    gb_stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-                    gb_stroke.Parent = groupbox
-
-                    local gb_title = Instance.new("TextLabel")
-                    gb_title.Name = "GBTitle"
-                    gb_title.Size = UDim2.new(1, -24, 0, 18)
-                    gb_title.Position = UDim2.new(0, 12, 0, 10)
-                    gb_title.BackgroundTransparency = 1
-                    gb_title.Text = "System Bootstrap"
-                    gb_title.Font = font_main
-                    gb_title.TextSize = 13
-                    gb_title.TextColor3 = font_color
-                    gb_title.TextXAlignment = Enum.TextXAlignment.Left
-                    gb_title.ZIndex = 53
-                    gb_title.Parent = groupbox
-
-                    local gb_line = Instance.new("Frame")
-                    gb_line.Name = "GBLine"
-                    gb_line.Size = UDim2.new(1, -24, 0, 1)
-                    gb_line.Position = UDim2.new(0, 12, 0, 30)
-                    gb_line.BackgroundColor3 = outline_color
-                    gb_line.BorderSizePixel = 0
-                    gb_line.ZIndex = 53
-                    gb_line.Parent = groupbox
-
-                    local status_desc = Instance.new("TextLabel")
-                    status_desc.Name = "StatusDesc"
-                    status_desc.Size = UDim2.new(1, -24, 0, 20)
-                    status_desc.Position = UDim2.new(0, 12, 0, 44)
-                    status_desc.BackgroundTransparency = 1
-                    status_desc.Text = "Initializing components..."
-                    status_desc.Font = font_main
-                    status_desc.TextSize = 12
-                    status_desc.TextColor3 = sub_color
-                    status_desc.TextXAlignment = Enum.TextXAlignment.Left
-                    status_desc.ZIndex = 53
-                    status_desc.Parent = groupbox
+                    local status = Instance.new("TextLabel")
+                    status.Name = "StatusLabel"
+                    status.Size = UDim2.new(1, -30, 0, 20)
+                    status.Position = UDim2.new(0.5, 0, 0, 50)
+                    status.AnchorPoint = Vector2.new(0.5, 0.5)
+                    status.BackgroundTransparency = 1
+                    status.Text = "Initializing core systems..."
+                    status.Font = font_main
+                    status.TextSize = 12
+                    status.TextColor3 = sub_color
+                    status.ZIndex = 55
+                    status.Parent = center_card
 
                     local bar_bg = Instance.new("Frame")
-                    bar_bg.Name = "BarBG"
-                    bar_bg.Size = UDim2.new(1, -24, 0, 8)
-                    bar_bg.Position = UDim2.new(0, 12, 0, 72)
-                    bar_bg.BackgroundColor3 = main_color
+                    bar_bg.Name = "BarBackground"
+                    bar_bg.Size = UDim2.new(1, -48, 0, 8)
+                    bar_bg.Position = UDim2.new(0.5, 0, 0, 78)
+                    bar_bg.AnchorPoint = Vector2.new(0.5, 0.5)
+                    bar_bg.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
                     bar_bg.BorderSizePixel = 0
-                    bar_bg.ZIndex = 53
-                    bar_bg.Parent = groupbox
+                    bar_bg.ZIndex = 54
+                    bar_bg.Parent = center_card
 
                     local bar_corner = Instance.new("UICorner")
-                    bar_corner.CornerRadius = UDim.new(0, 2)
+                    bar_corner.CornerRadius = UDim.new(1, 0)
                     bar_corner.Parent = bar_bg
 
                     local bar_stroke = Instance.new("UIStroke")
@@ -9651,31 +9633,39 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     bar_fill.Size = UDim2.new(0, 0, 1, 0)
                     bar_fill.BackgroundColor3 = accent_color
                     bar_fill.BorderSizePixel = 0
-                    bar_fill.ZIndex = 54
+                    bar_fill.ZIndex = 55
                     bar_fill.Parent = bar_bg
 
                     local fill_corner = Instance.new("UICorner")
-                    fill_corner.CornerRadius = UDim.new(0, 2)
+                    fill_corner.CornerRadius = UDim.new(1, 0)
                     fill_corner.Parent = bar_fill
 
-                    local hint_label = Instance.new("TextLabel")
-                    hint_label.Name = "Hint"
-                    hint_label.Size = UDim2.new(1, -120, 0, 24)
-                    hint_label.Position = UDim2.new(0, 12, 0, 92)
-                    hint_label.BackgroundTransparency = 1
-                    hint_label.Text = "Press RightShift or Skip to bypass"
-                    hint_label.Font = font_main
-                    hint_label.TextSize = 11
-                    hint_label.TextColor3 = sub_color
-                    hint_label.TextTransparency = 0.35
-                    hint_label.TextXAlignment = Enum.TextXAlignment.Left
-                    hint_label.ZIndex = 53
-                    hint_label.Parent = groupbox
+                    local fill_grad = Instance.new("UIGradient")
+                    fill_grad.Color = ColorSequence.new({
+                        ColorSequenceKeypoint.new(0, accent_color),
+                        ColorSequenceKeypoint.new(0.5, accent_light),
+                        ColorSequenceKeypoint.new(1, accent_color)
+                    })
+                    fill_grad.Parent = bar_fill
+
+                    local pct_label = Instance.new("TextLabel")
+                    pct_label.Name = "PctLabel"
+                    pct_label.Size = UDim2.new(1, 0, 0, 16)
+                    pct_label.Position = UDim2.new(0.5, 0, 0, 102)
+                    pct_label.AnchorPoint = Vector2.new(0.5, 0.5)
+                    pct_label.BackgroundTransparency = 1
+                    pct_label.Text = "[ 0% ]  Synchronizing modules"
+                    pct_label.Font = font_main
+                    pct_label.TextSize = 11
+                    pct_label.TextColor3 = accent_color
+                    pct_label.ZIndex = 55
+                    pct_label.Parent = center_card
 
                     local skip_btn = Instance.new("TextButton")
-                    skip_btn.Name = "SkipBtn"
-                    skip_btn.Size = UDim2.new(0, 74, 0, 24)
-                    skip_btn.Position = UDim2.new(1, -86, 0, 92)
+                    skip_btn.Name = "SkipButton"
+                    skip_btn.Size = UDim2.new(0, 80, 0, 24)
+                    skip_btn.Position = UDim2.new(0.5, 0, 0, 136)
+                    skip_btn.AnchorPoint = Vector2.new(0.5, 0.5)
                     skip_btn.BackgroundColor3 = main_color
                     skip_btn.BorderSizePixel = 0
                     skip_btn.Text = "Skip"
@@ -9683,8 +9673,8 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     skip_btn.TextSize = 12
                     skip_btn.TextColor3 = font_color
                     skip_btn.AutoButtonColor = false
-                    skip_btn.ZIndex = 53
-                    skip_btn.Parent = groupbox
+                    skip_btn.ZIndex = 55
+                    skip_btn.Parent = center_card
 
                     local btn_corner = Instance.new("UICorner")
                     btn_corner.CornerRadius = UDim.new(0, 3)
@@ -9696,75 +9686,29 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     btn_stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
                     btn_stroke.Parent = skip_btn
 
-                    local bot_line = Instance.new("Frame")
-                    bot_line.Name = "BottomDivider"
-                    bot_line.Size = UDim2.new(1, 0, 0, 1)
-                    bot_line.Position = UDim2.new(0, 0, 1, -20)
-                    bot_line.BackgroundColor3 = outline_color
-                    bot_line.BorderSizePixel = 0
-                    bot_line.ZIndex = 52
-                    bot_line.Parent = canvas
-
-                    local bot_bar = Instance.new("Frame")
-                    bot_bar.Name = "BottomBar"
-                    bot_bar.Size = UDim2.new(1, 0, 0, 20)
-                    bot_bar.Position = UDim2.new(0, 0, 1, -20)
-                    bot_bar.BackgroundColor3 = bg_color
-                    bot_bar.BorderSizePixel = 0
-                    bot_bar.ZIndex = 51
-                    bot_bar.Parent = canvas
-
-                    local bot_left = Instance.new("TextLabel")
-                    bot_left.Name = "BotLeft"
-                    bot_left.Size = UDim2.new(0.5, -10, 1, 0)
-                    bot_left.Position = UDim2.new(0, 10, 0, 0)
-                    bot_left.BackgroundTransparency = 1
-                    bot_left.Text = "SGW Hub | Ready"
-                    bot_left.Font = font_main
-                    bot_left.TextSize = 11
-                    bot_left.TextColor3 = sub_color
-                    bot_left.TextXAlignment = Enum.TextXAlignment.Left
-                    bot_left.ZIndex = 52
-                    bot_left.Parent = bot_bar
-
-                    local bot_pct = Instance.new("TextLabel")
-                    bot_pct.Name = "BotPct"
-                    bot_pct.Size = UDim2.new(0.5, -10, 1, 0)
-                    bot_pct.Position = UDim2.new(0.5, 0, 0, 0)
-                    bot_pct.BackgroundTransparency = 1
-                    bot_pct.Text = "[ 0% ]"
-                    bot_pct.Font = font_main
-                    bot_pct.TextSize = 11
-                    bot_pct.TextColor3 = accent_color
-                    bot_pct.TextXAlignment = Enum.TextXAlignment.Right
-                    bot_pct.ZIndex = 52
-                    bot_pct.Parent = bot_bar
-
                     return {
                         canvas = canvas,
                         stroke = stroke,
                         top_accent = top_accent,
                         top_line = top_line,
-                        top_title = top_title,
-                        vert_line = vert_line,
-                        sidebar = sidebar,
-                        tab_items = tab_items,
-                        container = container,
-                        groupbox = groupbox,
-                        gb_stroke = gb_stroke,
-                        gb_title = gb_title,
-                        gb_line = gb_line,
-                        status_desc = status_desc,
+                        top_brand = top_brand,
+                        top_badge = top_badge,
+                        bot_line = bot_line,
+                        bot_left = bot_left,
+                        bot_pct = bot_pct,
+                        center_card = center_card,
+                        card_corner = card_corner,
+                        card_stroke = card_stroke,
+                        card_glow = card_glow,
+                        title = title,
+                        status = status,
                         bar_bg = bar_bg,
                         bar_stroke = bar_stroke,
                         bar_fill = bar_fill,
-                        hint_label = hint_label,
+                        fill_grad = fill_grad,
+                        pct_label = pct_label,
                         skip_btn = skip_btn,
-                        btn_stroke = btn_stroke,
-                        bot_line = bot_line,
-                        bot_bar = bot_bar,
-                        bot_left = bot_left,
-                        bot_pct = bot_pct
+                        btn_stroke = btn_stroke
                     }
                 end
 
@@ -9808,32 +9752,38 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
                 task.spawn(function()
                     local stages = {
-                        { progress = 0.28, tab = 1, desc = "Initializing core engine and hooks...", pct = "[ 28% ]", duration = 0.32 },
-                        { progress = 0.58, tab = 2, desc = "Loading saved configurations...", pct = "[ 58% ]", duration = 0.35 },
-                        { progress = 0.86, tab = 3, desc = "Verifying security and integrity...", pct = "[ 86% ]", duration = 0.35 },
-                        { progress = 1.00, tab = 4, desc = "SGW Hub ready!", pct = "[ 100% ]", duration = 0.28 }
+                        { progress = 0.28, desc = "Booting core framework...", pct = "[ 28% ]", duration = 0.35 },
+                        { progress = 0.58, desc = "Loading user configs...", pct = "[ 58% ]", duration = 0.38 },
+                        { progress = 0.86, desc = "Verifying anti-cheat bypass...", pct = "[ 86% ]", duration = 0.38 },
+                        { progress = 1.00, desc = "SGW Hub initialized!", pct = "[ 100% ]", duration = 0.28 }
                     }
+
+                    local liquid_task = task.spawn(function()
+                        while not is_skipped do
+                            pcall(function()
+                                left_ui.fill_grad.Offset = Vector2.new(-1, 0)
+                                right_ui.fill_grad.Offset = Vector2.new(-1, 0)
+                                local t1 = tween_service:Create(left_ui.fill_grad, TweenInfo.new(1.0, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), { Offset = Vector2.new(1, 0) })
+                                local t2 = tween_service:Create(right_ui.fill_grad, TweenInfo.new(1.0, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), { Offset = Vector2.new(1, 0) })
+                                t1:Play()
+                                t2:Play()
+                                t1.Completed:Wait()
+                            end)
+                            task.wait(0.05)
+                        end
+                    end)
 
                     for _, stage in ipairs(stages) do
                         if is_skipped then break end
 
-                        left_ui.status_desc.Text = stage.desc
-                        right_ui.status_desc.Text = stage.desc
+                        left_ui.status.Text = stage.desc
+                        right_ui.status.Text = stage.desc
+                        left_ui.pct_label.Text = stage.pct .. "  " .. stage.desc
+                        right_ui.pct_label.Text = stage.pct .. "  " .. stage.desc
                         left_ui.bot_pct.Text = stage.pct
                         right_ui.bot_pct.Text = stage.pct
 
-                        for i = 1, 4 do
-                            local is_active = (i == stage.tab)
-                            local is_done = (i < stage.tab)
-                            for _, s in ipairs({ left_ui, right_ui }) do
-                                local t = s.tab_items[i]
-                                t.frame.BackgroundTransparency = is_active and 0 or 1
-                                t.bar.BackgroundTransparency = (is_active or is_done) and 0 or 1
-                                t.label.TextColor3 = is_active and accent_color or (is_done and font_color or sub_color)
-                            end
-                        end
-
-                        sync_tween("bar_fill", TweenInfo.new(stage.duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                        sync_tween("bar_fill", TweenInfo.new(stage.duration, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
                             Size = UDim2.new(stage.progress, 0, 1, 0)
                         })
 
@@ -9844,19 +9794,20 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         end
                     end
 
+                    pcall(function() task.cancel(liquid_task) end)
+
                     if uis_conn then
                         pcall(function() uis_conn:Disconnect() end)
                         uis_conn = nil
                     end
 
-                    local fade_info = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-                    local fade_elements = {
-                        "top_line", "vert_line", "sidebar",
-                        "container", "groupbox", "gb_stroke", "gb_title", "gb_line",
-                        "status_desc", "bar_bg", "bar_stroke", "bar_fill", "hint_label",
-                        "skip_btn", "btn_stroke", "bot_line", "bot_bar", "bot_left", "bot_pct"
+                    local fade_info = TweenInfo.new(0.20, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out)
+                    local fade_keys = {
+                        "top_line", "top_brand", "top_badge", "bot_line", "bot_left", "bot_pct",
+                        "card_stroke", "card_glow", "status", "bar_bg", "bar_stroke", "bar_fill",
+                        "pct_label", "skip_btn", "btn_stroke"
                     }
-                    for _, key in ipairs(fade_elements) do
+                    for _, key in ipairs(fade_keys) do
                         pcall(function()
                             if left_ui[key]:IsA("TextLabel") or left_ui[key]:IsA("TextButton") then
                                 sync_tween(key, fade_info, { TextTransparency = 1, BackgroundTransparency = 1 })
@@ -9868,24 +9819,15 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         end)
                     end
 
-                    for i = 1, 4 do
-                        pcall(function()
-                            for _, s in ipairs({ left_ui, right_ui }) do
-                                local t = s.tab_items[i]
-                                tween_service:Create(t.frame, fade_info, { BackgroundTransparency = 1 }):Play()
-                                tween_service:Create(t.bar, fade_info, { BackgroundTransparency = 1 }):Play()
-                                tween_service:Create(t.label, fade_info, { TextTransparency = 1 }):Play()
-                            end
-                        end)
-                    end
+                    sync_tween("center_card", fade_info, { BackgroundTransparency = 1 })
 
-                    left_ui.top_title.Text = "Welcome to SGW Hub"
-                    right_ui.top_title.Text = "Welcome to SGW Hub"
+                    left_ui.title.Text = "Welcome to SGW Hub"
+                    right_ui.title.Text = "Welcome to SGW Hub"
 
-                    local center_info = TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-                    sync_tween("top_title", center_info, {
+                    local center_info = TweenInfo.new(0.35, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out)
+                    sync_tween("title", center_info, {
                         Position = UDim2.new(0.5, 0, 0.5, 0),
-                        TextSize = 22,
+                        TextSize = 24,
                         TextColor3 = accent_color
                     })
 
@@ -9898,6 +9840,11 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     local split_info = TweenInfo.new(0.65, Enum.EasingStyle.Quart, Enum.EasingDirection.InOut)
                     local left_tween = tween_service:Create(left_half, split_info, { Position = UDim2.new(-0.55, 0, 0, 0) })
                     local right_tween = tween_service:Create(right_half, split_info, { Position = UDim2.new(1.05, 0, 0, 0) })
+                    sync_tween("canvas", split_info, { BackgroundTransparency = 1 })
+                    sync_tween("stroke", split_info, { Transparency = 1 })
+                    sync_tween("top_accent", split_info, { BackgroundTransparency = 1 })
+                    sync_tween("title", split_info, { TextTransparency = 1 })
+
                     left_tween:Play()
                     right_tween:Play()
 
