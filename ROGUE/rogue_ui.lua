@@ -16284,13 +16284,21 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             end
 
             local function Gate(where, expected_destination)
-                if not trinket_bot.path_running then
+                local function is_gate_active()
+                    return trinket_bot.path_running or trinket_bot.is_gacha_in_progress or (cheat_client and cheat_client.gacha_bot_running)
+                end
+
+                if type(where) == "string" and string.lower(where) == "skycastle" then
+                    where = "Sky Castle"
+                end
+
+                if not is_gate_active() then
                     return false
                 end
 
                 if currently_dropping then
                     library:Notify("Waiting for item drop to complete before gating...")
-                    while currently_dropping and trinket_bot.path_running do
+                    while currently_dropping and is_gate_active() do
                         task.wait(0.1)
                     end
 
@@ -16306,7 +16314,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                             end
                         end)
 
-                        while not danger_cleared and trinket_bot.path_running do
+                        while not danger_cleared and is_gate_active() do
                             task.wait(0.1)
                         end
                         if danger_conn then danger_conn:Disconnect() end
@@ -16357,7 +16365,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     if cs:HasTag(plr.Character, "Danger") then
                         if stay_in_server then
                             library:Notify("SnapCool + Danger active but staying in server - waiting for both to clear...")
-                            while (CollectionService:HasTag(plr.Character, "SnapCool") or cs:HasTag(plr.Character, "Danger")) and trinket_bot.path_running and not emergency_gate_requested and not trinket_bot.moderator_detected do
+                            while (CollectionService:HasTag(plr.Character, "SnapCool") or cs:HasTag(plr.Character, "Danger")) and is_gate_active() and not emergency_gate_requested and not trinket_bot.moderator_detected do
                                 task.wait(0.1)
                             end
                             library:Notify("SnapCool and Danger cleared - proceeding with gate")
@@ -16373,14 +16381,14 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         while CollectionService:HasTag(plr.Character, "SnapCool") and snap_timeout < max_timeout and not emergency_gate_requested do
                             task.wait(0.1)
                             snap_timeout = snap_timeout + 1
-                            if not trinket_bot.path_running then
+                            if not is_gate_active() then
                                 return false
                             end
 
                             if cs:HasTag(plr.Character, "Danger") then
                                 if stay_in_server then
                                     library:Notify("Danger appeared while waiting for SnapCool - waiting for both to clear...")
-                                    while (CollectionService:HasTag(plr.Character, "SnapCool") or cs:HasTag(plr.Character, "Danger")) and trinket_bot.path_running and not emergency_gate_requested and not trinket_bot.moderator_detected do
+                                    while (CollectionService:HasTag(plr.Character, "SnapCool") or cs:HasTag(plr.Character, "Danger")) and is_gate_active() and not emergency_gate_requested and not trinket_bot.moderator_detected do
                                         task.wait(0.1)
                                     end
                                     library:Notify("SnapCool and Danger cleared - proceeding with gate")
@@ -16501,7 +16509,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
                     if mana.Value > 83 then
                         utility:decharge_mana()
-                        while mana.Value > 83 and trinket_bot.path_running and not emergency_gate_requested and not trinket_bot.moderator_detected do
+                        while mana.Value > 83 and is_gate_active() and not emergency_gate_requested and not trinket_bot.moderator_detected do
                             task.wait(0.05)
                         end
                     end
@@ -16524,7 +16532,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 end
 
                 local post_gate_wait_start = tick()
-                while tick() - post_gate_wait_start < 2.5 and trinket_bot.path_running and not emergency_gate_requested and not trinket_bot.moderator_detected do
+                while tick() - post_gate_wait_start < 2.5 and is_gate_active() and not emergency_gate_requested and not trinket_bot.moderator_detected do
                     if FindFirstChild(character, "NoFall") then
                         task.wait(1.5)
 
@@ -20833,10 +20841,17 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
             local function solve_captcha_gui(captcha_gui, is_test_mode)
                 if not captcha_gui then return false, "No captcha gui" end
-                local main_frame = captcha_gui:FindFirstChild("MainFrame")
-                local viewport = main_frame and main_frame:FindFirstChild("Viewport")
-                local union = viewport and viewport:FindFirstChild("Union")
-                local options_frame = main_frame and main_frame:FindFirstChild("Options")
+                local actual_gui = captcha_gui
+                if actual_gui:IsA("PlayerGui") or actual_gui.Name ~= "Captcha" then
+                    actual_gui = captcha_gui:FindFirstChild("Captcha") or captcha_gui:WaitForChild("Captcha", 5)
+                end
+                if not actual_gui then
+                    return false, "Captcha ScreenGui not found"
+                end
+                local main_frame = actual_gui:WaitForChild("MainFrame", 4) or actual_gui:FindFirstChild("MainFrame")
+                local viewport = main_frame and (main_frame:WaitForChild("Viewport", 4) or main_frame:FindFirstChild("Viewport"))
+                local union = viewport and (viewport:WaitForChild("Union", 4) or viewport:FindFirstChild("Union"))
+                local options_frame = main_frame and (main_frame:WaitForChild("Options", 4) or main_frame:FindFirstChild("Options"))
 
                 if not (union and options_frame) then
                     return false, "Union or Options not found"
@@ -20847,7 +20862,17 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     return false, "CSGPHS8 module could not be loaded"
                 end
 
-                local raw_data = get_union_mesh_data(union)
+                task.wait(0.8)
+
+                local raw_data = nil
+                local data_start = tick()
+                while tick() - data_start < 2.5 do
+                    raw_data = get_union_mesh_data(union)
+                    if raw_data then
+                        break
+                    end
+                    task.wait(0.1)
+                end
                 if not raw_data then
                     return false, "PhysicalConfigData unreadable (gethiddenproperty missing or blocked)"
                 end
@@ -20871,7 +20896,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     camera_cframe = viewport.CurrentCamera.CFrame
                 end
                 if not camera_cframe then
-                    return false, "CameraCFrame not found"
+                    camera_cframe = CFrame.new()
                 end
 
                 local answer, score
@@ -20886,46 +20911,72 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
                 local btn = options_frame:FindFirstChild(answer)
                 if not btn then
+                    for _, child in ipairs(options_frame:GetChildren()) do
+                        if child:IsA("GuiButton") or child:IsA("TextButton") or child:IsA("ImageButton") then
+                            if string.lower(child.Name) == string.lower(tostring(answer)) then
+                                btn = child
+                                break
+                            elseif child:IsA("TextButton") and string.lower(child.Text) == string.lower(tostring(answer)) then
+                                btn = child
+                                break
+                            end
+                        end
+                    end
+                end
+
+                if not btn then
                     return false, "No option button for " .. tostring(answer)
                 end
 
-                task.wait(0.3)
-                local clicked = false
-                if firesignal then
-                    pcall(firesignal, btn.MouseButton1Click)
-                    pcall(firesignal, btn.MouseButton1Down)
-                    pcall(firesignal, btn.MouseButton1Up)
-                    pcall(firesignal, btn.Activated)
-                    clicked = true
-                end
-                if replicatesignal then
-                    pcall(replicatesignal, btn.MouseButton1Click)
-                    clicked = true
-                end
-                pcall(function()
-                    if getconnections then
-                        for _, conn in ipairs(getconnections(btn.MouseButton1Click)) do
-                            conn:Fire()
-                            clicked = true
-                        end
-                        for _, conn in ipairs(getconnections(btn.MouseButton1Down)) do
-                            conn:Fire()
-                        end
-                        for _, conn in ipairs(getconnections(btn.Activated)) do
-                            conn:Fire()
-                        end
+                local function click_button(target_btn)
+                    if firesignal then
+                        pcall(firesignal, target_btn.MouseButton1Click)
+                        pcall(firesignal, target_btn.MouseButton1Down)
+                        pcall(firesignal, target_btn.MouseButton1Up)
+                        pcall(firesignal, target_btn.Activated)
                     end
-                end)
-                pcall(function()
-                    local vim = game:GetService("VirtualInputManager")
-                    if vim and btn.AbsolutePosition and btn.AbsoluteSize then
-                        local pos = btn.AbsolutePosition + (btn.AbsoluteSize / 2)
-                        vim:SendMouseButtonEvent(pos.X, pos.Y, 0, true, game, 0)
-                        task.wait(0.05)
-                        vim:SendMouseButtonEvent(pos.X, pos.Y, 0, false, game, 0)
-                        clicked = true
+                    if replicatesignal then
+                        pcall(replicatesignal, target_btn.MouseButton1Click)
                     end
-                end)
+                    pcall(function()
+                        if getconnections then
+                            for _, conn in ipairs(getconnections(target_btn.MouseButton1Click)) do
+                                conn:Fire()
+                            end
+                            for _, conn in ipairs(getconnections(target_btn.MouseButton1Down)) do
+                                conn:Fire()
+                            end
+                            for _, conn in ipairs(getconnections(target_btn.Activated)) do
+                                conn:Fire()
+                            end
+                        end
+                    end)
+                    pcall(function()
+                        local vim = game:GetService("VirtualInputManager")
+                        if vim and target_btn.AbsolutePosition and target_btn.AbsoluteSize then
+                            local pos = target_btn.AbsolutePosition + (target_btn.AbsoluteSize / 2)
+                            vim:SendMouseButtonEvent(pos.X, pos.Y, 0, true, game, 0)
+                            task.wait(0.05)
+                            vim:SendMouseButtonEvent(pos.X, pos.Y, 0, false, game, 0)
+                        end
+                    end)
+                end
+
+                task.wait(0.2)
+                click_button(btn)
+
+                if not is_test_mode then
+                    local verify_start = tick()
+                    while tick() - verify_start < 2.5 do
+                        task.wait(0.3)
+                        local pg = plr:FindFirstChildOfClass("PlayerGui")
+                        local still_open = pg and (pg:FindFirstChild("Captcha") or actual_gui.Parent ~= nil)
+                        if not still_open then
+                            break
+                        end
+                        click_button(btn)
+                    end
+                end
 
                 return true, answer, score, btn
             end
@@ -21156,12 +21207,39 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     task.wait(0.5)
                 end
 
+                if plr.Character then
+                    local hum = plr.Character:FindFirstChildOfClass("Humanoid")
+                    if hum then
+                        pcall(hum.UnequipTools, hum)
+                        task.wait(0.2)
+                    end
+                end
+
                 local click_detector = xenyari:FindFirstChildWhichIsA("ClickDetector", true)
                 if not click_detector then
                     library:Notify("[Xenyari] ClickDetector not found on Xenyari!")
                     return false, false
                 end
 
+                local function count_scrolls_in_inventory()
+                    local counts = {}
+                    local containers = { plr:FindFirstChildOfClass("Backpack"), plr.Character }
+                    for _, container in ipairs(containers) do
+                        if container then
+                            for _, item in ipairs(container:GetChildren()) do
+                                if item:IsA("Tool") or item:IsA("Instance") then
+                                    local name = item.Name
+                                    if name:lower():find("scroll") or name == "Ice Essence" then
+                                        counts[name] = (counts[name] or 0) + 1
+                                    end
+                                end
+                            end
+                        end
+                    end
+                    return counts
+                end
+
+                local pre_scrolls = count_scrolls_in_inventory()
                 local obtained_scroll = nil
                 local backpack = plr:FindFirstChildOfClass("Backpack")
                 local backpack_conn
@@ -21174,35 +21252,75 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 end
 
                 local refused_study = false
-                local d_remote = dialogue_remote or (rps:FindFirstChild("Requests") and (rps.Requests:FindFirstChild("PostDialogue") or rps.Requests:FindFirstChild("SendDialogue") or rps.Requests:FindFirstChild("Dialogue")))
-                local dialogue_conn
-                if d_remote then
-                    dialogue_conn = d_remote.OnClientEvent:Connect(function(data)
-                        if type(data) == "table" and type(data.msg) == "string" then
+                local dialogue_conns = {}
+                local requests_folder = rps:FindFirstChild("Requests")
+                local primary_d_remote = dialogue_remote or (requests_folder and (requests_folder:FindFirstChild("PostDialogue") or requests_folder:FindFirstChild("SendDialogue") or requests_folder:FindFirstChild("Dialogue")))
+
+                local function hook_dialogue_remote(remote)
+                    if not remote or not remote:IsA("RemoteEvent") then return end
+                    local conn = remote.OnClientEvent:Connect(function(data)
+                        if type(data) ~= "table" then return end
+                        if type(data.msg) == "string" then
                             local lower_msg = data.msg:lower()
                             if lower_msg:find("examine the scroll") or lower_msg:find("study") or lower_msg:find("studying") then
                                 refused_study = true
                             end
                         end
-                        if type(data) == "table" and type(data.choices) == "table" and #data.choices > 0 then
-                            task.wait(0.1)
-                            pcall(function()
-                                d_remote:FireServer({ choice = data.choices[1] })
-                            end)
+                        if type(data.speaker) == "string" and data.speaker ~= "" and not data.speaker:lower():find("xenyari") then
+                            return
                         end
+                        task.defer(function()
+                            task.wait(0.08)
+                            if type(data.choices) == "table" and #data.choices > 0 and data.choices[1] then
+                                pcall(function()
+                                    remote:FireServer({ choice = data.choices[1] })
+                                end)
+                            else
+                                pcall(function()
+                                    remote:FireServer({ exit = true })
+                                end)
+                            end
+                        end)
                     end)
+                    table.insert(dialogue_conns, conn)
+                end
+
+                if requests_folder then
+                    for _, child in ipairs(requests_folder:GetChildren()) do
+                        if child:IsA("RemoteEvent") then
+                            hook_dialogue_remote(child)
+                        end
+                    end
+                elseif primary_d_remote then
+                    hook_dialogue_remote(primary_d_remote)
+                end
+
+                local function disconnect_dialogue()
+                    for _, conn in ipairs(dialogue_conns) do
+                        pcall(function() conn:Disconnect() end)
+                    end
+                    table.clear(dialogue_conns)
+                end
+
+                local function click_npc()
+                    if replicatesignal then
+                        for _, action in ipairs({ 1, 0, 2 }) do
+                            pcall(replicatesignal, click_detector.MouseActionReplicated, plr, action)
+                        end
+                    end
+                    pcall(fireclickdetector, click_detector)
                 end
 
                 local player_gui = plr:FindFirstChildOfClass("PlayerGui")
                 local start_time = tick()
                 while tick() - start_time < 15 and not (player_gui and (player_gui:FindFirstChild("CaptchaLoad") or player_gui:FindFirstChild("Captcha"))) do
                     if refused_study then break end
-                    fireclickdetector(click_detector)
+                    click_npc()
                     task.wait(0.5)
                 end
 
                 if refused_study then
-                    if dialogue_conn then dialogue_conn:Disconnect() end
+                    disconnect_dialogue()
                     if backpack_conn then backpack_conn:Disconnect() end
                     record_day_rolled(current_day, "studying_scroll")
                     library:Notify(string.format("[Xenyari] Still studying current scroll - marked day %d as rolled.", current_day))
@@ -21211,7 +21329,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
                 local captcha_gui = player_gui and player_gui:WaitForChild("Captcha", 10)
                 if not captcha_gui then
-                    if dialogue_conn then dialogue_conn:Disconnect() end
+                    disconnect_dialogue()
                     if backpack_conn then backpack_conn:Disconnect() end
                     library:Notify("[Xenyari] Captcha failed to appear!")
                     return false, false
@@ -21227,8 +21345,21 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 task.wait(2)
                 record_day_rolled(current_day, "rolled")
 
-                if dialogue_conn then dialogue_conn:Disconnect() end
+                disconnect_dialogue()
                 if backpack_conn then backpack_conn:Disconnect() end
+
+                local detect_start = tick()
+                while tick() - detect_start < 3 do
+                    if obtained_scroll then break end
+                    local current_counts = count_scrolls_in_inventory()
+                    for name, count in pairs(current_counts) do
+                        if count > (pre_scrolls[name] or 0) then
+                            obtained_scroll = name
+                            break
+                        end
+                    end
+                    task.wait(0.2)
+                end
 
                 local should_stop_bot = false
                 if obtained_scroll then
@@ -21262,6 +21393,31 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 local trinket_val = get_trinket_sell_value()
                 local was_path_running = trinket_bot and trinket_bot.path_running
 
+                local return_gate_point = nil
+                if trinket_bot and trinket_bot.path_points then
+                    for _, pt in ipairs(trinket_bot.path_points) do
+                        if pt.is_gate_point and pt.gate_location then
+                            return_gate_point = pt
+                            break
+                        end
+                    end
+                end
+                local pre_gacha_position = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") and plr.Character.HumanoidRootPart.Position
+
+                local function resume_path_if_needed()
+                    if not was_path_running then return end
+                    if return_gate_point then
+                        library:Notify("[Gacha Bot] Returning to path gate (" .. tostring(return_gate_point.gate_location) .. ")...")
+                        Gate(return_gate_point.gate_location, return_gate_point.position)
+                        task.wait(1.5)
+                    elseif pre_gacha_position then
+                        SmoothTeleport(pre_gacha_position)
+                        task.wait(1)
+                    end
+                    trinket_bot.skip_distance_check = true
+                    task.spawn(ExecutePath, false)
+                end
+
                 if current_silver < 250 then
                     if not (Toggles.TrinketSellWhileGacha and Toggles.TrinketSellWhileGacha.Value) then
                         library:Notify(string.format("[Gacha Bot] Silver too low (%d < 250) and Trinket Sell disabled. Skipping day %d.", current_silver, current_day))
@@ -21278,6 +21434,14 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     end
 
                     if was_path_running then
+                        if active_tween_data.tween then
+                            active_tween_data.tween:Cancel()
+                            active_tween_data.tween = nil
+                        end
+                        if active_tween_data.connection then
+                            active_tween_data.connection:Disconnect()
+                            active_tween_data.connection = nil
+                        end
                         trinket_bot.path_running = false
                         task.wait(0.5)
                     end
@@ -21287,36 +21451,27 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     local nearby_shore = scan_players_near_position(SHORE4_SCAN_CFRAME.Position, scan_dist)
                     if #nearby_shore > 0 and not is_23_mode_safe() then
                         library:Notify(string.format("[Gacha Bot] Player %s within %.0f studs of Shore 4 and not full 23 players! Aborting sell.", nearby_shore[1].player.Name, nearby_shore[1].distance))
+                        resume_path_if_needed()
                         trinket_bot.is_gacha_in_progress = false
                         is_handling_gacha = false
-                        if was_path_running then
-                            trinket_bot.skip_distance_check = true
-                            task.spawn(ExecutePath, false)
-                        end
                         return
                     end
 
                     local gate_shore_ok = Gate("Shore 4", SHORE4_SCAN_CFRAME.Position)
                     if not gate_shore_ok then
                         library:Notify("[Gacha Bot] Failed to gate to Shore 4!")
+                        resume_path_if_needed()
                         trinket_bot.is_gacha_in_progress = false
                         is_handling_gacha = false
-                        if was_path_running then
-                            trinket_bot.skip_distance_check = true
-                            task.spawn(ExecutePath, false)
-                        end
                         return
                     end
 
                     local after_gate_nearby = scan_players_near_position(plr.Character.HumanoidRootPart.Position, scan_dist)
                     if #after_gate_nearby > 0 and not is_23_mode_safe() then
                         library:Notify("[Gacha Bot] Player detected at Shore 4 after gating! Aborting sell.")
+                        resume_path_if_needed()
                         trinket_bot.is_gacha_in_progress = false
                         is_handling_gacha = false
-                        if was_path_running then
-                            trinket_bot.skip_distance_check = true
-                            task.spawn(ExecutePath, false)
-                        end
                         return
                     end
 
@@ -21325,56 +21480,52 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     current_silver = (Get and Get("Silver")) or 0
                     if current_silver < 250 then
                         library:Notify(string.format("[Gacha Bot] Silver still below 250 after selling (%d). Aborting gacha for day %d.", current_silver, current_day))
+                        resume_path_if_needed()
                         trinket_bot.is_gacha_in_progress = false
                         is_handling_gacha = false
-                        if was_path_running then
-                            trinket_bot.skip_distance_check = true
-                            task.spawn(ExecutePath, false)
-                        end
                         return
                     end
                 end
 
                 if was_path_running and trinket_bot and trinket_bot.path_running then
+                    if active_tween_data.tween then
+                        active_tween_data.tween:Cancel()
+                        active_tween_data.tween = nil
+                    end
+                    if active_tween_data.connection then
+                        active_tween_data.connection:Disconnect()
+                        active_tween_data.connection = nil
+                    end
                     trinket_bot.path_running = false
                     task.wait(0.5)
                 end
 
-                library:Notify("[Gacha Bot] Gating to Skycastle for Xenyari roll...")
+                library:Notify("[Gacha Bot] Gating to Sky Castle for Xenyari roll...")
                 local scan_dist = (Options.GachaScanDistance and Options.GachaScanDistance.Value) or 500
                 local nearby_sky = scan_players_near_position(SKYCASTLE_SCAN_CFRAME.Position, scan_dist)
                 if #nearby_sky > 0 and not is_23_mode_safe() then
-                    library:Notify(string.format("[Gacha Bot] Player %s within %.0f studs of Skycastle and not full 23 players! Aborting gacha.", nearby_sky[1].player.Name, nearby_sky[1].distance))
+                    library:Notify(string.format("[Gacha Bot] Player %s within %.0f studs of Sky Castle and not full 23 players! Aborting gacha.", nearby_sky[1].player.Name, nearby_sky[1].distance))
+                    resume_path_if_needed()
                     trinket_bot.is_gacha_in_progress = false
                     is_handling_gacha = false
-                    if was_path_running then
-                        trinket_bot.skip_distance_check = true
-                        task.spawn(ExecutePath, false)
-                    end
                     return
                 end
 
-                local gate_sky_ok = Gate("Skycastle", SKYCASTLE_SCAN_CFRAME.Position)
+                local gate_sky_ok = Gate("Sky Castle", SKYCASTLE_SCAN_CFRAME.Position)
                 if not gate_sky_ok then
-                    library:Notify("[Gacha Bot] Failed to gate to Skycastle!")
+                    library:Notify("[Gacha Bot] Failed to gate to Sky Castle!")
+                    resume_path_if_needed()
                     trinket_bot.is_gacha_in_progress = false
                     is_handling_gacha = false
-                    if was_path_running then
-                        trinket_bot.skip_distance_check = true
-                        task.spawn(ExecutePath, false)
-                    end
                     return
                 end
 
                 local after_sky_nearby = scan_players_near_position(plr.Character.HumanoidRootPart.Position, scan_dist)
                 if #after_sky_nearby > 0 and not is_23_mode_safe() then
-                    library:Notify("[Gacha Bot] Player detected at Skycastle after gating! Aborting roll.")
+                    library:Notify("[Gacha Bot] Player detected at Sky Castle after gating! Aborting roll.")
+                    resume_path_if_needed()
                     trinket_bot.is_gacha_in_progress = false
                     is_handling_gacha = false
-                    if was_path_running then
-                        trinket_bot.skip_distance_check = true
-                        task.spawn(ExecutePath, false)
-                    end
                     return
                 end
 
@@ -21388,13 +21539,9 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 end
 
                 library:Notify("[Gacha Bot] Gacha cycle complete for day " .. current_day .. "! Resuming botting...")
+                resume_path_if_needed()
                 trinket_bot.is_gacha_in_progress = false
                 is_handling_gacha = false
-
-                if was_path_running then
-                    trinket_bot.skip_distance_check = true
-                    task.spawn(ExecutePath, false)
-                end
             end
 
             local function test_captcha_solver()
@@ -21406,16 +21553,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     return false
                 end
 
-                local main_frame = captcha_gui:FindFirstChild("MainFrame")
-                local viewport = main_frame and main_frame:FindFirstChild("Viewport")
-                local union = viewport and viewport:FindFirstChild("Union")
-                if not union then
-                    library:Notify("Captcha found, but Viewport.Union is not loaded yet.", 4)
-                    warn("Captcha found, but Viewport.Union is not loaded.")
-                    return false
-                end
-
-                local success, mob_name, score, button = solve_captcha_gui(captcha_gui, false)
+                local success, mob_name, score, button = solve_captcha_gui(captcha_gui, true)
                 if success and mob_name then
                     local button_status = button and ("Clicked: " .. button.Name) or "Button Not Found"
                     local msg = string.format("Identified & Clicked: %s (Score: %.4f) | %s", mob_name, score or 0, button_status)

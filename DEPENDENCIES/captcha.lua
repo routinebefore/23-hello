@@ -460,7 +460,17 @@ local function classifyGroup(group)
 end
 
 function CSGPHS8.solve(result, unionCFrame, cameraCFrame)
-	assert(#result.groups == 2, "need 2 mob groups, got " .. #result.groups)
+	unionCFrame = unionCFrame or CFrame.new()
+	cameraCFrame = cameraCFrame or CFrame.new()
+
+	if not result or not result.groups or #result.groups == 0 then
+		error("no mob groups decoded from mesh")
+	end
+
+	if #result.groups == 1 then
+		local answer, signatureScore = classifyGroup(result.groups[1])
+		return answer, 1, 0, signatureScore
+	end
 
 	local visibleGroup, visibleIndex, smallestRayError = nil, nil, math.huge
 	for index, group in result.groups do
@@ -471,13 +481,20 @@ function CSGPHS8.solve(result, unionCFrame, cameraCFrame)
 		if depth > 0 then
 			local perpendicularSquared = max(offset:Dot(offset) - depth * depth, 0)
 			rayError = math.sqrt(perpendicularSquared) / depth
+		else
+			rayError = 1000 + offset.Magnitude
 		end
 		if rayError < smallestRayError then
 			visibleGroup, visibleIndex, smallestRayError = group, index, rayError
 		end
 	end
 
-	assert(visibleGroup, "no mob infront of the camera")
+	if not visibleGroup then
+		visibleGroup = result.groups[1]
+		visibleIndex = 1
+		smallestRayError = 0
+	end
+
 	local answer, signatureScore = classifyGroup(visibleGroup)
 	return answer, visibleIndex, smallestRayError, signatureScore
 end
