@@ -9587,8 +9587,8 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
                     local center_container = Instance.new("Frame")
                     center_container.Name = "CenterContainer"
-                    center_container.Size = UDim2.new(1, -64, 0, 96)
-                    center_container.Position = UDim2.new(0.5, 0, 0.5, 14)
+                    center_container.Size = UDim2.new(1, -64, 0, 114)
+                    center_container.Position = UDim2.new(0.5, 0, 0.5, 8)
                     center_container.AnchorPoint = Vector2.new(0.5, 0.5)
                     center_container.BackgroundTransparency = 1
                     center_container.BorderSizePixel = 0
@@ -9604,7 +9604,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     status_label.Font = font_main
                     status_label.TextSize = 13
                     status_label.TextColor3 = sub_color
-                    status_label.TextXAlignment = Enum.TextXAlignment.Left
+                    status_label.TextXAlignment = Enum.TextXAlignment.Center
                     status_label.ZIndex = 53
                     status_label.Parent = center_container
 
@@ -9662,7 +9662,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     local skip_btn = Instance.new("TextButton")
                     skip_btn.Name = "SkipButton"
                     skip_btn.Size = UDim2.new(0, 110, 0, 24)
-                    skip_btn.Position = UDim2.new(0.5, 0, 0, 60)
+                    skip_btn.Position = UDim2.new(0.5, 0, 0, 58)
                     skip_btn.AnchorPoint = Vector2.new(0.5, 0)
                     skip_btn.BackgroundColor3 = main_color
                     skip_btn.BorderSizePixel = 0
@@ -9684,6 +9684,46 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     btn_stroke.Thickness = 1
                     btn_stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
                     btn_stroke.Parent = skip_btn
+
+                    local bounce_container = Instance.new("Frame")
+                    bounce_container.Name = "BounceContainer"
+                    bounce_container.Size = UDim2.new(0, 72, 0, 20)
+                    bounce_container.Position = UDim2.new(0.5, 0, 0, 90)
+                    bounce_container.AnchorPoint = Vector2.new(0.5, 0)
+                    bounce_container.BackgroundTransparency = 1
+                    bounce_container.BorderSizePixel = 0
+                    bounce_container.ZIndex = 53
+                    bounce_container.Parent = center_container
+
+                    local bounce_letters = {}
+                    local bounce_strokes = {}
+                    local letters = { "S", "G", "W" }
+                    for idx = 1, 3 do
+                        local letter_label = Instance.new("TextLabel")
+                        letter_label.Name = "BounceLetter_" .. idx
+                        letter_label.Size = UDim2.new(0, 20, 0, 20)
+                        letter_label.Position = UDim2.new(0, 12 + (idx - 1) * 24, 0.5, 0)
+                        letter_label.AnchorPoint = Vector2.new(0.5, 0.5)
+                        letter_label.BackgroundTransparency = 1
+                        letter_label.Text = letters[idx]
+                        letter_label.Font = font_main
+                        letter_label.TextSize = 14
+                        letter_label.TextColor3 = sub_color
+                        letter_label.TextXAlignment = Enum.TextXAlignment.Center
+                        letter_label.TextYAlignment = Enum.TextYAlignment.Center
+                        letter_label.ZIndex = 53
+                        letter_label.Parent = bounce_container
+
+                        local letter_stroke = Instance.new("UIStroke")
+                        letter_stroke.Name = "Stroke"
+                        letter_stroke.Color = Color3.fromRGB(0, 0, 0)
+                        letter_stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+                        letter_stroke.Transparency = 0.5
+                        letter_stroke.Parent = letter_label
+
+                        bounce_letters[idx] = letter_label
+                        bounce_strokes[idx] = letter_stroke
+                    end
 
                     local bot_line = Instance.new("Frame")
                     bot_line.Name = "BottomDivider"
@@ -9754,7 +9794,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     local welcome_label = Instance.new("TextLabel")
                     welcome_label.Name = "WelcomeLabel"
                     welcome_label.Size = UDim2.new(1, 0, 0, 50)
-                    welcome_label.Position = UDim2.new(0.5, 0, 0.5, 14)
+                    welcome_label.Position = UDim2.new(0.5, 0, 0.5, 8)
                     welcome_label.AnchorPoint = Vector2.new(0.5, 0.5)
                     welcome_label.BackgroundTransparency = 1
                     welcome_label.Text = "Welcome to SGW Hub"
@@ -9786,6 +9826,15 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         bar_text_stroke = bar_text_stroke,
                         skip_btn = skip_btn,
                         btn_stroke = btn_stroke,
+                        bounce_container = bounce_container,
+                        bounce_letters = bounce_letters,
+                        bounce_strokes = bounce_strokes,
+                        bounce_letter_1 = bounce_letters[1],
+                        bounce_letter_2 = bounce_letters[2],
+                        bounce_letter_3 = bounce_letters[3],
+                        bounce_stroke_1 = bounce_strokes[1],
+                        bounce_stroke_2 = bounce_strokes[2],
+                        bounce_stroke_3 = bounce_strokes[3],
                         bot_line = bot_line,
                         bot_dot = bot_dot,
                         bot_left = bot_left,
@@ -9833,12 +9882,37 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     end
                 end)
 
+                local bounce_conn
+                local bounce_running = true
+                local bounce_start = tick()
+
+                bounce_conn = Services.RunService.Heartbeat:Connect(function()
+                    if not bounce_running then return end
+                    local elapsed = tick() - bounce_start
+                    for idx = 1, 3 do
+                        local wave = math.sin(elapsed * 5.5 - (idx - 1) * 0.9)
+                        local y_off = -wave * 4.5
+                        local alpha = (wave + 1) * 0.5
+                        local col = sub_color:Lerp(accent_color, alpha)
+
+                        local left_lbl = left_ui.bounce_letters[idx]
+                        local right_lbl = right_ui.bounce_letters[idx]
+                        if left_lbl and right_lbl then
+                            local pos = UDim2.new(0, 12 + (idx - 1) * 24, 0.5, y_off)
+                            left_lbl.Position = pos
+                            right_lbl.Position = pos
+                            left_lbl.TextColor3 = col
+                            right_lbl.TextColor3 = col
+                        end
+                    end
+                end)
+
                 task.spawn(function()
                     local stages = {
-                        { progress = 0.28, text = "[ 28% ] - Core Framework", status = "Status: Initializing core framework...", duration = 0.35 },
-                        { progress = 0.58, text = "[ 58% ] - Configurations", status = "Status: Loading saved profiles...", duration = 0.35 },
-                        { progress = 0.86, text = "[ 86% ] - Security System", status = "Status: Verifying anti-cheat bypass...", duration = 0.35 },
-                        { progress = 1.00, text = "[ 100% ] - Ready", status = "Status: SGW Hub initialized", duration = 0.28 }
+                        { progress = 0.28, text = "[ 28% ] - Core Framework", status = "Status: Initializing core framework...", duration = 0.65 },
+                        { progress = 0.58, text = "[ 58% ] - Configurations", status = "Status: Loading saved profiles...", duration = 0.70 },
+                        { progress = 0.86, text = "[ 86% ] - Security System", status = "Status: Verifying anti-cheat bypass...", duration = 0.70 },
+                        { progress = 1.00, text = "[ 100% ] - Ready", status = "Status: SGW Hub initialized", duration = 0.55 }
                     }
 
                     for _, stage in ipairs(stages) do
@@ -9862,6 +9936,12 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         end
                     end
 
+                    bounce_running = false
+                    if bounce_conn then
+                        pcall(function() bounce_conn:Disconnect() end)
+                        bounce_conn = nil
+                    end
+
                     if uis_conn then
                         pcall(function() uis_conn:Disconnect() end)
                         uis_conn = nil
@@ -9871,7 +9951,10 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     local fade_keys = {
                         "top_line", "top_title", "status_label",
                         "bar_bg", "bar_fill", "bar_text", "bar_stroke", "bar_text_stroke",
-                        "skip_btn", "btn_stroke", "bot_line", "bot_dot",
+                        "skip_btn", "btn_stroke",
+                        "bounce_letter_1", "bounce_letter_2", "bounce_letter_3",
+                        "bounce_stroke_1", "bounce_stroke_2", "bounce_stroke_3",
+                        "bot_line", "bot_dot",
                         "bot_left", "bot_status"
                     }
                     for _, key in ipairs(fade_keys) do
@@ -9894,7 +9977,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         Transparency = 0
                     })
 
-                    local pause_time = is_skipped and 0.15 or 0.30
+                    local pause_time = is_skipped and 0.15 or 0.35
                     local pause_start = tick()
                     while (tick() - pause_start) < pause_time do
                         task.wait(0.02)
@@ -9914,6 +9997,10 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
                     left_tween.Completed:Wait()
 
+                    if bounce_conn then
+                        pcall(function() bounce_conn:Disconnect() end)
+                        bounce_conn = nil
+                    end
                     pcall(function() pos_conn:Disconnect() end)
                     pcall(function() size_conn:Disconnect() end)
                     pcall(function() overlay:Destroy() end)
