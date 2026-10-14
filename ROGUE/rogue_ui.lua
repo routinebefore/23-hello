@@ -9641,7 +9641,34 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 local outline_color = (library and library.Scheme and library.Scheme.OutlineColor) or Color3.fromRGB(56, 56, 56)
                 local font_color = (library and library.Scheme and library.Scheme.FontColor) or Color3.fromRGB(238, 255, 255)
                 local sub_color = Color3.fromRGB(150, 175, 180)
-                local font_main = (library and library.Font) or (library and library.Scheme and library.Scheme.Font) or Enum.Font.Code
+                local font_main = Enum.Font.Code
+                local font_face = nil
+                if library then
+                    if typeof(library.Font) == "EnumItem" or typeof(library.Font) == "string" then
+                        font_main = library.Font
+                    elseif typeof(library.Font) == "Font" then
+                        font_face = library.Font
+                    end
+                    if not font_face and library.Scheme and typeof(library.Scheme.Font) == "Font" then
+                        font_face = library.Scheme.Font
+                    end
+                end
+                if not font_face and typeof(font_main) == "EnumItem" then
+                    pcall(function()
+                        font_face = Font.fromEnum(font_main)
+                    end)
+                end
+
+                local function apply_font(lbl)
+                    pcall(function()
+                        lbl.Font = font_main
+                    end)
+                    if font_face then
+                        pcall(function()
+                            lbl.FontFace = font_face
+                        end)
+                    end
+                end
 
                 local overlay = Instance.new("Frame")
                 overlay.Name = "SGW_HubLoadingOverlay"
@@ -9773,7 +9800,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     top_title.Position = UDim2.new(0, 8, 0, 0)
                     top_title.BackgroundTransparency = 1
                     top_title.Text = "SGW Hub | Alpha 1.6.7"
-                    top_title.Font = font_main
+                    apply_font(top_title)
                     top_title.TextSize = 20
                     top_title.TextColor3 = font_color
                     top_title.TextXAlignment = Enum.TextXAlignment.Left
@@ -9797,7 +9824,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     status_label.Position = UDim2.new(0, 0, 0, 0)
                     status_label.BackgroundTransparency = 1
                     status_label.Text = "Status: Initializing core framework..."
-                    status_label.Font = font_main
+                    apply_font(status_label)
                     status_label.TextSize = 13
                     status_label.TextColor3 = sub_color
                     status_label.TextXAlignment = Enum.TextXAlignment.Center
@@ -9849,7 +9876,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     bar_text.Position = UDim2.new(0, 0, 0, 0)
                     bar_text.BackgroundTransparency = 1
                     bar_text.Text = "[ 0% ] - Core Framework"
-                    bar_text.Font = font_main
+                    apply_font(bar_text)
                     bar_text.TextSize = 12
                     bar_text.TextColor3 = font_color
                     bar_text.TextXAlignment = Enum.TextXAlignment.Center
@@ -9870,7 +9897,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     skip_btn.BackgroundColor3 = main_color
                     skip_btn.BorderSizePixel = 0
                     skip_btn.Text = "Skip Loading"
-                    skip_btn.Font = font_main
+                    apply_font(skip_btn)
                     skip_btn.TextSize = 13
                     skip_btn.TextColor3 = font_color
                     skip_btn.TextTransparency = 0.4
@@ -9909,7 +9936,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         letter_label.AnchorPoint = Vector2.new(0.5, 0.5)
                         letter_label.BackgroundTransparency = 1
                         letter_label.Text = letters[idx]
-                        letter_label.Font = font_main
+                        apply_font(letter_label)
                         letter_label.TextSize = 14
                         letter_label.TextColor3 = sub_color
                         letter_label.TextXAlignment = Enum.TextXAlignment.Center
@@ -9974,6 +10001,9 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     bot_left.BackgroundTransparency = 1
                     bot_left.Text = initial_commit_display
                     bot_left.Font = Enum.Font.GothamMedium
+                    pcall(function()
+                        bot_left.FontFace = Font.fromEnum(Enum.Font.GothamMedium)
+                    end)
                     bot_left.TextSize = 11
                     bot_left.TextColor3 = Color3.fromRGB(150, 150, 150)
                     bot_left.TextXAlignment = Enum.TextXAlignment.Left
@@ -9987,7 +10017,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     bot_status.Position = UDim2.new(0.5, 0, 1, -20)
                     bot_status.BackgroundTransparency = 1
                     bot_status.Text = "Status: Initializing"
-                    bot_status.Font = font_main
+                    apply_font(bot_status)
                     bot_status.TextSize = 12
                     bot_status.TextColor3 = accent_color
                     bot_status.TextXAlignment = Enum.TextXAlignment.Right
@@ -10001,7 +10031,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     welcome_label.AnchorPoint = Vector2.new(0.5, 0.5)
                     welcome_label.BackgroundTransparency = 1
                     welcome_label.Text = "Welcome to SGW Hub"
-                    welcome_label.Font = font_main
+                    apply_font(welcome_label)
                     welcome_label.TextSize = 24
                     welcome_label.TextColor3 = accent_color
                     welcome_label.TextTransparency = 1
