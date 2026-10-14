@@ -6503,19 +6503,20 @@ function Library:CreateWindow(WindowInfo)
         --// Update Available Popup \\--
         UpdatePopup = New("TextButton", {
             AnchorPoint = Vector2.new(0, 1),
-            AutoButtonColor = false,
             BackgroundColor3 = "MainColor",
-            BorderSizePixel = 0,
             Name = "UpdatePopup",
             Position = UDim2.new(0, 10, 0, -4),
-            Size = UDim2.new(0, 136, 0, 20),
-            Text = "",
+            Size = UDim2.new(0, 0, 0, 22),
+            AutomaticSize = Enum.AutomaticSize.X,
+            Text = "Update Available",
+            TextSize = 13,
+            TextTransparency = 0.3,
             Visible = false,
             ZIndex = 40,
             Parent = BottomBar,
         })
         New("UICorner", {
-            CornerRadius = UDim.new(0, math.max(3, (Library.CornerRadius or 4) - 1)),
+            CornerRadius = UDim.new(0, math.max(3, (Library.CornerRadius or 4) - 2)),
             Parent = UpdatePopup,
         })
         local UpdateStroke = New("UIStroke", {
@@ -6524,66 +6525,43 @@ function Library:CreateWindow(WindowInfo)
             Thickness = 1,
             Parent = UpdatePopup,
         })
-
-        New("UIListLayout", {
-            FillDirection = Enum.FillDirection.Horizontal,
-            HorizontalAlignment = Enum.HorizontalAlignment.Center,
-            Padding = UDim.new(0, 6),
-            SortOrder = Enum.SortOrder.LayoutOrder,
-            VerticalAlignment = Enum.VerticalAlignment.Center,
-            Parent = UpdatePopup,
-        })
-
-        local PopupDot = New("Frame", {
-            BackgroundColor3 = Color3.fromRGB(235, 85, 85),
-            BorderSizePixel = 0,
-            LayoutOrder = 1,
-            Name = "PopupDot",
-            Size = UDim2.fromOffset(5, 5),
-            ZIndex = 42,
-            Parent = UpdatePopup,
-        })
-        New("UICorner", {
-            CornerRadius = UDim.new(1, 0),
-            Parent = PopupDot,
-        })
-
-        local PopupText = New("TextLabel", {
-            BackgroundTransparency = 1,
-            Font = Enum.Font.GothamMedium,
-            FontFace = Font.fromEnum(Enum.Font.GothamMedium),
-            LayoutOrder = 2,
-            Name = "PopupText",
-            Size = UDim2.new(0, 102, 1, 0),
-            Text = "Update Available",
-            TextColor3 = "FontColor",
-            TextSize = 11,
-            TextTransparency = 0.2,
-            TextWrapped = false,
-            TextXAlignment = Enum.TextXAlignment.Left,
-            TextYAlignment = Enum.TextYAlignment.Center,
-            ZIndex = 42,
+        New("UIPadding", {
+            PaddingLeft = UDim.new(0, 12),
+            PaddingRight = UDim.new(0, 12),
             Parent = UpdatePopup,
         })
 
         UpdatePopup.MouseEnter:Connect(function()
-            UpdatePopup.BackgroundColor3 = Color3.fromRGB(36, 36, 36)
-            UpdateStroke.Color = Color3.fromRGB(65, 65, 65)
-            PopupText.TextTransparency = 0
-            PopupText.TextColor3 = Color3.fromRGB(255, 255, 255)
+            TweenService:Create(UpdatePopup, Library.TweenInfo, {
+                TextTransparency = 0,
+                BackgroundColor3 = Color3.fromRGB(32, 32, 32),
+            }):Play()
+            TweenService:Create(UpdateStroke, Library.TweenInfo, {
+                Color = Color3.fromRGB(60, 60, 60),
+            }):Play()
         end)
         UpdatePopup.MouseLeave:Connect(function()
-            UpdatePopup.BackgroundColor3 = Library.Scheme.MainColor or Color3.fromRGB(25, 25, 25)
-            UpdateStroke.Color = Library.Scheme.OutlineColor or Color3.fromRGB(40, 40, 40)
-            PopupText.TextTransparency = 0.2
-            PopupText.TextColor3 = Library.Scheme.FontColor or Color3.fromRGB(220, 220, 220)
+            TweenService:Create(UpdatePopup, Library.TweenInfo, {
+                TextTransparency = 0.3,
+                BackgroundColor3 = Library.Scheme.MainColor or Color3.fromRGB(25, 25, 25),
+            }):Play()
+            TweenService:Create(UpdateStroke, Library.TweenInfo, {
+                Color = Library.Scheme.OutlineColor or Color3.fromRGB(40, 40, 40),
+            }):Play()
         end)
         UpdatePopup.MouseButton1Click:Connect(function()
-            Library:Notify({
-                Title = "Update Available",
-                Description = "A newer version is available on GitHub. Please re-run the loader script to reload.",
-                Time = 6
-            })
+            local ok = pcall(function()
+                Library:Notify({
+                    Title = "Update Available",
+                    Description = "An update is available on GitHub. Please use Reload Script in the Config tab.",
+                    Time = 6,
+                })
+            end)
+            if not ok then
+                pcall(function()
+                    Library:Notify("Update Available: An update is available on GitHub. Please use Reload Script in the Config tab.", 6)
+                end)
+            end
         end)
 
         --// Resize Button

@@ -9665,11 +9665,16 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         pop.Name = "UpdatePopup"
                         pop.AnchorPoint = Vector2.new(0, 1)
                         pop.Position = bottom_bar and UDim2.new(0, 10, 0, -4) or UDim2.new(0, 10, 1, -24)
-                        pop.Size = UDim2.new(0, 136, 0, 20)
+                        pop.Size = UDim2.new(0, 0, 0, 22)
+                        pop.AutomaticSize = Enum.AutomaticSize.X
                         pop.BackgroundColor3 = (library and library.Scheme and library.Scheme.MainColor) or Color3.fromRGB(25, 25, 25)
                         pop.BorderSizePixel = 0
                         pop.AutoButtonColor = false
-                        pop.Text = ""
+                        pop.Font = (library and library.Font) or Enum.Font.Gotham
+                        pop.Text = "Update Available"
+                        pop.TextSize = 13
+                        pop.TextColor3 = (library and library.Scheme and library.Scheme.FontColor) or Color3.fromRGB(240, 240, 240)
+                        pop.TextTransparency = 0.3
                         pop.Visible = false
                         pop.ZIndex = 40
                         pop.Parent = target
@@ -9684,62 +9689,57 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                         pop_s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
                         pop_s.Parent = pop
 
-                        local pop_layout = Instance.new("UIListLayout")
-                        pop_layout.FillDirection = Enum.FillDirection.Horizontal
-                        pop_layout.VerticalAlignment = Enum.VerticalAlignment.Center
-                        pop_layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-                        pop_layout.SortOrder = Enum.SortOrder.LayoutOrder
-                        pop_layout.Padding = UDim.new(0, 6)
-                        pop_layout.Parent = pop
-
-                        local pdot = Instance.new("Frame")
-                        pdot.Name = "PopupDot"
-                        pdot.LayoutOrder = 1
-                        pdot.Size = UDim2.fromOffset(5, 5)
-                        pdot.BackgroundColor3 = Color3.fromRGB(235, 85, 85)
-                        pdot.BorderSizePixel = 0
-                        pdot.ZIndex = 42
-                        pdot.Parent = pop
-
-                        local pdot_c = Instance.new("UICorner")
-                        pdot_c.CornerRadius = UDim.new(1, 0)
-                        pdot_c.Parent = pdot
-
-                        local ptxt = Instance.new("TextLabel")
-                        ptxt.Name = "PopupText"
-                        ptxt.LayoutOrder = 2
-                        ptxt.Size = UDim2.new(0, 102, 1, 0)
-                        ptxt.BackgroundTransparency = 1
-                        ptxt.Font = Enum.Font.GothamMedium
-                        ptxt.Text = "Update Available"
-                        ptxt.TextSize = 11
-                        ptxt.TextTransparency = 0.2
-                        ptxt.TextColor3 = (library and library.Scheme and library.Scheme.FontColor) or Color3.fromRGB(220, 220, 220)
-                        ptxt.TextXAlignment = Enum.TextXAlignment.Left
-                        ptxt.TextYAlignment = Enum.TextYAlignment.Center
-                        ptxt.TextWrapped = false
-                        ptxt.ZIndex = 42
-                        ptxt.Parent = pop
+                        local pop_pad = Instance.new("UIPadding")
+                        pop_pad.PaddingLeft = UDim.new(0, 12)
+                        pop_pad.PaddingRight = UDim.new(0, 12)
+                        pop_pad.Parent = pop
 
                         pop.MouseEnter:Connect(function()
-                            pop.BackgroundColor3 = Color3.fromRGB(36, 36, 36)
-                            pop_s.Color = Color3.fromRGB(65, 65, 65)
-                            ptxt.TextTransparency = 0
-                            ptxt.TextColor3 = Color3.fromRGB(255, 255, 255)
+                            if Services.TweenService and library and library.TweenInfo then
+                                Services.TweenService:Create(pop, library.TweenInfo, {
+                                    TextTransparency = 0,
+                                    BackgroundColor3 = Color3.fromRGB(32, 32, 32)
+                                }):Play()
+                                Services.TweenService:Create(pop_s, library.TweenInfo, {
+                                    Color = Color3.fromRGB(60, 60, 60)
+                                }):Play()
+                            else
+                                pop.TextTransparency = 0
+                                pop.BackgroundColor3 = Color3.fromRGB(32, 32, 32)
+                                pop_s.Color = Color3.fromRGB(60, 60, 60)
+                            end
                         end)
                         pop.MouseLeave:Connect(function()
-                            pop.BackgroundColor3 = (library and library.Scheme and library.Scheme.MainColor) or Color3.fromRGB(25, 25, 25)
-                            pop_s.Color = (library and library.Scheme and library.Scheme.OutlineColor) or Color3.fromRGB(40, 40, 40)
-                            ptxt.TextTransparency = 0.2
-                            ptxt.TextColor3 = (library and library.Scheme and library.Scheme.FontColor) or Color3.fromRGB(220, 220, 220)
+                            local bg_c = (library and library.Scheme and library.Scheme.MainColor) or Color3.fromRGB(25, 25, 25)
+                            local st_c = (library and library.Scheme and library.Scheme.OutlineColor) or Color3.fromRGB(40, 40, 40)
+                            if Services.TweenService and library and library.TweenInfo then
+                                Services.TweenService:Create(pop, library.TweenInfo, {
+                                    TextTransparency = 0.3,
+                                    BackgroundColor3 = bg_c
+                                }):Play()
+                                Services.TweenService:Create(pop_s, library.TweenInfo, {
+                                    Color = st_c
+                                }):Play()
+                            else
+                                pop.TextTransparency = 0.3
+                                pop.BackgroundColor3 = bg_c
+                                pop_s.Color = st_c
+                            end
                         end)
                         pop.MouseButton1Click:Connect(function()
                             if library and library.Notify then
-                                library:Notify({
-                                    Title = "Update Available",
-                                    Description = "A newer version is available on GitHub. Please re-run the loader script to reload.",
-                                    Time = 6
-                                })
+                                local ok = pcall(function()
+                                    library:Notify({
+                                        Title = "Update Available",
+                                        Description = "An update is available on GitHub. Please use Reload Script in the Config tab.",
+                                        Time = 6
+                                    })
+                                end)
+                                if not ok then
+                                    pcall(function()
+                                        library:Notify("Update Available: An update is available on GitHub. Please use Reload Script in the Config tab.", 6)
+                                    end)
+                                end
                             end
                         end)
                     end
