@@ -464,6 +464,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             no_stun = false,
             anti_confusion = false,
 			hold_carry = false,
+            hold_flock = false,
             verdien_highlight = false,
             auto_verdien = false,
 
@@ -10818,6 +10819,20 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                             if cheat_client.start_hold_carry then cheat_client.start_hold_carry() end
                         else
                             if cheat_client.stop_hold_carry then cheat_client.stop_hold_carry() end
+                        end
+                    end
+                })
+
+                group_combat_utils:AddToggle("HoldFlock", {
+                    Text = "Hold Flock",
+                    Default = cheat_client.config.hold_flock,
+                    Tooltip = "Spam activates Flock tool while holding LMB",
+                    Callback = function(value)
+                        cheat_client.config.hold_flock = value
+                        if value then
+                            if cheat_client.start_hold_flock then cheat_client.start_hold_flock() end
+                        else
+                            if cheat_client.stop_hold_flock then cheat_client.stop_hold_flock() end
                         end
                     end
                 })
@@ -32561,6 +32576,72 @@ end
 
             if Toggles and Toggles.HoldCarry and Toggles.HoldCarry.Value then
                 start_hold_carry()
+            end
+        end
+
+        -- ── Hold Flock ──────────────────────────────────────────────────
+        do
+            local holdingMouse1 = false
+            local last_flock_time = 0
+            local FLOCK_INTERVAL = 0.05  -- spam every 50ms while holding LMB
+
+            local function get_equipped_flock()
+                local char = plr.Character
+                if not char then return nil end
+                for _, v in next, char:GetChildren() do
+                    if v.ClassName == "Tool" and v.Name == "Flock" then
+                        return v
+                    end
+                end
+                return nil
+            end
+
+            local function start_hold_flock()
+                if cheat_client.feature_connections.hold_flock then return end
+
+                cheat_client.feature_connections.hold_flock_input_began = utility:Connection(uis.InputBegan, function(input, processed)
+                    if not processed and input.UserInputType == Enum.UserInputType.MouseButton1 then
+                        holdingMouse1 = true
+                    end
+                end)
+
+                cheat_client.feature_connections.hold_flock_input_ended = utility:Connection(uis.InputEnded, function(input)
+                    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                        holdingMouse1 = false
+                    end
+                end)
+
+                cheat_client.feature_connections.hold_flock = utility:Connection(rs.RenderStepped, LPH_NO_VIRTUALIZE(function()
+                    if not holdingMouse1 then return end
+                    if not plr.Character then return end
+
+                    local now = tick()
+                    if now - last_flock_time < FLOCK_INTERVAL then return end
+                    last_flock_time = now
+
+                    -- only activate if Flock is already equipped in character, never equip it
+                    local tool = get_equipped_flock()
+                    if not tool then return end
+
+                    pcall(function() tool:Activate() end)
+                end))
+            end
+
+            local function stop_hold_flock()
+                holdingMouse1 = false
+                for _, key in next, { "hold_flock", "hold_flock_input_began", "hold_flock_input_ended" } do
+                    if cheat_client.feature_connections[key] then
+                        cheat_client.feature_connections[key]:Disconnect()
+                        cheat_client.feature_connections[key] = nil
+                    end
+                end
+            end
+
+            cheat_client.start_hold_flock = start_hold_flock
+            cheat_client.stop_hold_flock  = stop_hold_flock
+
+            if Toggles and Toggles.HoldFlock and Toggles.HoldFlock.Value then
+                start_hold_flock()
             end
         end
 
