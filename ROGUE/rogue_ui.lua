@@ -723,6 +723,15 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             JumpCool = true,
             Danger = true,
         },
+        -- tags NoStun must NOT delete: the game's own client scripts read these for
+        -- sprint speed, climbing, blocking state and combat tag, so deleting them desyncs you
+        nostun_keep = {
+            Sprinting = true,
+            MustSprint = true,
+            IsClimbing = true,
+            Blocking = true,
+            Danger = true,
+        },
         im_lazy_stuns = {
             HeavyAttack = true,
             LightAttack = true,
@@ -10073,7 +10082,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 group_combat_utils:AddToggle("HoldFlock", {
                     Text = "Hold Flock",
                     Default = cheat_client.config.hold_flock,
-                    Tooltip = "Spam activates Flock tool while holding LMB",
+                    Tooltip = "Spam activates the Flock tool whenever it is held out",
                     Callback = function(value)
                         cheat_client.config.hold_flock = value
                         if value then
@@ -12512,8 +12521,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
         
         do
     do
-    local blacksmith_tabbox = Tabs.Automation:AddRightTabbox("Blacksmith")
-    local tab_blacksmith = blacksmith_tabbox:AddTab("Blacksmith")
+    local group_blacksmith = Tabs.Automation:AddRightGroupbox("Blacksmith")
 
     local SHARD_NAMES = {"Opal Shard", "Sapphire Shard", "Emerald Shard", "Ruby Shard"}
     local SHARD_SET = {}
@@ -12521,7 +12529,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
         SHARD_SET[name] = true
     end
 
-    tab_blacksmith:AddDropdown("BlacksmithShard", {
+    group_blacksmith:AddDropdown("BlacksmithShard", {
         Text = "Shards",
         Values = SHARD_NAMES,
         Default = 1,
@@ -12529,7 +12537,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
         Tooltip = "Shard that Auto Shard will hold out"
     })
 
-    tab_blacksmith:AddToggle("AutoShard", {
+    group_blacksmith:AddToggle("AutoShard", {
         Text = "Auto Shard",
         Default = false,
         Tooltip = "Keeps the selected shard equipped (pauses while Auto Remote Smithing is on, or while you hold a non-shard tool)",
@@ -12544,15 +12552,15 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
         end
     })
 
-    tab_blacksmith:AddDivider()
+    group_blacksmith:AddDivider()
 
-    tab_blacksmith:AddToggle("AutoRemoteSmithing", {
+    group_blacksmith:AddToggle("AutoRemoteSmithing", {
         Text = "Auto Remote Smithing",
         Default = false,
         Tooltip = "Holds Remote Smithing and spams left click while it's placed down"
     })
 
-    tab_blacksmith:AddSlider("AutoRemoteSmithingDelay", {
+    group_blacksmith:AddSlider("AutoRemoteSmithingDelay", {
         Text = "Click Delay",
         Default = 0.25,
         Min = 0.05,
@@ -28341,6 +28349,7 @@ end
 
                     speed_object = Instance.new("IntValue")
                     speed_object.Name = "SpeedBoost"
+                    speed_object:SetAttribute("hxd_own", true)
                     speed_object.Value = (Toggles.speed_boost and Toggles.speed_boost.Value) and (Options.speed_boost_value and Options.speed_boost_value.Value or 16) or 0
                     speed_object.Parent = character.Boosts
                 end
@@ -28380,7 +28389,7 @@ end
                         return
                     end
 
-                    if cheat_client.stuns[obj.Name] and Toggles and Toggles.NoStun and Toggles.NoStun.Value then
+                    if cheat_client.stuns[obj.Name] and not cheat_client.nostun_keep[obj.Name] and Toggles and Toggles.NoStun and Toggles.NoStun.Value then
                         task.defer(obj.Destroy, obj)
                         return
                     end
@@ -28392,7 +28401,7 @@ end
                         return
                     end
 
-                    if obj.Name == "SpeedBoost" and Toggles and Toggles.NoStun and Toggles.NoStun.Value then
+                    if obj.Name == "SpeedBoost" and not obj:GetAttribute("hxd_own") and Toggles and Toggles.NoStun and Toggles.NoStun.Value then
                         task.defer(obj.Destroy, obj)
                         return
                     end
@@ -28720,7 +28729,7 @@ end
                         return
                     end
 
-                    if cheat_client.stuns[obj.Name] and Toggles and Toggles.NoStun and Toggles.NoStun.Value then
+                    if cheat_client.stuns[obj.Name] and not cheat_client.nostun_keep[obj.Name] and Toggles and Toggles.NoStun and Toggles.NoStun.Value then
                         task.defer(obj.Destroy, obj)
                         return
                     end
@@ -28732,7 +28741,7 @@ end
                         return
                     end
 
-                    if obj.Name == "SpeedBoost" and Toggles and Toggles.NoStun and Toggles.NoStun.Value  then
+                    if obj.Name == "SpeedBoost" and not obj:GetAttribute("hxd_own") and Toggles and Toggles.NoStun and Toggles.NoStun.Value then
                         task.defer(obj.Destroy, obj)
                         return
                     end
@@ -31940,9 +31949,8 @@ end
 
         -- ── Hold Flock ──────────────────────────────────────────────────
         do
-            local holdingMouse1 = false
             local last_flock_time = 0
-            local FLOCK_INTERVAL = 0.05  -- spam every 50ms while holding LMB
+            local FLOCK_INTERVAL = 0.05  -- spam every 50ms while Flock is held out
 
             local function get_equipped_flock()
                 local char = plr.Character
@@ -31958,36 +31966,26 @@ end
             local function start_hold_flock()
                 if cheat_client.feature_connections.hold_flock then return end
 
-                cheat_client.feature_connections.hold_flock_input_began = utility:Connection(uis.InputBegan, function(input, processed)
-                    if not processed and input.UserInputType == Enum.UserInputType.MouseButton1 then
-                        holdingMouse1 = true
-                    end
-                end)
-
-                cheat_client.feature_connections.hold_flock_input_ended = utility:Connection(uis.InputEnded, function(input)
-                    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-                        holdingMouse1 = false
-                    end
-                end)
-
                 cheat_client.feature_connections.hold_flock = utility:Connection(rs.RenderStepped, LPH_NO_VIRTUALIZE(function()
-                    if not holdingMouse1 then return end
-                    if not plr.Character then return end
+                    local char = plr.Character
+                    if not char then return end
 
                     local now = tick()
                     if now - last_flock_time < FLOCK_INTERVAL then return end
-                    last_flock_time = now
 
-                    -- only activate if Flock is already equipped in character, never equip it
+                    -- only activate if Flock is already held out, never equip it
                     local tool = get_equipped_flock()
                     if not tool then return end
 
+                    -- don't spam while the game has us locked out of controls
+                    if FindFirstChild(char, "NoControl") then return end
+
+                    last_flock_time = now
                     pcall(function() tool:Activate() end)
                 end))
             end
 
             local function stop_hold_flock()
-                holdingMouse1 = false
                 for _, key in next, { "hold_flock", "hold_flock_input_began", "hold_flock_input_ended" } do
                     if cheat_client.feature_connections[key] then
                         cheat_client.feature_connections[key]:Disconnect()
