@@ -31865,7 +31865,7 @@ end
                 end)
 
                 cheat_client.feature_connections.hold_block = utility:Connection(rs.RenderStepped, LPH_NO_VIRTUALIZE(function()
-                    if holdingF and plr.Character then
+                    if holdingF and plr.Character and not FindFirstChild(plr.Character, "NoControl") then
                         local delay = ((Options and Options.HoldBlockDelay and Options.HoldBlockDelay.Value) or 0) / 1000
                         local now = tick()
 
@@ -32789,42 +32789,35 @@ end
                 
                 return false
             end
+            local function is_dominated()
+                local char = plr.Character
+                if not char then return false end
+                return FindFirstChild(char, "NoControl") ~= nil
+            end
 
             local function performAutoParry(delay, blockDuration, useVim, attackingPlayer)
+                if is_dominated() then return end
+
                 if attackingPlayer and cheat_client:is_friendly(attackingPlayer) then
                     return
                 end
 
-                local disableWhenUnfocused = Toggles.ParryDisableWhenUnfocused.Value
-                if disableWhenUnfocused then
-                    if not cheat_client.window_active or uis:GetFocusedTextBox() then
-                        return
-                    end
+                if not plr.Character then return end
+
+                if Toggles.ParryDisableWhenUnfocused and Toggles.ParryDisableWhenUnfocused.Value and not cheat_client.window_active then
+                    return
                 end
-                
-                local currentTime = tick()
-                if currentTime - LAST_PARRY < AUTO_PARRY_COOLDOWN then return end
 
-                local semiBlatantBlock = Toggles.ParrySemiBlatantBlock and Toggles.ParrySemiBlatantBlock.Value
-                if not semiBlatantBlock and FindFirstChild(plr.Character, "NoDash") then return end
-
-                if FindFirstChildOfClass(plr.Character, "ForceField") then return end
                 if on_cooldown() then return end
 
-                LAST_PARRY = currentTime
-                blockDuration = blockDuration or 0.3
-                
                 local adjustedDelay = delay or 0
-                if Toggles and Toggles.ParryCustomDelay and Toggles.ParryCustomDelay.Value then
-                    local customDelayMs = Options.ParryCustomDelayMs.Value
-                    adjustedDelay = adjustedDelay + (customDelayMs / 1000)
-                elseif Toggles.ParryPingAdjust.Value then
-                    local ping = getPing()
-                    local pingCompensation = ping / 2000
-                    adjustedDelay = adjustedDelay - pingCompensation
+                if Toggles.ParryPingAdjust and Toggles.ParryPingAdjust.Value then
+                    adjustedDelay = adjustedDelay - (getPing() / 2000)
                 end
-                
-                adjustedDelay = math.max(0, adjustedDelay)
+                if Toggles.ParryCustomDelay and Toggles.ParryCustomDelay.Value and Options.ParryCustomDelayMs then
+                    adjustedDelay = adjustedDelay + (Options.ParryCustomDelayMs.Value / 1000)
+                end
+                if adjustedDelay < 0 then adjustedDelay = 0 end
 
                 if not useVim then
                     blockInputs()
@@ -32832,7 +32825,7 @@ end
 
                 if adjustedDelay > 0 then
                     task.wait(adjustedDelay)
-                    if on_cooldown() then
+                    if on_cooldown() or is_dominated() or not plr.Character then
                         if not useVim then
                             unblockInputs()
                         end
@@ -32862,6 +32855,7 @@ end
                     task.spawn(function()
                         local endTime = tick() + blockDuration
                         while tick() < endTime do
+                            if is_dominated() then break end
                             blockRemote:FireServer(false)
                             task.wait()
                         end
