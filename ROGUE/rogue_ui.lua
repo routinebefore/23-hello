@@ -12512,8 +12512,8 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
         
         do
     do
-    local blacksmith_groupbox = Tabs.Automation:AddRightGroupbox("Blacksmith")
-    local tab_blacksmith = blacksmith_groupbox:AddTab("Blacksmith")
+    local blacksmith_tabbox = Tabs.Automation:AddRightGroupbox("Blacksmith")
+    local tab_blacksmith = blacksmith_tabbox:AddTab("Blacksmith")
 
     local SHARD_NAMES = {"Opal Shard", "Sapphire Shard", "Emerald Shard", "Ruby Shard"}
     local SHARD_SET = {}
