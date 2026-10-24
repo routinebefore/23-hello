@@ -12511,6 +12511,128 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
         end
         
         do
+    do
+    local blacksmith_tabbox = Tabs.Automation:AddRightTabbox("Blacksmith")
+    local tab_blacksmith = blacksmith_tabbox:AddTab("Blacksmith")
+
+    local SHARD_NAMES = {"Opal Shard", "Sapphire Shard", "Emerald Shard", "Ruby Shard"}
+    local SHARD_SET = {}
+    for _, name in ipairs(SHARD_NAMES) do
+        SHARD_SET[name] = true
+    end
+
+    tab_blacksmith:AddDropdown("BlacksmithShard", {
+        Text = "Shards",
+        Values = SHARD_NAMES,
+        Default = 1,
+        Multi = false, -- only one shard can be selected at a time
+        Tooltip = "Shard that Auto Shard will hold out"
+    })
+
+    tab_blacksmith:AddToggle("AutoShard", {
+        Text = "Auto Shard",
+        Default = false,
+        Tooltip = "Keeps the selected shard equipped (pauses while Auto Remote Smithing is on, or while you hold a non-shard tool)",
+        Callback = function(state)
+            if not state and plr.Character then
+                local held = FindFirstChildOfClass(plr.Character, "Tool")
+                if held and SHARD_SET[held.Name] then
+                    local hum = FindFirstChildOfClass(plr.Character, "Humanoid")
+                    if hum then hum:UnequipTools() end
+                end
+            end
+        end
+    })
+
+    tab_blacksmith:AddDivider()
+
+    tab_blacksmith:AddToggle("AutoRemoteSmithing", {
+        Text = "Auto Remote Smithing",
+        Default = false,
+        Tooltip = "Holds Remote Smithing and spams left click while it's placed down"
+    })
+
+    tab_blacksmith:AddSlider("AutoRemoteSmithingDelay", {
+        Text = "Click Delay",
+        Default = 0.25,
+        Min = 0.05,
+        Max = 2,
+        Rounding = 2,
+        Suffix = "s",
+        Compact = true
+    })
+
+    local last_equip = 0
+    local last_smith = 0
+    local last_missing_notify = 0
+
+    local function notify_missing(name)
+        local now = tick()
+        if now - last_missing_notify > 5 then
+            last_missing_notify = now
+            library:Notify(string.format("%s not found in your backpack", name), 3)
+        end
+    end
+
+    local function step_auto_shard(character, humanoid, backpack)
+        if not (Toggles.AutoShard and Toggles.AutoShard.Value) then return end
+        if Toggles.AutoRemoteSmithing and Toggles.AutoRemoteSmithing.Value then return end
+
+        local target_name = Options.BlacksmithShard and Options.BlacksmithShard.Value
+        if not target_name or target_name == "" then return end
+
+        local held = FindFirstChildOfClass(character, "Tool")
+        if held and held.Name == target_name then return end
+        if held and not SHARD_SET[held.Name] then return end -- don't fight a manually held tool
+
+        local now = tick()
+        if now - last_equip < 0.25 then return end
+
+        local tool = FindFirstChild(backpack, target_name)
+        if tool and tool:IsA("Tool") then
+            last_equip = now
+            humanoid:EquipTool(tool) -- swaps out any other shard that's currently held
+        else
+            notify_missing(target_name)
+        end
+    end
+
+    local function step_auto_smithing(character, humanoid, backpack)
+        if not (Toggles.AutoRemoteSmithing and Toggles.AutoRemoteSmithing.Value) then return end
+
+        local now = tick()
+        local delay = (Options.AutoRemoteSmithingDelay and Options.AutoRemoteSmithingDelay.Value) or 0.25
+        if now - last_smith < delay then return end
+
+        local tool = FindFirstChild(character, "Remote Smithing")
+        if not (tool and tool:IsA("Tool")) then
+            local bp_tool = FindFirstChild(backpack, "Remote Smithing")
+            if bp_tool and bp_tool:IsA("Tool") then
+                last_smith = now
+                humanoid:EquipTool(bp_tool)
+            else
+                notify_missing("Remote Smithing")
+            end
+            return
+        end
+
+        last_smith = now
+        pcall(function() tool:Activate() end)
+        pcall(function() utility:LeftClick() end)
+    end
+
+    utility:Connection(rs.Heartbeat, function()
+        if not shared or shared.is_unloading then return end
+
+        local character = plr.Character
+        local backpack = plr:FindFirstChild("Backpack")
+        local humanoid = character and FindFirstChildOfClass(character, "Humanoid")
+        if not (character and backpack and humanoid) or humanoid.Health <= 0 then return end
+
+        step_auto_shard(character, humanoid, backpack)
+        step_auto_smithing(character, humanoid, backpack)
+    end)
+end
             local group_world = Tabs.World:AddLeftGroupbox("World Settings")
                 
             group_world:AddToggle("freecam", {
