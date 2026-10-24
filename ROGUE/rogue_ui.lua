@@ -10082,7 +10082,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 group_combat_utils:AddToggle("HoldFlock", {
                     Text = "Hold Flock",
                     Default = cheat_client.config.hold_flock,
-                    Tooltip = "Spam activates the Flock tool whenever it is held out",
+                    Tooltip = "Spam uses Flock whenever it is held out (stops while on cooldown)",
                     Callback = function(value)
                         cheat_client.config.hold_flock = value
                         if value then
@@ -10091,6 +10091,16 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                             if cheat_client.stop_hold_flock then cheat_client.stop_hold_flock() end
                         end
                     end
+                })
+
+                group_combat_utils:AddSlider("HoldFlockDelay", {
+                    Text = "Flock Click Delay (ms)",
+                    Default = 50,
+                    Min = 1,
+                    Max = 100,
+                    Rounding = 0,
+                    Suffix = " ms",
+                    Compact = true
                 })
 
             group_combat_utils:AddDivider()
@@ -31949,8 +31959,8 @@ end
 
         -- ── Hold Flock ──────────────────────────────────────────────────
         do
-            local last_flock_time = 0
-            local FLOCK_INTERVAL = 0.05  -- spam every 50ms while Flock is held out
+            local flock_accum = 0
+            local MAX_CLICKS_PER_FRAME = 4
 
             local function get_equipped_flock()
                 local char = plr.Character
@@ -31963,29 +31973,56 @@ end
                 return nil
             end
 
+            -- all the checks that must pass before Flock gets used
+            local function can_use_flock(char, tool)
+                if not char or not tool or tool.Parent ~= char then return false end -- Flock must be held out
+                if tool.Enabled == false then return false end
+                local hum = FindFirstChildOfClass(char, "Humanoid")
+                if not hum or hum.Health <= 0 then return false end
+                if FindFirstChild(char, "NoControl") then return false end
+                if cs:HasTag(char, "RecentFlock") then return false end -- Flock is on cooldown
+                return true
+            end
+
+            local function use_flock(tool)
+                pcall(function() tool:Activate() end)
+                pcall(function() utility:LeftClick() end) -- same LeftClick remote the game fires
+                if vim then
+                    task.spawn(function()
+                        pcall(function()
+                            vim:SendMouseButtonEvent(0, 0, 0, true, game, 1)
+                            vim:SendMouseButtonEvent(0, 0, 0, false, game, 1)
+                        end)
+                    end)
+                end
+            end
+
             local function start_hold_flock()
                 if cheat_client.feature_connections.hold_flock then return end
+                flock_accum = 0
 
-                cheat_client.feature_connections.hold_flock = utility:Connection(rs.RenderStepped, LPH_NO_VIRTUALIZE(function()
+                cheat_client.feature_connections.hold_flock = utility:Connection(rs.RenderStepped, LPH_NO_VIRTUALIZE(function(dt)
                     local char = plr.Character
-                    if not char then return end
+                    local tool = char and get_equipped_flock()
+                    if not can_use_flock(char, tool) then
+                        flock_accum = 0
+                        return
+                    end
 
-                    local now = tick()
-                    if now - last_flock_time < FLOCK_INTERVAL then return end
+                    local interval = ((Options and Options.HoldFlockDelay and Options.HoldFlockDelay.Value) or 50) / 1000
+                    flock_accum = math.min(flock_accum + dt, interval * MAX_CLICKS_PER_FRAME)
 
-                    -- only activate if Flock is already held out, never equip it
-                    local tool = get_equipped_flock()
-                    if not tool then return end
-
-                    -- don't spam while the game has us locked out of controls
-                    if FindFirstChild(char, "NoControl") then return end
-
-                    last_flock_time = now
-                    pcall(function() tool:Activate() end)
+                    local clicks = 0
+                    while flock_accum >= interval and clicks < MAX_CLICKS_PER_FRAME do
+                        flock_accum = flock_accum - interval
+                        clicks = clicks + 1
+                        use_flock(tool)
+                    end
                 end))
             end
 
             local function stop_hold_flock()
+                flock_accum = 0
                 for _, key in next, { "hold_flock", "hold_flock_input_began", "hold_flock_input_ended" } do
                     if cheat_client.feature_connections[key] then
                         cheat_client.feature_connections[key]:Disconnect()
