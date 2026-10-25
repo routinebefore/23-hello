@@ -35973,6 +35973,11 @@ end
 
             local function update_spell_tool()
                 local char = get_local_char()
+                -- GeliFreezing accessory only exists while YOU are snap gelidusing
+                if char and FindFirstChild(char, "GeliFreezing") then
+                    last_spell.vtype = "Snap Gelidus"
+                    last_spell.t = os.clock()
+                end
                 local tool = char and char:FindFirstChildOfClass("Tool")
                 if not tool then return end
                 if tool.Name == "Telorum" then
@@ -36286,7 +36291,7 @@ end
                 local root = char and (char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso"))
                 local part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart", true)
                 if not (root and part) then return false end
-                return (part.Position - root.Position).Magnitude < 200
+                return (part.Position - root.Position).Magnitude < (t == "Snap Gelidus" and 300 or 200)
             end
 
             local function track_target(emitter, vfx_type)
@@ -36836,6 +36841,60 @@ end
                 end)
             end
 
+            -- ── Snap Gelidus: IcePath parts ───────────────────────────────
+            -- only tinted while the LOCAL player has the GeliFreezing accessory
+            local last_icepath_scan = 0
+
+            local function snap_gelidus_active(char)
+                if not char then return false end
+                if FindFirstChild(char, "GeliFreezing") then return true end
+                update_spell_tool()
+                return recent_spell_type() == "Snap Gelidus"
+            end
+
+            local function track_icepath(inst)
+                if not inst or not inst.Parent then return false end
+                if tracked_all[inst] then return true end
+                local char = get_local_char()
+                if not snap_gelidus_active(char) then return false end
+
+                local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso")
+                local part = inst:IsA("BasePart") and inst or inst:FindFirstChildWhichIsA("BasePart", true)
+                if root and part and (part.Position - root.Position).Magnitude > 300 then
+                    return false
+                end
+
+                track_target(inst, "Snap Gelidus")
+                for _, desc in ipairs(inst:GetDescendants()) do
+                    if desc:IsA("BasePart") or desc:IsA("Trail") or desc:IsA("ParticleEmitter") or desc:IsA("Beam") or is_extra_color_class(desc) then
+                        track_target(desc, "Snap Gelidus")
+                    end
+                end
+                return true
+            end
+
+            local function rescan_icepaths()
+                local thrown = ws:FindFirstChild("Thrown")
+                local containers = { ws, thrown }
+                for _, container in ipairs(containers) do
+                    if container then
+                        for _, child in ipairs(container:GetChildren()) do
+                            if not tracked_all[child] and string.find(string.lower(child.Name), "icepath", 1, true) then
+                                track_icepath(child)
+                            end
+                        end
+                    end
+                end
+            end
+
+            local function on_icepath_added(inst)
+                if track_icepath(inst) then return end
+                -- GeliFreezing can land a frame after the first part, so retry once
+                task.delay(0.2, function()
+                    track_icepath(inst)
+                end)
+            end
+
             local function bind_thrown_folder(thrown_folder)
                 if not thrown_folder then return end
                 for _, child in ipairs(thrown_folder:GetChildren()) do
@@ -36874,6 +36933,12 @@ end
 
                 utility:Connection(char.DescendantAdded, function(desc)
                     scan_character_descendant(desc)
+                end)
+
+                utility:Connection(char.ChildAdded, function(child)
+                    if child.Name == "GeliFreezing" and is_rainbow_vfx_toggle_on() then
+                        rescan_icepaths()
+                    end
                 end)
             end
 
@@ -37017,6 +37082,14 @@ end
                 last_vfx_update = now
                 update_spell_tool()
 
+                if now - last_icepath_scan > 0.25 then
+                    last_icepath_scan = now
+                    local gchar = get_local_char()
+                    if gchar and FindFirstChild(gchar, "GeliFreezing") then
+                        rescan_icepaths()
+                    end
+                end
+
                 if now - last_vfx_scan > 2.0 then
                     last_vfx_scan = now
                     local char = get_local_char()
@@ -37120,6 +37193,12 @@ end
             if existing_thrown then
                 bind_thrown_folder(existing_thrown)
             end
+
+            utility:Connection(ws.DescendantAdded, function(inst)
+                if inst.Name == "IcePath" and is_rainbow_vfx_toggle_on() then
+                    on_icepath_added(inst)
+                end
+            end)
 
             utility:Connection(ws.ChildAdded, function(child)
                 if not child then return end
