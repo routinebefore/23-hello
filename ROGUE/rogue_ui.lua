@@ -26880,6 +26880,22 @@ end
                 shared.SaveManager:SetIgnoreIndexes({ "SavedPaths", "DebugPacketLogs" })
 
                 shared.SaveManager.OnConfigLoaded = function(configName)
+                    -- one-time migration: older configs don't know Telorum / Snap Gelidus, select them by default
+                    pcall(function()
+                        local marker = "HYDROXIDE/rainbow_vfx_spells_default.txt"
+                        local opt = Options.RainbowVFXItems
+                        if opt and not (isfile and isfile(marker)) then
+                            local v = {}
+                            for k, val in pairs(opt.Value or {}) do v[k] = val end
+                            local changed = false
+                            for _, n in ipairs({"Telorum", "Snap Gelidus"}) do
+                                if not v[n] then v[n] = true changed = true end
+                            end
+                            if changed then opt:SetValue(v) end
+                            if writefile then writefile(marker, "1") end
+                        end
+                    end)
+
                     if cheat_client.config.persistent_configs and mem and configName then
                         mem:SetItem("loaded_config", configName)
                     end
@@ -35999,14 +36015,15 @@ end
                 local pn = par and string.lower(par.Name) or ""
 
                 if string.find(n, "telorum", 1, true) or string.find(pn, "telorum", 1, true) then return "Telorum" end
-                if string.find(n, "gelidus", 1, true) or string.find(pn, "gelidus", 1, true) then return "Snap Gelidus" end
+                if string.find(n, "gelidus", 1, true) or string.find(pn, "gelidus", 1, true)
+                    or string.find(n, "icepath", 1, true) or string.find(pn, "icepath", 1, true) then return "Snap Gelidus" end
 
                 local thrown = ws:FindFirstChild("Thrown")
                 local a = par
                 while a and a ~= ws and a ~= thrown do
                     local an = string.lower(a.Name)
                     if string.find(an, "telorum", 1, true) then return "Telorum" end
-                    if string.find(an, "gelidus", 1, true) then return "Snap Gelidus" end
+                    if string.find(an, "gelidus", 1, true) or string.find(an, "icepath", 1, true) then return "Snap Gelidus" end
                     a = a.Parent
                 end
 
@@ -36241,6 +36258,37 @@ end
                 return false
             end
 
+            local function color_prop(inst)
+                if inst:IsA("Decal") or inst:IsA("Texture") then return "Color3" end
+                return "Color"
+            end
+
+            local function read_color(inst)
+                local ok, v = pcall(function() return inst[color_prop(inst)] end)
+                if ok then return v end
+                return nil
+            end
+
+            local function write_color(inst, v)
+                pcall(function() inst[color_prop(inst)] = v end)
+            end
+
+            -- extra classes skins may use to tint a spell (only ever tracked for Telorum / Snap Gelidus)
+            local function is_extra_color_class(inst)
+                return inst:IsA("Decal") or inst:IsA("Texture") or inst:IsA("SurfaceAppearance") or inst:IsA("Light")
+            end
+
+            -- IcePath parts can extend well past the 35-stud "attached" check, so accept
+            -- spell VFX that is near you while you are holding / just held that spell
+            local function spell_near(obj, char)
+                local t = spell_vfx_type(obj)
+                if not t or t ~= recent_spell_type() then return false end
+                local root = char and (char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso"))
+                local part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart", true)
+                if not (root and part) then return false end
+                return (part.Position - root.Position).Magnitude < 200
+            end
+
             local function track_target(emitter, vfx_type)
                 if not emitter then return end
                 if emitter.Name:find("RainbowShield", 1, true) then
@@ -36254,8 +36302,8 @@ end
                 end
                 if not vfx_type then return end
 
-                local ok, col = pcall(function() return emitter.Color end)
-                if not ok or not col then return end
+                local col = read_color(emitter)
+                if not col then return end
                 if not original_colors[emitter] then
                     original_colors[emitter] = col
                 end
@@ -36266,15 +36314,15 @@ end
                     active_emitters[emitter] = is_seq
                     pcall(function()
                         if is_seq then
-                            emitter.Color = get_synced_vfx_rainbow_seq(os.clock())
+                            write_color(emitter, get_synced_vfx_rainbow_seq(os.clock()))
                         else
-                            emitter.Color = get_synced_vfx_rainbow_c3(os.clock())
+                            write_color(emitter, get_synced_vfx_rainbow_c3(os.clock()))
                         end
                     end)
                 else
                     active_emitters[emitter] = nil
                     pcall(function()
-                        emitter.Color = original_colors[emitter]
+                        write_color(emitter, original_colors[emitter])
                     end)
                 end
             end
@@ -36465,10 +36513,10 @@ end
                         vfx_type = "Telorum",
                         matches_container = function(obj, char)
                             if spell_vfx_type(obj) ~= "Telorum" then return false end
-                            return is_attached_to_char(obj, char) or is_trail_attached_to_char(obj, char)
+                            return is_attached_to_char(obj, char) or is_trail_attached_to_char(obj, char) or spell_near(obj, char)
                         end,
                         matches_emitter = function(desc)
-                            return desc:IsA("BasePart") or desc:IsA("Trail") or desc:IsA("ParticleEmitter") or desc:IsA("Beam")
+                            return desc:IsA("BasePart") or desc:IsA("Trail") or desc:IsA("ParticleEmitter") or desc:IsA("Beam") or is_extra_color_class(desc)
                         end
                     },
                     {
@@ -36476,10 +36524,10 @@ end
                         vfx_type = "Snap Gelidus",
                         matches_container = function(obj, char)
                             if spell_vfx_type(obj) ~= "Snap Gelidus" then return false end
-                            return is_attached_to_char(obj, char) or is_trail_attached_to_char(obj, char)
+                            return is_attached_to_char(obj, char) or is_trail_attached_to_char(obj, char) or spell_near(obj, char)
                         end,
                         matches_emitter = function(desc)
-                            return desc:IsA("BasePart") or desc:IsA("Trail") or desc:IsA("ParticleEmitter") or desc:IsA("Beam")
+                            return desc:IsA("BasePart") or desc:IsA("Trail") or desc:IsA("ParticleEmitter") or desc:IsA("Beam") or is_extra_color_class(desc)
                         end
                     },
                     {
@@ -36745,7 +36793,7 @@ end
                 if not char then return end
 
                 if child:IsA("Trail") or child:IsA("Beam") or child:IsA("ParticleEmitter") or child:IsA("BasePart") then
-                    if is_trail_attached_to_char(child, char) or is_attached_to_char(child, char) then
+                    if is_trail_attached_to_char(child, char) or is_attached_to_char(child, char) or spell_near(child, char) then
                         track_target(child, infer_vfx_type(child))
                     end
                 end
@@ -36771,9 +36819,9 @@ end
                         if child_conn2 then child_conn2:Disconnect() end
                         return
                     end
-                    if desc:IsA("Trail") or desc:IsA("Beam") or desc:IsA("ParticleEmitter") or desc:IsA("BasePart") then
+                    if desc:IsA("Trail") or desc:IsA("Beam") or desc:IsA("ParticleEmitter") or desc:IsA("BasePart") or (is_extra_color_class(desc) and spell_vfx_type(desc)) then
                         local c = get_local_char()
-                        if c and (is_trail_attached_to_char(desc, c) or is_attached_to_char(child, c)) then
+                        if c and (is_trail_attached_to_char(desc, c) or is_attached_to_char(child, c) or spell_near(child, c)) then
                             track_target(desc, infer_vfx_type(desc))
                         end
                     end
@@ -36800,6 +36848,7 @@ end
                         or string.find(cname, "cord", 1, true)
                         or string.find(cname, "telorum", 1, true)
                         or string.find(cname, "gelidus", 1, true)
+                        or string.find(cname, "icepath", 1, true)
                         or child:IsA("Trail") or child:IsA("Beam") then
                         handle_thrown_child(child)
                     end
@@ -36847,7 +36896,7 @@ end
                             active_emitters[emitter] = nil
                             local orig = original_colors[emitter]
                             if orig then
-                                pcall(function() emitter.Color = orig end)
+                                pcall(function() write_color(emitter, orig) end)
                             end
                             tracked_all[emitter] = nil
                             original_colors[emitter] = nil
@@ -36857,16 +36906,16 @@ end
                                 active_emitters[emitter] = data.is_seq
                                 pcall(function()
                                     if data.is_seq then
-                                        emitter.Color = seq
+                                        write_color(emitter, seq)
                                     else
-                                        emitter.Color = c3
+                                        write_color(emitter, c3)
                                     end
                                 end)
                             else
                                 active_emitters[emitter] = nil
                                 local orig = original_colors[emitter]
                                 if orig then
-                                    pcall(function() emitter.Color = orig end)
+                                    pcall(function() write_color(emitter, orig) end)
                                 end
                             end
                         end
@@ -36927,6 +36976,7 @@ end
                                 or string.find(cname, "cord", 1, true)
                         or string.find(cname, "telorum", 1, true)
                         or string.find(cname, "gelidus", 1, true)
+                        or string.find(cname, "icepath", 1, true)
                                 or child:IsA("Trail") or child:IsA("Beam") then
                                 handle_thrown_child(child)
                             end
@@ -36938,7 +36988,7 @@ end
                     for emitter, orig_col in pairs(original_colors) do
                         if emitter.Parent then
                             pcall(function()
-                                emitter.Color = orig_col
+                                write_color(emitter, orig_col)
                             end)
                         end
                     end
@@ -37007,9 +37057,9 @@ end
                 for emitter, is_seq in pairs(active_emitters) do
                     if emitter.Parent then
                         if is_seq then
-                            emitter.Color = seq
+                            write_color(emitter, seq)
                         else
-                            emitter.Color = c3
+                            write_color(emitter, c3)
                         end
                     else
                         active_emitters[emitter] = nil
@@ -37018,6 +37068,36 @@ end
                     end
                 end
             end))
+
+            -- Telorum / Snap Gelidus rainbow has priority over spell skins: re-applied every frame
+            -- at the very end of the render step, after the game's own scripts have touched colors
+            local SPELL_STEP = "HXD_SpellRainbowPriority"
+            local function spell_priority_step()
+                if not shared or shared.is_unloading or getgenv()._hx_unloaded then return end
+                if not is_rainbow_vfx_toggle_on() then return end
+                local now = os.clock()
+                local seq = get_synced_vfx_rainbow_seq(now)
+                local c3 = get_synced_vfx_rainbow_c3(now)
+                for emitter, is_seq in pairs(active_emitters) do
+                    local data = tracked_all[emitter]
+                    if data and (data.vtype == "Telorum" or data.vtype == "Snap Gelidus") then
+                        if emitter.Parent then
+                            write_color(emitter, is_seq and seq or c3)
+                        else
+                            active_emitters[emitter] = nil
+                            tracked_all[emitter] = nil
+                            original_colors[emitter] = nil
+                        end
+                    end
+                end
+            end
+            pcall(function() rs:UnbindFromRenderStep(SPELL_STEP) end)
+            pcall(function() rs:BindToRenderStep(SPELL_STEP, Enum.RenderPriority.Last.Value + 1, spell_priority_step) end)
+            if cheat_client.register_unload_hook then
+                cheat_client.register_unload_hook(function()
+                    pcall(function() rs:UnbindFromRenderStep(SPELL_STEP) end)
+                end)
+            end
 
             utility:Connection(plr.CharacterAdded, function(char)
                 bind_character(char)
@@ -37048,7 +37128,7 @@ end
                     return
                 end
                 local iname = string.lower(child.Name)
-                if iname == "cord" or string.find(iname, "cord", 1, true) or string.find(iname, "grapple", 1, true) or string.find(iname, "hook", 1, true) or string.find(iname, "particleback", 1, true) or string.find(iname, "particlearm", 1, true) or string.find(iname, "windburst", 1, true) or string.find(iname, "windclap", 1, true) or string.find(iname, "daggerthrow", 1, true) or string.find(iname, "earthpillar", 1, true) or string.find(iname, "viribus", 1, true) or string.find(iname, "telorum", 1, true) or string.find(iname, "gelidus", 1, true) then
+                if iname == "cord" or string.find(iname, "cord", 1, true) or string.find(iname, "grapple", 1, true) or string.find(iname, "hook", 1, true) or string.find(iname, "particleback", 1, true) or string.find(iname, "particlearm", 1, true) or string.find(iname, "windburst", 1, true) or string.find(iname, "windclap", 1, true) or string.find(iname, "daggerthrow", 1, true) or string.find(iname, "earthpillar", 1, true) or string.find(iname, "viribus", 1, true) or string.find(iname, "telorum", 1, true) or string.find(iname, "gelidus", 1, true) or string.find(iname, "icepath", 1, true) then
                     handle_thrown_child(child)
                 end
             end)
