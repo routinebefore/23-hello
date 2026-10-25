@@ -11294,8 +11294,8 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             })
             group_overlays:AddDropdown("RainbowVFXItems", {
                 Text = "Rainbow VFX Items",
-                Values = {"Mana Run", "General Back VFX", "Mana Dashes", "Mana Shield", "Grapple", "Snarv", "Dagger Throws", "Swings", "Lethality", "Viribus"},
-                Default = {"Mana Run", "General Back VFX", "Mana Dashes", "Mana Shield", "Grapple", "Snarv", "Dagger Throws", "Swings", "Lethality", "Viribus"},
+                Values = {"Mana Run", "General Back VFX", "Mana Dashes", "Mana Shield", "Grapple", "Snarv", "Dagger Throws", "Swings", "Lethality", "Viribus", "Telorum", "Snap Gelidus"},
+                Default = {"Mana Run", "General Back VFX", "Mana Dashes", "Mana Shield", "Grapple", "Snarv", "Dagger Throws", "Swings", "Lethality", "Viribus", "Telorum", "Snap Gelidus"},
                 Multi = true,
                 Tooltip = "Select which VFX elements will be colored rainbow (empty = all enabled)",
                 Callback = function(value)
@@ -35877,7 +35877,9 @@ end
                 "Dagger Throws",
                 "Swings",
                 "Lethality",
-                "Viribus"
+                "Viribus",
+                "Telorum",
+                "Snap Gelidus"
             }
 
             local function track_vfx_conn(conn)
@@ -35950,11 +35952,86 @@ end
                 return Color3.fromHSV(shift, 0.9, 1)
             end
 
+            -- ── Telorum / Snap Gelidus detection ──────────────────────────
+            local last_spell = { vtype = nil, t = 0 }
+
+            local function update_spell_tool()
+                local char = get_local_char()
+                local tool = char and char:FindFirstChildOfClass("Tool")
+                if not tool then return end
+                if tool.Name == "Telorum" then
+                    last_spell.vtype = "Telorum"
+                    last_spell.t = os.clock()
+                elseif tool.Name == "Gelidus" then
+                    last_spell.vtype = "Snap Gelidus"
+                    last_spell.t = os.clock()
+                end
+            end
+
+            -- spell equipped now, or unequipped within the last 3s (VFX spawns after the cast)
+            local function recent_spell_type()
+                update_spell_tool()
+                if last_spell.vtype and (os.clock() - last_spell.t) < 3 then
+                    return last_spell.vtype
+                end
+                return nil
+            end
+
+            local other_vfx_patterns = {
+                "particlearm", "particleback", "windburst", "windclap", "daggerthrow",
+                "earthpillar", "earthspear", "viribus", "cord", "grapple", "hook",
+                "orb", "shield", "dodge", "dash", "roll", "lethal", "swing", "monkparticle"
+            }
+
+            local function is_other_known_vfx(n, pn)
+                for _, pat in ipairs(other_vfx_patterns) do
+                    if string.find(n, pat, 1, true) or string.find(pn, pat, 1, true) then
+                        return true
+                    end
+                end
+                return false
+            end
+
+            local function spell_vfx_type(inst)
+                if not inst then return nil end
+                local n = string.lower(inst.Name)
+                local par = inst.Parent
+                local pn = par and string.lower(par.Name) or ""
+
+                if string.find(n, "telorum", 1, true) or string.find(pn, "telorum", 1, true) then return "Telorum" end
+                if string.find(n, "gelidus", 1, true) or string.find(pn, "gelidus", 1, true) then return "Snap Gelidus" end
+
+                local thrown = ws:FindFirstChild("Thrown")
+                local a = par
+                while a and a ~= ws and a ~= thrown do
+                    local an = string.lower(a.Name)
+                    if string.find(an, "telorum", 1, true) then return "Telorum" end
+                    if string.find(an, "gelidus", 1, true) then return "Snap Gelidus" end
+                    a = a.Parent
+                end
+
+                -- fallback: unnamed projectile VFX in Thrown while Telorum/Gelidus is held (or just was)
+                if thrown and inst:IsDescendantOf(thrown) then
+                    local t = recent_spell_type()
+                    if t then
+                        local top = inst
+                        while top.Parent and top.Parent ~= thrown do top = top.Parent end
+                        if not is_other_known_vfx(string.lower(top.Name), n) and not is_other_known_vfx(n, pn) then
+                            return t
+                        end
+                    end
+                end
+                return nil
+            end
+
             local function infer_vfx_type(inst)
                 if not inst then return nil end
                 local name = string.lower(inst.Name)
                 local p = inst.Parent
                 local pname = p and string.lower(p.Name) or ""
+
+                local spell_t = spell_vfx_type(inst)
+                if spell_t then return spell_t end
 
                 if string.find(name, "windburst", 1, true) or string.find(name, "windclap", 1, true) or string.find(pname, "windburst", 1, true) or string.find(pname, "windclap", 1, true) then
                     return "Snarv"
@@ -36171,6 +36248,10 @@ end
                     return
                 end
                 vfx_type = vfx_type or infer_vfx_type(emitter)
+                local existing_t = tracked_all[emitter]
+                if existing_t and (existing_t.vtype == "Telorum" or existing_t.vtype == "Snap Gelidus") then
+                    vfx_type = existing_t.vtype
+                end
                 if not vfx_type then return end
 
                 local ok, col = pcall(function() return emitter.Color end)
@@ -36379,6 +36460,28 @@ end
                     }
                 },
                 thrown_rules = {
+                    {
+                        id = "TelorumThrown",
+                        vfx_type = "Telorum",
+                        matches_container = function(obj, char)
+                            if spell_vfx_type(obj) ~= "Telorum" then return false end
+                            return is_attached_to_char(obj, char) or is_trail_attached_to_char(obj, char)
+                        end,
+                        matches_emitter = function(desc)
+                            return desc:IsA("BasePart") or desc:IsA("Trail") or desc:IsA("ParticleEmitter") or desc:IsA("Beam")
+                        end
+                    },
+                    {
+                        id = "SnapGelidusThrown",
+                        vfx_type = "Snap Gelidus",
+                        matches_container = function(obj, char)
+                            if spell_vfx_type(obj) ~= "Snap Gelidus" then return false end
+                            return is_attached_to_char(obj, char) or is_trail_attached_to_char(obj, char)
+                        end,
+                        matches_emitter = function(desc)
+                            return desc:IsA("BasePart") or desc:IsA("Trail") or desc:IsA("ParticleEmitter") or desc:IsA("Beam")
+                        end
+                    },
                     {
                         id = "EarthPillarThrown",
                         vfx_type = "Viribus",
@@ -36695,6 +36798,8 @@ end
                         or string.find(cname, "earth", 1, true)
                         or string.find(cname, "viribus", 1, true)
                         or string.find(cname, "cord", 1, true)
+                        or string.find(cname, "telorum", 1, true)
+                        or string.find(cname, "gelidus", 1, true)
                         or child:IsA("Trail") or child:IsA("Beam") then
                         handle_thrown_child(child)
                     end
@@ -36820,6 +36925,8 @@ end
                                 or string.find(cname, "earth", 1, true)
                                 or string.find(cname, "viribus", 1, true)
                                 or string.find(cname, "cord", 1, true)
+                        or string.find(cname, "telorum", 1, true)
+                        or string.find(cname, "gelidus", 1, true)
                                 or child:IsA("Trail") or child:IsA("Beam") then
                                 handle_thrown_child(child)
                             end
@@ -36858,6 +36965,7 @@ end
                     return
                 end
                 last_vfx_update = now
+                update_spell_tool()
 
                 if now - last_vfx_scan > 2.0 then
                     last_vfx_scan = now
@@ -36940,7 +37048,7 @@ end
                     return
                 end
                 local iname = string.lower(child.Name)
-                if iname == "cord" or string.find(iname, "cord", 1, true) or string.find(iname, "grapple", 1, true) or string.find(iname, "hook", 1, true) or string.find(iname, "particleback", 1, true) or string.find(iname, "particlearm", 1, true) or string.find(iname, "windburst", 1, true) or string.find(iname, "windclap", 1, true) or string.find(iname, "daggerthrow", 1, true) or string.find(iname, "earthpillar", 1, true) or string.find(iname, "viribus", 1, true) then
+                if iname == "cord" or string.find(iname, "cord", 1, true) or string.find(iname, "grapple", 1, true) or string.find(iname, "hook", 1, true) or string.find(iname, "particleback", 1, true) or string.find(iname, "particlearm", 1, true) or string.find(iname, "windburst", 1, true) or string.find(iname, "windclap", 1, true) or string.find(iname, "daggerthrow", 1, true) or string.find(iname, "earthpillar", 1, true) or string.find(iname, "viribus", 1, true) or string.find(iname, "telorum", 1, true) or string.find(iname, "gelidus", 1, true) then
                     handle_thrown_child(child)
                 end
             end)
