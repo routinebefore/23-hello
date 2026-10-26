@@ -26879,22 +26879,27 @@ end
 
                 shared.SaveManager:SetIgnoreIndexes({ "SavedPaths", "DebugPacketLogs" })
 
-                shared.SaveManager.OnConfigLoaded = function(configName)
-                    -- one-time migration: older configs don't know Telorum / Snap Gelidus, select them by default
+                -- older configs don't contain Telorum / Snap Gelidus: select them like the other VFX
+                -- (anything the config explicitly stores as false is left alone)
+                local function ensure_spell_rainbow_defaults()
                     pcall(function()
-                        local marker = "HYDROXIDE/rainbow_vfx_spells_default.txt"
                         local opt = Options.RainbowVFXItems
-                        if opt and not (isfile and isfile(marker)) then
-                            local v = {}
-                            for k, val in pairs(opt.Value or {}) do v[k] = val end
-                            local changed = false
-                            for _, n in ipairs({"Telorum", "Snap Gelidus"}) do
-                                if not v[n] then v[n] = true changed = true end
+                        if not opt then return end
+                        local v = {}
+                        for k, val in pairs(opt.Value or {}) do v[k] = val end
+                        local changed = false
+                        for _, n in ipairs({"Telorum", "Snap Gelidus"}) do
+                            if v[n] == nil then
+                                v[n] = true
+                                changed = true
                             end
-                            if changed then opt:SetValue(v) end
-                            if writefile then writefile(marker, "1") end
                         end
+                        if changed then opt:SetValue(v) end
                     end)
+                end
+
+                shared.SaveManager.OnConfigLoaded = function(configName)
+                    ensure_spell_rainbow_defaults()
 
                     if cheat_client.config.persistent_configs and mem and configName then
                         mem:SetItem("loaded_config", configName)
@@ -27205,6 +27210,9 @@ end
                         shared.SaveManager:LoadAutoloadConfig()
                     end
                 end
+
+                ensure_spell_rainbow_defaults()
+                task.delay(1.5, ensure_spell_rainbow_defaults)
 
                 task.spawn(function()
                     task.wait(0.5)
@@ -36842,21 +36850,57 @@ end
             end
 
             -- ── Snap Gelidus: IcePath parts ───────────────────────────────
-            -- only tinted while the LOCAL player has the GeliFreezing accessory
+            -- Tinted instantly (before the first rendered frame) while YOU are casting,
+            -- and kept on top of spell skins (skin-added decals / lights / emitters are tracked too).
             local last_icepath_scan = 0
+            local icepath_done = setmetatable({}, { __mode = "k" })
+            local icepath_watch = setmetatable({}, { __mode = "k" })
 
-            local function snap_gelidus_active(char)
+            -- GeliFreezing = actively snap gelidusing; the other signs are only used to tint
+            -- the very first parts before the accessory shows up
+            local function snap_gelidus_confirmed(char)
                 if not char then return false end
                 if FindFirstChild(char, "GeliFreezing") then return true end
                 update_spell_tool()
                 return recent_spell_type() == "Snap Gelidus"
             end
 
+            local function snap_gelidus_possible(char)
+                if not char then return false end
+                if snap_gelidus_confirmed(char) then return true end
+                return FindFirstChild(char, "ActiveCast") ~= nil or FindFirstChild(char, "SpellEquipped") ~= nil
+            end
+
+            local function is_icepath_color_inst(d)
+                return d:IsA("BasePart") or d:IsA("Trail") or d:IsA("ParticleEmitter") or d:IsA("Beam") or is_extra_color_class(d)
+            end
+
+            local function untrack_target(inst)
+                active_emitters[inst] = nil
+                local orig = original_colors[inst]
+                if orig then
+                    write_color(inst, orig)
+                end
+                tracked_all[inst] = nil
+                original_colors[inst] = nil
+            end
+
+            local function apply_icepath_tree(inst)
+                if is_icepath_color_inst(inst) then
+                    track_target(inst, "Snap Gelidus")
+                end
+                for _, d in ipairs(inst:GetDescendants()) do
+                    if is_icepath_color_inst(d) then
+                        track_target(d, "Snap Gelidus")
+                    end
+                end
+            end
+
             local function track_icepath(inst)
                 if not inst or not inst.Parent then return false end
-                if tracked_all[inst] then return true end
+                if icepath_done[inst] then return true end
                 local char = get_local_char()
-                if not snap_gelidus_active(char) then return false end
+                if not snap_gelidus_possible(char) then return false end
 
                 local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso")
                 local part = inst:IsA("BasePart") and inst or inst:FindFirstChildWhichIsA("BasePart", true)
@@ -36864,11 +36908,39 @@ end
                     return false
                 end
 
-                track_target(inst, "Snap Gelidus")
-                for _, desc in ipairs(inst:GetDescendants()) do
-                    if desc:IsA("BasePart") or desc:IsA("Trail") or desc:IsA("ParticleEmitter") or desc:IsA("Beam") or is_extra_color_class(desc) then
-                        track_target(desc, "Snap Gelidus")
+                icepath_done[inst] = true
+                apply_icepath_tree(inst)
+
+                -- skins can add decals / lights / emitters after the part exists: tint them as they appear
+                local conn
+                conn = utility:Connection(inst.DescendantAdded, function(d)
+                    if is_icepath_color_inst(d) then
+                        track_target(d, "Snap Gelidus")
                     end
+                end)
+                icepath_watch[inst] = conn
+                inst.AncestryChanged:Connect(function(_, p)
+                    if not p and conn then
+                        conn:Disconnect()
+                    end
+                end)
+
+                -- tinted before GeliFreezing was confirmed? make sure it really was our snap, else undo
+                if not snap_gelidus_confirmed(char) then
+                    task.delay(0.5, function()
+                        if not snap_gelidus_confirmed(get_local_char()) and inst.Parent then
+                            if is_icepath_color_inst(inst) then
+                                untrack_target(inst)
+                            end
+                            for _, d in ipairs(inst:GetDescendants()) do
+                                if tracked_all[d] then
+                                    untrack_target(d)
+                                end
+                            end
+                            icepath_done[inst] = nil
+                            if conn then conn:Disconnect() end
+                        end
+                    end)
                 end
                 return true
             end
@@ -36879,8 +36951,11 @@ end
                 for _, container in ipairs(containers) do
                     if container then
                         for _, child in ipairs(container:GetChildren()) do
-                            if not tracked_all[child] and string.find(string.lower(child.Name), "icepath", 1, true) then
-                                track_icepath(child)
+                            if not icepath_done[child] then
+                                local n = child.Name
+                                if n == "IcePath" or string.find(string.lower(n), "icepath", 1, true) then
+                                    track_icepath(child)
+                                end
                             end
                         end
                     end
@@ -36889,8 +36964,7 @@ end
 
             local function on_icepath_added(inst)
                 if track_icepath(inst) then return end
-                -- GeliFreezing can land a frame after the first part, so retry once
-                task.delay(0.2, function()
+                task.delay(0.1, function()
                     track_icepath(inst)
                 end)
             end
@@ -37149,6 +37223,13 @@ end
                 if not shared or shared.is_unloading or getgenv()._hx_unloaded then return end
                 if not is_rainbow_vfx_toggle_on() then return end
                 local now = os.clock()
+
+                -- new IcePath parts get tinted in the same frame they appear
+                local pchar = get_local_char()
+                if pchar and FindFirstChild(pchar, "GeliFreezing") then
+                    rescan_icepaths()
+                end
+
                 local seq = get_synced_vfx_rainbow_seq(now)
                 local c3 = get_synced_vfx_rainbow_c3(now)
                 for emitter, is_seq in pairs(active_emitters) do
