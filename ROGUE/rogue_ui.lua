@@ -11294,8 +11294,8 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             })
             group_overlays:AddDropdown("RainbowVFXItems", {
                 Text = "Rainbow VFX Items",
-                Values = {"Mana Run", "General Back VFX", "Mana Dashes", "Mana Shield", "Grapple", "Snarv", "Dagger Throws", "Swings", "Lethality", "Viribus", "Telorum", "Snap Gelidus"},
-                Default = {"Mana Run", "General Back VFX", "Mana Dashes", "Mana Shield", "Grapple", "Snarv", "Dagger Throws", "Swings", "Lethality", "Viribus", "Telorum", "Snap Gelidus"},
+                Values = {"Mana Run", "General Back VFX", "Mana Dashes", "Mana Shield", "Grapple", "Snarv", "Dagger Throws", "Swings", "Lethality", "Viribus", "Telorum", "Snap Gelidus", "Ignis", "Mederi", "Gelidus", "Celeritas", "Hoppa", "Sagitta Sol", "Contrarium", "Velo"},
+                Default = {"Mana Run", "General Back VFX", "Mana Dashes", "Mana Shield", "Grapple", "Snarv", "Dagger Throws", "Swings", "Lethality", "Viribus", "Telorum", "Snap Gelidus", "Ignis", "Mederi", "Gelidus", "Celeritas", "Hoppa", "Sagitta Sol", "Contrarium", "Velo"},
                 Multi = true,
                 Tooltip = "Select which VFX elements will be colored rainbow (empty = all enabled)",
                 Callback = function(value)
@@ -26888,7 +26888,7 @@ end
                         local v = {}
                         for k, val in pairs(opt.Value or {}) do v[k] = val end
                         local changed = false
-                        for _, n in ipairs({"Telorum", "Snap Gelidus"}) do
+                        for _, n in ipairs({"Telorum", "Snap Gelidus", "Ignis", "Mederi", "Gelidus", "Celeritas", "Hoppa", "Sagitta Sol", "Contrarium", "Velo"}) do
                             if v[n] == nil then
                                 v[n] = true
                                 changed = true
@@ -35903,7 +35903,15 @@ end
                 "Lethality",
                 "Viribus",
                 "Telorum",
-                "Snap Gelidus"
+                "Snap Gelidus",
+                "Ignis",
+                "Mederi",
+                "Gelidus",
+                "Celeritas",
+                "Hoppa",
+                "Sagitta Sol",
+                "Contrarium",
+                "Velo"
             }
 
             local function track_vfx_conn(conn)
@@ -35976,22 +35984,73 @@ end
                 return Color3.fromHSV(shift, 0.9, 1)
             end
 
-            -- ── Telorum / Snap Gelidus detection ──────────────────────────
+            -- ── Spell VFX (every spell goes through the same path) ──────────
+            local spell_vfx_list = {"Telorum","Snap Gelidus","Ignis","Mederi","Gelidus","Celeritas","Hoppa","Sagitta Sol","Contrarium","Velo"}
+            local spell_vfx_set = {}
+            for _, n in ipairs(spell_vfx_list) do spell_vfx_set[n] = true end
+            local function is_spell_vtype(v) return v ~= nil and spell_vfx_set[v] == true end
+
+            local spell_tool_to_vtype = {
+                ["Telorum"] = "Telorum", ["Ignis"] = "Ignis", ["Mederi"] = "Mederi", ["Gelidus"] = "Gelidus",
+                ["Celeritas"] = "Celeritas", ["Hoppa"] = "Hoppa", ["Sagitta Sol"] = "Sagitta Sol",
+                ["Contrarium"] = "Contrarium", ["Velo"] = "Velo",
+            }
+
+            local spell_name_patterns = {
+                {pat = "telorum", vtype = "Telorum"},
+                {pat = "icepath", vtype = "Gelidus"},
+                {pat = "gelidus", vtype = "Gelidus"},
+                {pat = "ignis", vtype = "Ignis"},
+                {pat = "mederi", vtype = "Mederi"},
+                {pat = "celeritas", vtype = "Celeritas"},
+                {pat = "hoppa", vtype = "Hoppa"},
+                {pat = "sagitta", vtype = "Sagitta Sol"},
+                {pat = "contrarium", vtype = "Contrarium"},
+                {pat = "%f[%a]velo%f[%A]", vtype = "Velo", strict = true}, -- avoids "velocity"
+            }
+
+            local function spell_vtype_from_name(n)
+                for _, e in ipairs(spell_name_patterns) do
+                    if e.strict then
+                        if string.find(n, e.pat) then return e.vtype end
+                    elseif string.find(n, e.pat, 1, true) then
+                        return e.vtype
+                    end
+                end
+                return nil
+            end
+
+            local function root_of(char)
+                return char and (FindFirstChild(char, "HumanoidRootPart") or FindFirstChild(char, "Torso"))
+            end
+
+            local function first_part(inst)
+                if inst:IsA("BasePart") then return inst end
+                return inst:FindFirstChildWhichIsA("BasePart", true)
+            end
+
+            -- plain Gelidus becomes "Snap Gelidus" only while GeliFreezing is on YOU
+            local function finalize_spell_vtype(v, char)
+                if v == "Gelidus" and char and FindFirstChild(char, "GeliFreezing") then
+                    return "Snap Gelidus"
+                end
+                return v
+            end
+
+            -- what spell YOU are holding / just held (the tool you hold always wins)
             local last_spell = { vtype = nil, t = 0 }
 
             local function update_spell_tool()
                 local char = get_local_char()
-                -- GeliFreezing accessory only exists while YOU are snap gelidusing
-                if char and FindFirstChild(char, "GeliFreezing") then
-                    last_spell.vtype = "Snap Gelidus"
+                if not char then return end
+                local snapping = FindFirstChild(char, "GeliFreezing") ~= nil
+                local tool = char:FindFirstChildOfClass("Tool")
+                local v = tool and spell_tool_to_vtype[tool.Name]
+                if v then
+                    if v == "Gelidus" and snapping then v = "Snap Gelidus" end
+                    last_spell.vtype = v
                     last_spell.t = os.clock()
-                end
-                local tool = char and char:FindFirstChildOfClass("Tool")
-                if not tool then return end
-                if tool.Name == "Telorum" then
-                    last_spell.vtype = "Telorum"
-                    last_spell.t = os.clock()
-                elseif tool.Name == "Gelidus" then
+                elseif snapping then
                     last_spell.vtype = "Snap Gelidus"
                     last_spell.t = os.clock()
                 end
@@ -36021,36 +36080,138 @@ end
                 return false
             end
 
+            -- ── Ownership: only YOUR VFX count (other players' never turn rainbow) ──
+            local owner_cache = setmetatable({}, { __mode = "k" })
+            local spell_type_cache = setmetatable({}, { __mode = "k" })
+
+            -- top-level container in workspace / workspace.Thrown (nil for anything inside Live)
+            local function world_top(inst)
+                local thrown = ws:FindFirstChild("Thrown")
+                local cur = inst
+                while cur.Parent and cur.Parent ~= ws and cur.Parent ~= thrown do
+                    cur = cur.Parent
+                end
+                if (cur.Parent == ws or cur.Parent == thrown) and cur.Name ~= "Live" then
+                    return cur
+                end
+                return nil
+            end
+
+            -- true if no other player is closer to pos than you are
+            local function is_closest_to_local(pos, char)
+                local root = root_of(char)
+                if not root then return false end
+                local mine = (pos - root.Position).Magnitude
+                for _, p in ipairs(plrs:GetPlayers()) do
+                    if p ~= plr and p.Character then
+                        local r = root_of(p.Character)
+                        if r and (pos - r.Position).Magnitude < mine then
+                            return false
+                        end
+                    end
+                end
+                return true
+            end
+
+            -- decided once when the effect first appears, then cached
+            local function is_mine(inst)
+                local char = get_local_char()
+                if not char or not inst then return false end
+                if inst:IsDescendantOf(char) then return true end
+                local top = world_top(inst)
+                if not top then return false end
+                local cached = owner_cache[top]
+                if cached ~= nil then return cached end
+                local root = root_of(char)
+                local part = first_part(top)
+                if not (root and part) then return false end
+                local pos = part.Position
+                local result = (pos - root.Position).Magnitude <= 80 and is_closest_to_local(pos, char)
+                owner_cache[top] = result
+                return result
+            end
+
+            local function player_using_gelidus(p)
+                local c = p.Character
+                return c ~= nil and (FindFirstChild(c, "GeliFreezing") or FindFirstChild(c, "Gelidus")) ~= nil
+            end
+
+            local function my_gelidus_active(char)
+                char = char or get_local_char()
+                if not char then return false end
+                if FindFirstChild(char, "GeliFreezing") then return true end
+                local t = recent_spell_type()
+                return t == "Gelidus" or t == "Snap Gelidus"
+            end
+
+            -- IcePath grows far from the caster, so it uses its own ownership rule
+            local function icepath_is_mine(inst)
+                local char = get_local_char()
+                if not my_gelidus_active(char) then return false end
+                local root = root_of(char)
+                local part = inst and first_part(inst)
+                if not (root and part) then return false end
+                local pos = part.Position
+                local mine = (pos - root.Position).Magnitude
+                if mine > 300 then return false end
+                for _, p in ipairs(plrs:GetPlayers()) do
+                    if p ~= plr and p.Character and player_using_gelidus(p) then
+                        local r = root_of(p.Character)
+                        if r and (pos - r.Position).Magnitude < mine then
+                            return false
+                        end
+                    end
+                end
+                return true
+            end
+
             local function spell_vfx_type(inst)
                 if not inst then return nil end
-                local n = string.lower(inst.Name)
-                local par = inst.Parent
-                local pn = par and string.lower(par.Name) or ""
-
-                if string.find(n, "telorum", 1, true) or string.find(pn, "telorum", 1, true) then return "Telorum" end
-                if string.find(n, "gelidus", 1, true) or string.find(pn, "gelidus", 1, true)
-                    or string.find(n, "icepath", 1, true) or string.find(pn, "icepath", 1, true) then return "Snap Gelidus" end
+                local char = get_local_char()
+                local in_char = char ~= nil and inst:IsDescendantOf(char)
+                local top = (not in_char) and world_top(inst) or nil
+                if not in_char and not top then return nil end -- other players' stuff
+                if top and spell_type_cache[top] then return spell_type_cache[top] end
 
                 local thrown = ws:FindFirstChild("Thrown")
-                local a = par
-                while a and a ~= ws and a ~= thrown do
-                    local an = string.lower(a.Name)
-                    if string.find(an, "telorum", 1, true) then return "Telorum" end
-                    if string.find(an, "gelidus", 1, true) or string.find(an, "icepath", 1, true) then return "Snap Gelidus" end
-                    a = a.Parent
+
+                -- 1) name match (self or any ancestor)
+                local found
+                local cur = inst
+                while cur and cur ~= ws and cur ~= thrown and cur ~= char do
+                    found = spell_vtype_from_name(string.lower(cur.Name))
+                    if found then break end
+                    cur = cur.Parent
                 end
 
-                -- fallback: unnamed projectile VFX in Thrown while Telorum/Gelidus is held (or just was)
-                if thrown and inst:IsDescendantOf(thrown) then
+                if found then
+                    local owned = in_char
+                    if not owned then
+                        if string.find(string.lower(top.Name), "icepath", 1, true) then
+                            owned = icepath_is_mine(top)
+                        else
+                            owned = is_mine(inst)
+                        end
+                    end
+                    if not owned then return nil end
+                    found = finalize_spell_vtype(found, char)
+                    if top then spell_type_cache[top] = found end
+                    return found
+                end
+
+                -- 2) unnamed projectile VFX in Thrown, only if YOU are holding / just held a spell
+                if top and thrown and inst:IsDescendantOf(thrown) then
                     local t = recent_spell_type()
-                    if t then
-                        local top = inst
-                        while top.Parent and top.Parent ~= thrown do top = top.Parent end
+                    if t and is_mine(inst) then
+                        local n = string.lower(inst.Name)
+                        local pn = inst.Parent and string.lower(inst.Parent.Name) or ""
                         if not is_other_known_vfx(string.lower(top.Name), n) and not is_other_known_vfx(n, pn) then
+                            spell_type_cache[top] = t
                             return t
                         end
                     end
                 end
+
                 return nil
             end
 
@@ -36223,7 +36384,7 @@ end
                     local d_to = torso and (check_pos - torso.Position).Magnitude or 999
                     local d_ra = right_arm and (check_pos - right_arm.Position).Magnitude or 999
                     local d_la = left_arm and (check_pos - left_arm.Position).Magnitude or 999
-                    if math.min(d_rt, d_to, d_ra, d_la) < 35 then
+                    if math.min(d_rt, d_to, d_ra, d_la) < 35 and is_closest_to_local(check_pos, char) then
                         return true
                     end
                 end
@@ -36257,12 +36418,12 @@ end
                     local char_pos = root.Position
                     if ok0 and a0 then
                         local ok_pos, pos = pcall(function() return a0.WorldPosition end)
-                        if ok_pos and pos and (pos - char_pos).Magnitude < 35 then
+                        if ok_pos and pos and (pos - char_pos).Magnitude < 35 and is_closest_to_local(pos, char) then
                             return true
                         end
                     end
                     if p and p:IsA("BasePart") then
-                        if (p.Position - char_pos).Magnitude < 35 then
+                        if (p.Position - char_pos).Magnitude < 35 and is_closest_to_local(p.Position, char) then
                             return true
                         end
                     end
@@ -36294,12 +36455,7 @@ end
             -- IcePath parts can extend well past the 35-stud "attached" check, so accept
             -- spell VFX that is near you while you are holding / just held that spell
             local function spell_near(obj, char)
-                local t = spell_vfx_type(obj)
-                if not t or t ~= recent_spell_type() then return false end
-                local root = char and (char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso"))
-                local part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart", true)
-                if not (root and part) then return false end
-                return (part.Position - root.Position).Magnitude < (t == "Snap Gelidus" and 300 or 200)
+                return spell_vfx_type(obj) ~= nil -- ownership is already checked inside
             end
 
             local function track_target(emitter, vfx_type)
@@ -36310,7 +36466,7 @@ end
                 end
                 vfx_type = vfx_type or infer_vfx_type(emitter)
                 local existing_t = tracked_all[emitter]
-                if existing_t and (existing_t.vtype == "Telorum" or existing_t.vtype == "Snap Gelidus") then
+                if existing_t and is_spell_vtype(existing_t.vtype) then
                     vfx_type = existing_t.vtype
                 end
                 if not vfx_type then return end
@@ -36522,22 +36678,10 @@ end
                 },
                 thrown_rules = {
                     {
-                        id = "TelorumThrown",
-                        vfx_type = "Telorum",
+                        id = "SpellThrown",
+                        vfx_type = nil, -- resolved per object via infer_vfx_type
                         matches_container = function(obj, char)
-                            if spell_vfx_type(obj) ~= "Telorum" then return false end
-                            return is_attached_to_char(obj, char) or is_trail_attached_to_char(obj, char) or spell_near(obj, char)
-                        end,
-                        matches_emitter = function(desc)
-                            return desc:IsA("BasePart") or desc:IsA("Trail") or desc:IsA("ParticleEmitter") or desc:IsA("Beam") or is_extra_color_class(desc)
-                        end
-                    },
-                    {
-                        id = "SnapGelidusThrown",
-                        vfx_type = "Snap Gelidus",
-                        matches_container = function(obj, char)
-                            if spell_vfx_type(obj) ~= "Snap Gelidus" then return false end
-                            return is_attached_to_char(obj, char) or is_trail_attached_to_char(obj, char) or spell_near(obj, char)
+                            return spell_vfx_type(obj) ~= nil
                         end,
                         matches_emitter = function(desc)
                             return desc:IsA("BasePart") or desc:IsA("Trail") or desc:IsA("ParticleEmitter") or desc:IsA("Beam") or is_extra_color_class(desc)
@@ -36856,21 +37000,6 @@ end
             local icepath_done = setmetatable({}, { __mode = "k" })
             local icepath_watch = setmetatable({}, { __mode = "k" })
 
-            -- GeliFreezing = actively snap gelidusing; the other signs are only used to tint
-            -- the very first parts before the accessory shows up
-            local function snap_gelidus_confirmed(char)
-                if not char then return false end
-                if FindFirstChild(char, "GeliFreezing") then return true end
-                update_spell_tool()
-                return recent_spell_type() == "Snap Gelidus"
-            end
-
-            local function snap_gelidus_possible(char)
-                if not char then return false end
-                if snap_gelidus_confirmed(char) then return true end
-                return FindFirstChild(char, "ActiveCast") ~= nil or FindFirstChild(char, "SpellEquipped") ~= nil
-            end
-
             local function is_icepath_color_inst(d)
                 return d:IsA("BasePart") or d:IsA("Trail") or d:IsA("ParticleEmitter") or d:IsA("Beam") or is_extra_color_class(d)
             end
@@ -36878,77 +37007,42 @@ end
             local function untrack_target(inst)
                 active_emitters[inst] = nil
                 local orig = original_colors[inst]
-                if orig then
-                    write_color(inst, orig)
-                end
+                if orig then write_color(inst, orig) end
                 tracked_all[inst] = nil
                 original_colors[inst] = nil
             end
 
-            local function apply_icepath_tree(inst)
-                if is_icepath_color_inst(inst) then
-                    track_target(inst, "Snap Gelidus")
-                end
+            local function apply_icepath_tree(inst, vtype)
+                if is_icepath_color_inst(inst) then track_target(inst, vtype) end
                 for _, d in ipairs(inst:GetDescendants()) do
-                    if is_icepath_color_inst(d) then
-                        track_target(d, "Snap Gelidus")
-                    end
+                    if is_icepath_color_inst(d) then track_target(d, vtype) end
                 end
             end
 
             local function track_icepath(inst)
                 if not inst or not inst.Parent then return false end
                 if icepath_done[inst] then return true end
-                local char = get_local_char()
-                if not snap_gelidus_possible(char) then return false end
+                if not icepath_is_mine(inst) then return false end -- other players' paths are ignored
 
-                local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso")
-                local part = inst:IsA("BasePart") and inst or inst:FindFirstChildWhichIsA("BasePart", true)
-                if root and part and (part.Position - root.Position).Magnitude > 300 then
-                    return false
-                end
-
+                local vtype = finalize_spell_vtype("Gelidus", get_local_char())
                 icepath_done[inst] = true
-                apply_icepath_tree(inst)
+                apply_icepath_tree(inst, vtype)
 
                 -- skins can add decals / lights / emitters after the part exists: tint them as they appear
                 local conn
                 conn = utility:Connection(inst.DescendantAdded, function(d)
-                    if is_icepath_color_inst(d) then
-                        track_target(d, "Snap Gelidus")
-                    end
+                    if is_icepath_color_inst(d) then track_target(d, vtype) end
                 end)
                 icepath_watch[inst] = conn
                 inst.AncestryChanged:Connect(function(_, p)
-                    if not p and conn then
-                        conn:Disconnect()
-                    end
+                    if not p and conn then conn:Disconnect() end
                 end)
-
-                -- tinted before GeliFreezing was confirmed? make sure it really was our snap, else undo
-                if not snap_gelidus_confirmed(char) then
-                    task.delay(0.5, function()
-                        if not snap_gelidus_confirmed(get_local_char()) and inst.Parent then
-                            if is_icepath_color_inst(inst) then
-                                untrack_target(inst)
-                            end
-                            for _, d in ipairs(inst:GetDescendants()) do
-                                if tracked_all[d] then
-                                    untrack_target(d)
-                                end
-                            end
-                            icepath_done[inst] = nil
-                            if conn then conn:Disconnect() end
-                        end
-                    end)
-                end
                 return true
             end
 
             local function rescan_icepaths()
                 local thrown = ws:FindFirstChild("Thrown")
-                local containers = { ws, thrown }
-                for _, container in ipairs(containers) do
+                for _, container in ipairs({ ws, thrown }) do
                     if container then
                         for _, child in ipairs(container:GetChildren()) do
                             if not icepath_done[child] then
@@ -36979,9 +37073,7 @@ end
                         or string.find(cname, "earth", 1, true)
                         or string.find(cname, "viribus", 1, true)
                         or string.find(cname, "cord", 1, true)
-                        or string.find(cname, "telorum", 1, true)
-                        or string.find(cname, "gelidus", 1, true)
-                        or string.find(cname, "icepath", 1, true)
+                        or spell_vtype_from_name(cname) ~= nil
                         or child:IsA("Trail") or child:IsA("Beam") then
                         handle_thrown_child(child)
                     end
@@ -37113,9 +37205,7 @@ end
                                 or string.find(cname, "earth", 1, true)
                                 or string.find(cname, "viribus", 1, true)
                                 or string.find(cname, "cord", 1, true)
-                        or string.find(cname, "telorum", 1, true)
-                        or string.find(cname, "gelidus", 1, true)
-                        or string.find(cname, "icepath", 1, true)
+                        or spell_vtype_from_name(cname) ~= nil
                                 or child:IsA("Trail") or child:IsA("Beam") then
                                 handle_thrown_child(child)
                             end
@@ -37159,7 +37249,7 @@ end
                 if now - last_icepath_scan > 0.25 then
                     last_icepath_scan = now
                     local gchar = get_local_char()
-                    if gchar and FindFirstChild(gchar, "GeliFreezing") then
+                    if gchar and my_gelidus_active(gchar) then
                         rescan_icepaths()
                     end
                 end
@@ -37226,7 +37316,7 @@ end
 
                 -- new IcePath parts get tinted in the same frame they appear
                 local pchar = get_local_char()
-                if pchar and FindFirstChild(pchar, "GeliFreezing") then
+                if pchar and my_gelidus_active(pchar) then
                     rescan_icepaths()
                 end
 
@@ -37234,7 +37324,7 @@ end
                 local c3 = get_synced_vfx_rainbow_c3(now)
                 for emitter, is_seq in pairs(active_emitters) do
                     local data = tracked_all[emitter]
-                    if data and (data.vtype == "Telorum" or data.vtype == "Snap Gelidus") then
+                    if data and is_spell_vtype(data.vtype) then
                         if emitter.Parent then
                             write_color(emitter, is_seq and seq or c3)
                         else
@@ -37288,7 +37378,7 @@ end
                     return
                 end
                 local iname = string.lower(child.Name)
-                if iname == "cord" or string.find(iname, "cord", 1, true) or string.find(iname, "grapple", 1, true) or string.find(iname, "hook", 1, true) or string.find(iname, "particleback", 1, true) or string.find(iname, "particlearm", 1, true) or string.find(iname, "windburst", 1, true) or string.find(iname, "windclap", 1, true) or string.find(iname, "daggerthrow", 1, true) or string.find(iname, "earthpillar", 1, true) or string.find(iname, "viribus", 1, true) or string.find(iname, "telorum", 1, true) or string.find(iname, "gelidus", 1, true) or string.find(iname, "icepath", 1, true) then
+                if iname == "cord" or string.find(iname, "cord", 1, true) or string.find(iname, "grapple", 1, true) or string.find(iname, "hook", 1, true) or string.find(iname, "particleback", 1, true) or string.find(iname, "particlearm", 1, true) or string.find(iname, "windburst", 1, true) or string.find(iname, "windclap", 1, true) or string.find(iname, "daggerthrow", 1, true) or string.find(iname, "earthpillar", 1, true) or string.find(iname, "viribus", 1, true) or spell_vtype_from_name(iname) ~= nil then
                     handle_thrown_child(child)
                 end
             end)
