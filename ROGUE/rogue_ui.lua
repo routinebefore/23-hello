@@ -11294,8 +11294,8 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
             })
             group_overlays:AddDropdown("RainbowVFXItems", {
                 Text = "Rainbow VFX Items",
-                Values = {"Mana Run", "General Back VFX", "Mana Dashes", "Mana Shield", "Grapple", "Snarv", "Dagger Throws", "Swings", "Lethality", "Viribus", "Telorum", "Snap Gelidus", "Ignis", "Mederi", "Gelidus", "Celeritas", "Hoppa", "Sagitta Sol", "Contrarium", "Velo"},
-                Default = {"Mana Run", "General Back VFX", "Mana Dashes", "Mana Shield", "Grapple", "Snarv", "Dagger Throws", "Swings", "Lethality", "Viribus", "Telorum", "Snap Gelidus", "Ignis", "Mederi", "Gelidus", "Celeritas", "Hoppa", "Sagitta Sol", "Contrarium", "Velo"},
+                Values = {"Mana Run", "General Back VFX", "Mana Dashes", "Mana Shield", "Grapple", "Snarv", "Dagger Throws", "Swings", "Lethality", "Viribus", "Telorum", "Snap Gelidus", "Ignis", "Mederi", "Gelidus", "Celeritas", "Hoppa", "Sagitta Sol", "Contrarium", "Velo", "Trickstus", "Scrupus", "Armis", "Gate", "Trahere", "Nocere", "Manus Dei", "Fimbulvetr", "Percutiens", "Sraunus", "Hystericus", "Tenebris", "Globus", "Snap Ignis", "Snap Armis", "Snap Telorum", "Snap Viribus", "Snap Sagitta Sol", "Snap Snarvindur", "Snap Celeritas", "Snap Hystericus", "Snap Trickstus", "Snap Velo", "Snap Tenebris", "Snap Fimbulvetr", "Snap Manus Dei", "Snap Nocere", "Snap Hoppa", "Snap Percutiens", "Snap Contrarium"},
+                Default = {"Mana Run", "General Back VFX", "Mana Dashes", "Mana Shield", "Grapple", "Snarv", "Dagger Throws", "Swings", "Lethality", "Viribus", "Telorum", "Snap Gelidus", "Ignis", "Mederi", "Gelidus", "Celeritas", "Hoppa", "Sagitta Sol", "Contrarium", "Velo", "Trickstus", "Scrupus", "Armis", "Gate", "Trahere", "Nocere", "Manus Dei", "Fimbulvetr", "Percutiens", "Sraunus", "Hystericus", "Tenebris", "Globus", "Snap Ignis", "Snap Armis", "Snap Telorum", "Snap Viribus", "Snap Sagitta Sol", "Snap Snarvindur", "Snap Celeritas", "Snap Hystericus", "Snap Trickstus", "Snap Velo", "Snap Tenebris", "Snap Fimbulvetr", "Snap Manus Dei", "Snap Nocere", "Snap Hoppa", "Snap Percutiens", "Snap Contrarium"},
                 Multi = true,
                 Tooltip = "Select which VFX elements will be colored rainbow (empty = all enabled)",
                 Callback = function(value)
@@ -26888,7 +26888,7 @@ end
                         local v = {}
                         for k, val in pairs(opt.Value or {}) do v[k] = val end
                         local changed = false
-                        for _, n in ipairs({"Telorum", "Snap Gelidus", "Ignis", "Mederi", "Gelidus", "Celeritas", "Hoppa", "Sagitta Sol", "Contrarium", "Velo"}) do
+                        for _, n in ipairs({"Telorum", "Snap Gelidus", "Ignis", "Mederi", "Gelidus", "Celeritas", "Hoppa", "Sagitta Sol", "Contrarium", "Velo", "Trickstus", "Scrupus", "Armis", "Gate", "Trahere", "Nocere", "Manus Dei", "Fimbulvetr", "Percutiens", "Sraunus", "Hystericus", "Tenebris", "Globus", "Snap Ignis", "Snap Armis", "Snap Telorum", "Snap Viribus", "Snap Sagitta Sol", "Snap Snarvindur", "Snap Celeritas", "Snap Hystericus", "Snap Trickstus", "Snap Velo", "Snap Tenebris", "Snap Fimbulvetr", "Snap Manus Dei", "Snap Nocere", "Snap Hoppa", "Snap Percutiens", "Snap Contrarium"}) do
                             if v[n] == nil then
                                 v[n] = true
                                 changed = true
@@ -35911,7 +35911,37 @@ end
                 "Hoppa",
                 "Sagitta Sol",
                 "Contrarium",
-                "Velo"
+                "Velo",
+                "Trickstus",
+                "Scrupus",
+                "Armis",
+                "Gate",
+                "Trahere",
+                "Nocere",
+                "Manus Dei",
+                "Fimbulvetr",
+                "Percutiens",
+                "Sraunus",
+                "Hystericus",
+                "Tenebris",
+                "Globus",
+                "Snap Ignis",
+                "Snap Armis",
+                "Snap Telorum",
+                "Snap Viribus",
+                "Snap Sagitta Sol",
+                "Snap Snarvindur",
+                "Snap Celeritas",
+                "Snap Hystericus",
+                "Snap Trickstus",
+                "Snap Velo",
+                "Snap Tenebris",
+                "Snap Fimbulvetr",
+                "Snap Manus Dei",
+                "Snap Nocere",
+                "Snap Hoppa",
+                "Snap Percutiens",
+                "Snap Contrarium"
             }
 
             local function track_vfx_conn(conn)
@@ -35984,8 +36014,32 @@ end
                 return Color3.fromHSV(shift, 0.9, 1)
             end
 
+            -- Ignis: slow single-hue sweep with a pale hot core -> reads like fire, not a rainbow smear
+            local ignis_cache = { t = -1 }
+            local function is_ignis_vtype(v) return v == "Ignis" or v == "Snap Ignis" end
+            local function ignis_values(now)
+                if ignis_cache.t ~= now then
+                    local h = (now * 0.1) % 1
+                    ignis_cache.seq = ColorSequence.new({
+                        ColorSequenceKeypoint.new(0, Color3.fromHSV(h, 0.3, 1)),
+                        ColorSequenceKeypoint.new(0.35, Color3.fromHSV(h, 0.9, 1)),
+                        ColorSequenceKeypoint.new(1, Color3.fromHSV((h + 0.08) % 1, 1, 0.8)),
+                    })
+                    ignis_cache.c3 = Color3.fromHSV(h, 0.9, 1)
+                    ignis_cache.t = now
+                end
+                return ignis_cache.seq, ignis_cache.c3
+            end
+            local function vfx_value(vtype, is_seq, now, seq, c3)
+                if is_ignis_vtype(vtype) then
+                    local s, c = ignis_values(now)
+                    return is_seq and s or c
+                end
+                return is_seq and seq or c3
+            end
+
             -- ── Spell VFX (every spell goes through the same path) ──────────
-            local spell_vfx_list = {"Telorum","Snap Gelidus","Ignis","Mederi","Gelidus","Celeritas","Hoppa","Sagitta Sol","Contrarium","Velo"}
+            local spell_vfx_list = {"Telorum", "Snap Gelidus", "Ignis", "Mederi", "Gelidus", "Celeritas", "Hoppa", "Sagitta Sol", "Contrarium", "Velo", "Trickstus", "Scrupus", "Armis", "Gate", "Trahere", "Nocere", "Manus Dei", "Fimbulvetr", "Percutiens", "Sraunus", "Hystericus", "Tenebris", "Globus", "Snap Ignis", "Snap Armis", "Snap Telorum", "Snap Viribus", "Snap Sagitta Sol", "Snap Snarvindur", "Snap Celeritas", "Snap Hystericus", "Snap Trickstus", "Snap Velo", "Snap Tenebris", "Snap Fimbulvetr", "Snap Manus Dei", "Snap Nocere", "Snap Hoppa", "Snap Percutiens", "Snap Contrarium"}
             local spell_vfx_set = {}
             for _, n in ipairs(spell_vfx_list) do spell_vfx_set[n] = true end
             local function is_spell_vtype(v) return v ~= nil and spell_vfx_set[v] == true end
@@ -35994,6 +36048,10 @@ end
                 ["Telorum"] = "Telorum", ["Ignis"] = "Ignis", ["Mederi"] = "Mederi", ["Gelidus"] = "Gelidus",
                 ["Celeritas"] = "Celeritas", ["Hoppa"] = "Hoppa", ["Sagitta Sol"] = "Sagitta Sol",
                 ["Contrarium"] = "Contrarium", ["Velo"] = "Velo",
+                ["Trickstus"] = "Trickstus", ["Scrupus"] = "Scrupus", ["Armis"] = "Armis", ["Trahere"] = "Trahere",
+                ["Nocere"] = "Nocere", ["Manus Dei"] = "Manus Dei", ["Fimbulvetr"] = "Fimbulvetr",
+                ["Percutiens"] = "Percutiens", ["Sraunus"] = "Sraunus", ["Hystericus"] = "Hystericus",
+                ["Tenebris"] = "Tenebris", ["Globus"] = "Globus",
             }
 
             local spell_name_patterns = {
@@ -36006,6 +36064,20 @@ end
                 {pat = "hoppa", vtype = "Hoppa"},
                 {pat = "sagitta", vtype = "Sagitta Sol"},
                 {pat = "contrarium", vtype = "Contrarium"},
+                {pat = "armis", vtype = "Armis"},
+                {pat = "trickstus", vtype = "Trickstus"},
+                {pat = "scrupus", vtype = "Scrupus"},
+                {pat = "trahere", vtype = "Trahere"},
+                {pat = "nocere", vtype = "Nocere"},
+                {pat = "manus", vtype = "Manus Dei"},
+                {pat = "fimbul", vtype = "Fimbulvetr"},
+                {pat = "percutiens", vtype = "Percutiens"},
+                {pat = "sraunus", vtype = "Sraunus"},
+                {pat = "hystericus", vtype = "Hystericus"},
+                {pat = "tenebris", vtype = "Tenebris"},
+                {pat = "globus", vtype = "Globus"},
+                {pat = "snarvindur", vtype = "Snarv"},
+                {pat = "%f[%a]gate%f[%A]", vtype = "Gate", strict = true},
                 {pat = "%f[%a]velo%f[%A]", vtype = "Velo", strict = true}, -- avoids "velocity"
             }
 
@@ -36029,11 +36101,32 @@ end
                 return inst:FindFirstChildWhichIsA("BasePart", true)
             end
 
-            -- plain Gelidus becomes "Snap Gelidus" only while GeliFreezing is on YOU
-            local function finalize_spell_vtype(v, char)
-                if v == "Gelidus" and char and FindFirstChild(char, "GeliFreezing") then
-                    return "Snap Gelidus"
+            -- normal spell -> its "Snap X" entry when the cast is a snap
+            local snap_map = {
+                Gelidus = "Snap Gelidus", Ignis = "Snap Ignis", Armis = "Snap Armis", Telorum = "Snap Telorum",
+                Viribus = "Snap Viribus", ["Sagitta Sol"] = "Snap Sagitta Sol", Snarv = "Snap Snarvindur",
+                Celeritas = "Snap Celeritas", Hystericus = "Snap Hystericus", Trickstus = "Snap Trickstus",
+                Velo = "Snap Velo", Tenebris = "Snap Tenebris", Fimbulvetr = "Snap Fimbulvetr",
+                ["Manus Dei"] = "Snap Manus Dei", Nocere = "Snap Nocere", Hoppa = "Snap Hoppa",
+                Percutiens = "Snap Percutiens", Contrarium = "Snap Contrarium",
+            }
+
+            local function name_has_snap(inst)
+                local thrown = ws:FindFirstChild("Thrown")
+                local cur = inst
+                while cur and cur ~= ws and cur ~= thrown do
+                    if string.find(string.lower(cur.Name), "snap", 1, true) then return true end
+                    cur = cur.Parent
                 end
+                return false
+            end
+
+            local function finalize_spell_vtype(v, char, inst)
+                local snap = snap_map[v]
+                if not snap then return v end
+                if v == "Gelidus" and char and FindFirstChild(char, "GeliFreezing") then return snap end
+                if inst and name_has_snap(inst) then return snap end
+                if char and cs:HasTag(char, "SnapCool") then return snap end
                 return v
             end
 
@@ -36194,7 +36287,7 @@ end
                         end
                     end
                     if not owned then return nil end
-                    found = finalize_spell_vtype(found, char)
+                    found = finalize_spell_vtype(found, char, inst)
                     if top then spell_type_cache[top] = found end
                     return found
                 end
@@ -36206,6 +36299,7 @@ end
                         local n = string.lower(inst.Name)
                         local pn = inst.Parent and string.lower(inst.Parent.Name) or ""
                         if not is_other_known_vfx(string.lower(top.Name), n) and not is_other_known_vfx(n, pn) then
+                            t = finalize_spell_vtype(t, char, inst)
                             spell_type_cache[top] = t
                             return t
                         end
@@ -36215,7 +36309,7 @@ end
                 return nil
             end
 
-            local function infer_vfx_type(inst)
+            local function infer_vfx_type_base(inst)
                 if not inst then return nil end
                 local name = string.lower(inst.Name)
                 local p = inst.Parent
@@ -36301,6 +36395,14 @@ end
                 end
 
                 return nil
+            end
+
+            local function infer_vfx_type(inst)
+                local vt = infer_vfx_type_base(inst)
+                if vt == "Viribus" or vt == "Snarv" then
+                    return finalize_spell_vtype(vt, get_local_char(), inst)
+                end
+                return vt
             end
 
             local function is_item_checked(sel, name)
@@ -36482,11 +36584,8 @@ end
                 if is_vfx_type_enabled(vfx_type) then
                     active_emitters[emitter] = is_seq
                     pcall(function()
-                        if is_seq then
-                            write_color(emitter, get_synced_vfx_rainbow_seq(os.clock()))
-                        else
-                            write_color(emitter, get_synced_vfx_rainbow_c3(os.clock()))
-                        end
+                        local tn = os.clock()
+                        write_color(emitter, vfx_value(vfx_type, is_seq, tn, get_synced_vfx_rainbow_seq(tn), get_synced_vfx_rainbow_c3(tn)))
                     end)
                 else
                     active_emitters[emitter] = nil
@@ -37136,11 +37235,7 @@ end
                             if is_enabled then
                                 active_emitters[emitter] = data.is_seq
                                 pcall(function()
-                                    if data.is_seq then
-                                        write_color(emitter, seq)
-                                    else
-                                        write_color(emitter, c3)
-                                    end
+                                    write_color(emitter, vfx_value(data.vtype, data.is_seq, now, seq, c3))
                                 end)
                             else
                                 active_emitters[emitter] = nil
@@ -37293,11 +37388,8 @@ end
 
                 for emitter, is_seq in pairs(active_emitters) do
                     if emitter.Parent then
-                        if is_seq then
-                            write_color(emitter, seq)
-                        else
-                            write_color(emitter, c3)
-                        end
+                        local d = tracked_all[emitter]
+                        write_color(emitter, vfx_value(d and d.vtype, is_seq, now, seq, c3))
                     else
                         active_emitters[emitter] = nil
                         tracked_all[emitter] = nil
@@ -37326,7 +37418,7 @@ end
                     local data = tracked_all[emitter]
                     if data and is_spell_vtype(data.vtype) then
                         if emitter.Parent then
-                            write_color(emitter, is_seq and seq or c3)
+                            write_color(emitter, vfx_value(data.vtype, is_seq, now, seq, c3))
                         else
                             active_emitters[emitter] = nil
                             tracked_all[emitter] = nil
