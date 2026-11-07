@@ -26224,7 +26224,7 @@ end
             -- ===== Custom Moderator List =====
             -- Anyone added here is appended to cheat_client.mod_list, which every bot (trinket bot, day farm)
             -- already uses for its moderator checks, and also triggers the same style of alert as a detected mod.
-            group_ui_right:AddLabel("Moderator List")
+            local group_mods = Tabs.Interface:AddRightGroupbox("Moderator List")
 
             local MODS_FILE = "HYDROXIDE/bin/custom_mods.json"
             local custom_mods = {}          -- [userid] = name
@@ -26363,7 +26363,7 @@ end
                 return nil
             end
 
-            group_ui_right:AddInput("ModListInput", {
+            group_mods:AddInput("ModListInput", {
                 Default = "",
                 Numeric = false,
                 Finished = true,
@@ -26400,14 +26400,14 @@ end
                 end
             })
 
-            group_ui_right:AddDropdown("ModListSelect", {
+            group_mods:AddDropdown("ModListSelect", {
                 Text = "Added Moderators",
                 Values = { "(none added)" },
                 Multi = false,
                 Tooltip = "Pick one, then press Remove Selected"
             })
 
-            group_ui_right:AddButton({
+            group_mods:AddButton({
                 Text = "Remove Selected",
                 Func = function()
                     local label = Options.ModListSelect and Options.ModListSelect.Value
@@ -26428,7 +26428,7 @@ end
                 end
             })
 
-            group_ui_right:AddButton({
+            group_mods:AddButton({
                 Text = "Post Mod List to Webhook",
                 Func = function()
                     local url = cheat_client.config.webhook
@@ -26462,8 +26462,6 @@ end
 
             refresh_mod_dropdown()
             task.defer(check_server_for_custom_mods)
-
-            group_ui_right:AddDivider()
 
             group_ui_right:AddLabel("UI Windows")
 
