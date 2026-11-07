@@ -11297,7 +11297,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 Values = {"Mana Run", "General Back VFX", "Mana Dashes", "Mana Shield", "Grapple", "Snarv", "Dagger Throws", "Swings", "Lethality", "Viribus", "Telorum", "Snap Gelidus", "Ignis", "Mederi", "Gelidus", "Celeritas", "Hoppa", "Sagitta Sol", "Contrarium", "Velo", "Trickstus", "Scrupus", "Armis", "Gate", "Trahere", "Nocere", "Manus Dei", "Fimbulvetr", "Percutiens", "Sraunus", "Hystericus", "Tenebris", "Globus", "Snap Ignis", "Snap Armis", "Snap Telorum", "Snap Viribus", "Snap Sagitta Sol", "Snap Snarvindur", "Snap Celeritas", "Snap Hystericus", "Snap Trickstus", "Snap Velo", "Snap Tenebris", "Snap Fimbulvetr", "Snap Manus Dei", "Snap Nocere", "Snap Hoppa", "Snap Percutiens", "Snap Contrarium"},
                 Default = {"Mana Run", "General Back VFX", "Mana Dashes", "Mana Shield", "Grapple", "Snarv", "Dagger Throws", "Swings", "Lethality", "Viribus", "Telorum", "Snap Gelidus", "Ignis", "Mederi", "Gelidus", "Celeritas", "Hoppa", "Sagitta Sol", "Contrarium", "Velo", "Trickstus", "Scrupus", "Armis", "Gate", "Trahere", "Nocere", "Manus Dei", "Fimbulvetr", "Percutiens", "Sraunus", "Hystericus", "Tenebris", "Globus", "Snap Ignis", "Snap Armis", "Snap Telorum", "Snap Viribus", "Snap Sagitta Sol", "Snap Snarvindur", "Snap Celeritas", "Snap Hystericus", "Snap Trickstus", "Snap Velo", "Snap Tenebris", "Snap Fimbulvetr", "Snap Manus Dei", "Snap Nocere", "Snap Hoppa", "Snap Percutiens", "Snap Contrarium"},
                 Multi = true,
-                Tooltip = "Select which VFX elements will be colored rainbow (empty = all enabled)",
+                Tooltip = "Select which VFX elements will be colored rainbow (unchecked items stay off, saved with configs)",
                 Callback = function(value)
                     cheat_client.config.rainbow_vfx_items = value
                     if cheat_client.refresh_rainbow_vfx_selection then
@@ -12579,6 +12579,220 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
         Suffix = "s",
         Compact = true
     })
+
+    group_blacksmith:AddDivider()
+
+    -- ===== Autodrop =====
+    -- Dropdown is built by scanning your backpack / held tool. Skills, weapons and spells are never listed
+    -- (and never dropped). Every name ever seen is remembered in a small file so selections survive
+    -- config loads even when the item isn't in your backpack at that moment.
+    local AUTODROP_FILE = "HYDROXIDE/blacksmith_autodrop_items.txt"
+    local autodrop_known = {}
+
+    local WEAPON_WORDS = {}
+    for _, w in ipairs({
+        "sword", "dagger", "spear", "axe", "mace", "rapier", "bow", "crossbow", "staff", "katana",
+        "hammer", "scythe", "club", "pike", "halberd", "lance", "gun", "handgun", "pistol", "claymore",
+        "scimitar", "saber", "sabre", "flail", "whip", "wand", "glaive", "trident", "knife", "blade",
+        "cutlass", "greatsword", "longsword", "shortsword", "warhammer", "battleaxe", "fists"
+    }) do
+        WEAPON_WORDS[w] = true
+    end
+
+    local function is_weapon_name(name)
+        for word in string.gmatch(string.lower(name), "%a+") do
+            if WEAPON_WORDS[word] then return true end
+        end
+        return false
+    end
+
+    local function is_skill_weapon_or_spell(tool)
+        if FindFirstChild(tool, "Spell") or FindFirstChild(tool, "GodSpell") or FindFirstChild(tool, "SkillSpell") then
+            return true -- spell
+        end
+        if FindFirstChild(tool, "Skill") then
+            return true -- skill
+        end
+
+        local ok, tool_type = pcall(function()
+            local attr = tool:GetAttribute("ToolType")
+            if attr ~= nil then return tostring(attr) end
+            local val = FindFirstChild(tool, "ToolType")
+            if val and val:IsA("ValueBase") then return tostring(val.Value) end
+            return nil
+        end)
+        if ok and tool_type then
+            local t = string.lower(tool_type)
+            if t:find("weapon", 1, true) or t:find("melee", 1, true) or t:find("skill", 1, true) or t:find("spell", 1, true) then
+                return true
+            end
+        end
+
+        return is_weapon_name(tool.Name)
+    end
+
+    -- items the other Blacksmith features rely on are never offered for dropping
+    local function is_autodrop_candidate(tool)
+        if not (tool and tool:IsA("Tool")) then return false end
+        if SHARD_SET[tool.Name] or tool.Name == "Remote Smithing" then return false end
+        return not is_skill_weapon_or_spell(tool)
+    end
+
+    pcall(function()
+        if isfile and readfile and isfile(AUTODROP_FILE) then
+            for line in string.gmatch(readfile(AUTODROP_FILE), "[^\r\n]+") do
+                if line ~= "" and not SHARD_SET[line] and line ~= "Remote Smithing" and not is_weapon_name(line) then
+                    autodrop_known[line] = true
+                end
+            end
+        end
+    end)
+
+    local function autodrop_sorted_names()
+        local list = {}
+        for name in pairs(autodrop_known) do
+            table.insert(list, name)
+        end
+        table.sort(list)
+        return list
+    end
+
+    local function save_autodrop_known()
+        pcall(function()
+            if not writefile then return end
+            if makefolder and isfolder and not isfolder("HYDROXIDE") then makefolder("HYDROXIDE") end
+            writefile(AUTODROP_FILE, table.concat(autodrop_sorted_names(), "\n"))
+        end)
+    end
+
+    -- returns true if a new item name was discovered
+    local function scan_autodrop_items()
+        local found_new = false
+        local function scan(container)
+            if not container then return end
+            for _, item in ipairs(container:GetChildren()) do
+                if is_autodrop_candidate(item) and not autodrop_known[item.Name] then
+                    autodrop_known[item.Name] = true
+                    found_new = true
+                end
+            end
+        end
+        scan(plr:FindFirstChild("Backpack"))
+        scan(plr.Character)
+        return found_new
+    end
+
+    scan_autodrop_items()
+    save_autodrop_known()
+
+    local autodrop_start_values = autodrop_sorted_names()
+    if #autodrop_start_values == 0 then
+        autodrop_start_values = {"(no items found)"}
+    end
+
+    group_blacksmith:AddToggle("AutoDrop", {
+        Text = "Auto Drop",
+        Default = false,
+        Tooltip = "Drops every selected item found in your backpack. Skills, weapons and spells are always ignored"
+    })
+
+    group_blacksmith:AddDropdown("BlacksmithAutoDrop", {
+        Text = "Items to Drop",
+        Values = autodrop_start_values,
+        Multi = true,
+        Tooltip = "Built from the items in your backpack (skills, weapons and spells are ignored)"
+    })
+
+    local function refresh_autodrop_dropdown(silent)
+        local found_new = scan_autodrop_items()
+        if found_new then save_autodrop_known() end
+        local dd = Options.BlacksmithAutoDrop
+        if dd and (found_new or not silent) then
+            local list = autodrop_sorted_names()
+            if #list == 0 then list = {"(no items found)"} end
+            pcall(function() dd:SetValues(list) end)
+        end
+        return found_new
+    end
+
+    group_blacksmith:AddButton("Refresh Items", function()
+        local found = refresh_autodrop_dropdown(false)
+        library:Notify(found and "Autodrop item list updated" or "No new items found in your backpack", 2)
+    end)
+
+    local function hook_autodrop_backpack()
+        local backpack = plr:FindFirstChild("Backpack")
+        if not backpack then return end
+        utility:Connection(backpack.ChildAdded, function()
+            task.wait(0.1)
+            if shared and not shared.is_unloading then refresh_autodrop_dropdown(true) end
+        end)
+    end
+    hook_autodrop_backpack()
+    utility:Connection(plr.CharacterAdded, function()
+        task.wait(2.5)
+        if shared and not shared.is_unloading then
+            hook_autodrop_backpack()
+            refresh_autodrop_dropdown(true)
+        end
+    end)
+
+    local autodrop_attempts = {}
+
+    local function step_autodrop()
+        if not (Toggles.AutoDrop and Toggles.AutoDrop.Value) then return end
+        local selected = Options.BlacksmithAutoDrop and Options.BlacksmithAutoDrop.Value
+        if type(selected) ~= "table" then return end
+
+        local character = plr.Character
+        local backpack = plr:FindFirstChild("Backpack")
+        local humanoid = character and FindFirstChildOfClass(character, "Humanoid")
+        if not (character and backpack and humanoid) or humanoid.Health <= 0 then return end
+
+        -- check for an actual selected item (held tool first, then backpack)
+        local target
+        local held = FindFirstChildOfClass(character, "Tool")
+        if held and selected[held.Name] == true and is_autodrop_candidate(held) then
+            target = held
+        else
+            for _, item in ipairs(backpack:GetChildren()) do
+                if selected[item.Name] == true and is_autodrop_candidate(item) then
+                    local last = autodrop_attempts[item]
+                    if not last or tick() - last > 1.5 then
+                        target = item
+                        break
+                    end
+                end
+            end
+        end
+        if not target then return end
+
+        local last = autodrop_attempts[target]
+        if last and tick() - last < 1.5 then return end
+        autodrop_attempts[target] = tick()
+
+        if target.Parent ~= character then
+            pcall(function() humanoid:EquipTool(target) end)
+            local t0 = tick()
+            while target.Parent ~= character and tick() - t0 < 2 do
+                task.wait(0.05)
+            end
+            if target.Parent ~= character then return end
+        end
+
+        task.wait(0.075)
+        vim:SendKeyEvent(true, Enum.KeyCode.Backspace, false, game)
+        task.wait()
+        vim:SendKeyEvent(false, Enum.KeyCode.Backspace, false, game)
+        task.wait(0.3)
+    end
+
+    task.spawn(function()
+        while shared and not shared.is_unloading do
+            pcall(step_autodrop)
+            task.wait(0.4)
+        end
+    end)
 
     local last_equip = 0
     local last_smith = 0
@@ -26881,21 +27095,10 @@ end
 
                 -- older configs don't contain Telorum / Snap Gelidus: select them like the other VFX
                 -- (anything the config explicitly stores as false is left alone)
+                -- Rainbow VFX item selection is now taken from the config exactly as saved.
+                -- (This used to force every item missing from the saved table back to ON, which
+                -- re-enabled anything the user had unchecked every time a config was loaded.)
                 local function ensure_spell_rainbow_defaults()
-                    pcall(function()
-                        local opt = Options.RainbowVFXItems
-                        if not opt then return end
-                        local v = {}
-                        for k, val in pairs(opt.Value or {}) do v[k] = val end
-                        local changed = false
-                        for _, n in ipairs({"Telorum", "Snap Gelidus", "Ignis", "Mederi", "Gelidus", "Celeritas", "Hoppa", "Sagitta Sol", "Contrarium", "Velo", "Trickstus", "Scrupus", "Armis", "Gate", "Trahere", "Nocere", "Manus Dei", "Fimbulvetr", "Percutiens", "Sraunus", "Hystericus", "Tenebris", "Globus", "Snap Ignis", "Snap Armis", "Snap Telorum", "Snap Viribus", "Snap Sagitta Sol", "Snap Snarvindur", "Snap Celeritas", "Snap Hystericus", "Snap Trickstus", "Snap Velo", "Snap Tenebris", "Snap Fimbulvetr", "Snap Manus Dei", "Snap Nocere", "Snap Hoppa", "Snap Percutiens", "Snap Contrarium"}) do
-                            if v[n] == nil then
-                                v[n] = true
-                                changed = true
-                            end
-                        end
-                        if changed then opt:SetValue(v) end
-                    end)
                 end
 
                 shared.SaveManager.OnConfigLoaded = function(configName)
@@ -36434,7 +36637,7 @@ end
                 end
 
                 if total_selected == 0 then
-                    return true
+                    return false
                 end
 
                 return is_item_checked(sel, vfx_type)
