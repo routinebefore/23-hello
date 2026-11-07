@@ -26221,6 +26221,250 @@ end
 
             group_ui_right:AddDivider()
 
+            -- ===== Custom Moderator List =====
+            -- Anyone added here is appended to cheat_client.mod_list, which every bot (trinket bot, day farm)
+            -- already uses for its moderator checks, and also triggers the same style of alert as a detected mod.
+            group_ui_right:AddLabel("Moderator List")
+
+            local MODS_FILE = "HYDROXIDE/bin/custom_mods.json"
+            local custom_mods = {}          -- [userid] = name
+            local custom_mod_order = {}     -- userids in the order they were added
+            local inserted_in_mod_list = {} -- [userid] = true when this feature put it into cheat_client.mod_list
+            local mod_label_to_id = {}
+            local mod_alerted = {}          -- [userid] = true while that player is in this server
+
+            local function mod_label(id)
+                return string.format("%s [%d]", custom_mods[id] or "Unknown", id)
+            end
+
+            local function save_custom_mods()
+                pcall(function()
+                    if not writefile then return end
+                    if makefolder and isfolder then
+                        if not isfolder("HYDROXIDE") then makefolder("HYDROXIDE") end
+                        if not isfolder("HYDROXIDE/bin") then makefolder("HYDROXIDE/bin") end
+                    end
+                    local out = {}
+                    for _, id in ipairs(custom_mod_order) do
+                        table.insert(out, { id = id, name = custom_mods[id] })
+                    end
+                    writefile(MODS_FILE, Services.HttpService:JSONEncode(out))
+                end)
+            end
+
+            local function refresh_mod_dropdown()
+                mod_label_to_id = {}
+                local labels = {}
+                for _, id in ipairs(custom_mod_order) do
+                    local label = mod_label(id)
+                    mod_label_to_id[label] = id
+                    table.insert(labels, label)
+                end
+                if #labels == 0 then labels = { "(none added)" } end
+                if Options.ModListSelect then
+                    pcall(function() Options.ModListSelect:SetValues(labels) end)
+                    pcall(function() Options.ModListSelect:SetValue(nil) end)
+                end
+            end
+
+            local function add_custom_mod(id, name)
+                if custom_mods[id] then return false end
+                custom_mods[id] = name
+                table.insert(custom_mod_order, id)
+                cheat_client.mod_list = cheat_client.mod_list or {}
+                if not table.find(cheat_client.mod_list, id) then
+                    table.insert(cheat_client.mod_list, id)
+                    inserted_in_mod_list[id] = true
+                end
+                return true
+            end
+
+            local function remove_custom_mod(id)
+                if not custom_mods[id] then return false end
+                custom_mods[id] = nil
+                local idx = table.find(custom_mod_order, id)
+                if idx then table.remove(custom_mod_order, idx) end
+                -- built-in mods stay in cheat_client.mod_list; only entries added through this UI are removed
+                if inserted_in_mod_list[id] and cheat_client.mod_list then
+                    local li = table.find(cheat_client.mod_list, id)
+                    if li then table.remove(cheat_client.mod_list, li) end
+                end
+                inserted_in_mod_list[id] = nil
+                mod_alerted[id] = nil
+                return true
+            end
+
+            -- load saved list
+            pcall(function()
+                if isfile and readfile and isfile(MODS_FILE) then
+                    local data = Services.HttpService:JSONDecode(readfile(MODS_FILE))
+                    for _, entry in ipairs(data) do
+                        if type(entry) == "table" and tonumber(entry.id) then
+                            add_custom_mod(tonumber(entry.id), tostring(entry.name or "Unknown"))
+                        end
+                    end
+                end
+            end)
+
+            local function alert_custom_mod(player)
+                if not player or player == plr then return end
+                if not custom_mods[player.UserId] or mod_alerted[player.UserId] then return end
+                mod_alerted[player.UserId] = true
+
+                if library and library.Notify then
+                    utility:sound("rbxassetid://1693890393", 4)
+                    library:Notify({
+                        Title = "🛑 MODERATOR DETECTED",
+                        Description = string.format("%s [%s] is on your mod list", cheat_client:get_name(player), player.Name),
+                        Time = 25
+                    })
+                end
+                pcall(function()
+                    utility:plain_webhook(string.format("🛑 Listed moderator **%s** (%d) is in the server", player.Name, player.UserId))
+                end)
+            end
+
+            local function check_server_for_custom_mods()
+                for _, player in ipairs(plrs:GetPlayers()) do
+                    alert_custom_mod(player)
+                end
+            end
+
+            utility:Connection(plrs.PlayerAdded, function(player)
+                task.wait(0.5)
+                alert_custom_mod(player)
+            end)
+            utility:Connection(plrs.PlayerRemoving, function(player)
+                mod_alerted[player.UserId] = nil
+            end)
+
+            local function resolve_mod_input(text)
+                text = (text or ""):gsub("^%s*@?", ""):gsub("%s+$", "")
+                if text == "" then return nil end
+
+                for _, player in ipairs(plrs:GetPlayers()) do
+                    if player.Name:lower() == text:lower() or player.DisplayName:lower() == text:lower() then
+                        return player.UserId, player.Name
+                    end
+                end
+
+                if text:match("^%d+$") then
+                    local id = tonumber(text)
+                    local ok, name = pcall(function() return plrs:GetNameFromUserIdAsync(id) end)
+                    if ok and name then return id, name end
+                    return nil
+                end
+
+                local ok, id = pcall(function() return plrs:GetUserIdFromNameAsync(text) end)
+                if ok and id then
+                    local ok2, name = pcall(function() return plrs:GetNameFromUserIdAsync(id) end)
+                    return id, (ok2 and name) or text
+                end
+                return nil
+            end
+
+            group_ui_right:AddInput("ModListInput", {
+                Default = "",
+                Numeric = false,
+                Finished = true,
+                Text = "Add Moderator (username or user ID, press enter)",
+                Tooltip = "Adds the user to the mod list used by the bots and alerts. Saved between sessions",
+                Placeholder = "username or user id",
+                Callback = function(value)
+                    if not value or value == "" then return end
+                    task.spawn(function()
+                        local id, name = resolve_mod_input(value)
+                        if Options.ModListInput then pcall(function() Options.ModListInput:SetValue("") end) end
+
+                        if not id then
+                            library:Notify("User not found: " .. tostring(value), 4)
+                            return
+                        end
+                        if id == plr.UserId then
+                            library:Notify("You can't add yourself to the mod list", 3)
+                            return
+                        end
+                        if not add_custom_mod(id, name) then
+                            library:Notify(string.format("%s is already on the mod list", name), 3)
+                            return
+                        end
+
+                        save_custom_mods()
+                        refresh_mod_dropdown()
+                        library:Notify(string.format("Added %s [%d] to the mod list", name, id), 4)
+                        pcall(function()
+                            utility:plain_webhook(string.format("➕ Added **%s** (%d) to the mod list", name, id))
+                        end)
+                        check_server_for_custom_mods() -- alerts right away if they're already in this server
+                    end)
+                end
+            })
+
+            group_ui_right:AddDropdown("ModListSelect", {
+                Text = "Added Moderators",
+                Values = { "(none added)" },
+                Multi = false,
+                Tooltip = "Pick one, then press Remove Selected"
+            })
+
+            group_ui_right:AddButton({
+                Text = "Remove Selected",
+                Func = function()
+                    local label = Options.ModListSelect and Options.ModListSelect.Value
+                    local id = label and mod_label_to_id[label]
+                    if not id then
+                        library:Notify("Select a moderator from the dropdown first", 3)
+                        return
+                    end
+                    local name = custom_mods[id]
+                    if remove_custom_mod(id) then
+                        save_custom_mods()
+                        refresh_mod_dropdown()
+                        library:Notify(string.format("Removed %s [%d] from the mod list", name or "Unknown", id), 3)
+                        pcall(function()
+                            utility:plain_webhook(string.format("➖ Removed **%s** (%d) from the mod list", name or "Unknown", id))
+                        end)
+                    end
+                end
+            })
+
+            group_ui_right:AddButton({
+                Text = "Post Mod List to Webhook",
+                Func = function()
+                    local url = cheat_client.config.webhook
+                    if not url or url == "" then
+                        library:Notify("Set a Discord webhook URL first", 3)
+                        return
+                    end
+                    if #custom_mod_order == 0 then
+                        library:Notify("Your mod list is empty", 3)
+                        return
+                    end
+                    local lines = {}
+                    for _, id in ipairs(custom_mod_order) do
+                        table.insert(lines, string.format("• **%s** (`%d`) — https://www.roblox.com/users/%d/profile", custom_mods[id] or "Unknown", id, id))
+                    end
+                    local description = table.concat(lines, "\n")
+                    if #description > 4000 then description = description:sub(1, 4000) end
+                    local ok = pcall(function()
+                        HXD_SEND_WEBHOOK(url, {
+                            username = cheat_client.config.webhook_username or "bladee",
+                            embeds = {{
+                                title = string.format("Mod List (%d)", #custom_mod_order),
+                                description = description,
+                                color = 15158332
+                            }}
+                        })
+                    end)
+                    library:Notify(ok and "Mod list posted to webhook" or "Failed to post mod list", 3)
+                end
+            })
+
+            refresh_mod_dropdown()
+            task.defer(check_server_for_custom_mods)
+
+            group_ui_right:AddDivider()
+
             group_ui_right:AddLabel("UI Windows")
 
             status_window = library:StatusWindow({
@@ -27091,7 +27335,7 @@ end
                 shared.SaveManager:SetFolder(config_folder)
                 shared.ThemeManager:SetFolder("HYDROXIDE")
 
-                shared.SaveManager:SetIgnoreIndexes({ "SavedPaths", "DebugPacketLogs" })
+                shared.SaveManager:SetIgnoreIndexes({ "SavedPaths", "DebugPacketLogs", "ModListInput", "ModListSelect" })
 
                 -- older configs don't contain Telorum / Snap Gelidus: select them like the other VFX
                 -- (anything the config explicitly stores as false is left alone)
