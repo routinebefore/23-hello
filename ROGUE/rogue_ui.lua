@@ -1051,6 +1051,30 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
 
     cheat_client:load_friends()
 
+    -- Safe keybind matcher. KeyPicker values can be keyboard names ("E"),
+    -- mouse names ("MB1"/"MouseButton1") or "None". Enum.KeyCode[x] THROWS on
+    -- anything that isn't a real KeyCode, so never index it directly.
+    do
+        local mouse_types = {
+            MB1 = Enum.UserInputType.MouseButton1, MouseButton1 = Enum.UserInputType.MouseButton1,
+            MB2 = Enum.UserInputType.MouseButton2, MouseButton2 = Enum.UserInputType.MouseButton2,
+            MB3 = Enum.UserInputType.MouseButton3, MouseButton3 = Enum.UserInputType.MouseButton3,
+        }
+        function cheat_client.resolve_keybind(bind)
+            if type(bind) ~= "string" or bind == "" or bind == "None" then return nil, nil end
+            if mouse_types[bind] then return nil, mouse_types[bind] end
+            local ok, key = pcall(function() return Enum.KeyCode[bind] end)
+            if ok and key then return key, nil end
+            return nil, nil
+        end
+        function cheat_client.keybind_matches(input, bind)
+            local key, mouse_type = cheat_client.resolve_keybind(bind)
+            if mouse_type then return input.UserInputType == mouse_type end
+            if key then return input.KeyCode == key end
+            return false
+        end
+    end
+
     local cpu = {
         services = {
             uis = Services.UserInputService,
@@ -24841,13 +24865,13 @@ end
 
             local function setup_macro_keybind(name, macro_data)
                 if not macro_data or macro_data.keybind == "None" then return end
-                local key = Enum.KeyCode[macro_data.keybind]
-                if not key then return end
+                local key, mouse_type = cheat_client.resolve_keybind(macro_data.keybind)
+                if not key and not mouse_type then return end
 
                 local running = false
                 local conn = utility:Connection(uis.InputBegan, function(input, gpe)
                     if gpe or running then return end
-                    if input.KeyCode == key then
+                    if (key and input.KeyCode == key) or (mouse_type and input.UserInputType == mouse_type) then
                         running = true
                         task.spawn(function()
                             run_macro(macro_data.actions, name)
@@ -24865,11 +24889,11 @@ end
                 if keybinds_data then
                     for _, kb in ipairs(keybinds_data) do
                         if kb.key and kb.tool then
-                            local key = Enum.KeyCode[kb.key]
-                            if key then
+                            local key, mouse_type = cheat_client.resolve_keybind(kb.key)
+                            if key or mouse_type then
                                 local conn = utility:Connection(uis.InputBegan, function(input, gpe)
                                     if gpe then return end
-                                    if input.KeyCode == key then
+                                    if (key and input.KeyCode == key) or (mouse_type and input.UserInputType == mouse_type) then
                                         local character = plr.Character
                                         if not character then return end
 
@@ -33106,7 +33130,7 @@ end
             utility:Connection(uis.InputBegan, function(input, chat)
                 if chat or not Options.AttachToBackKeybind then return end
                 if Options.AttachToBackKeybind.Value == "None" then return end
-                if input.KeyCode == Enum.KeyCode[Options.AttachToBackKeybind.Value] then
+                if cheat_client.keybind_matches(input, Options.AttachToBackKeybind.Value) then
                     if not (Toggles and Toggles.blatant_mode and Toggles.blatant_mode.Value) then
                         library:Notify("Attach to Back requires Blatant Mode enabled!", 3)
                         return
@@ -34243,7 +34267,7 @@ end
             
             local function Keypress(action, state, input)
                 local freecam_keybind_string = Options.FreecamKeybind and Options.FreecamKeybind.Value
-                local freecam_keybind_enum = freecam_keybind_string and Enum.KeyCode[freecam_keybind_string]
+                local freecam_keybind_enum = cheat_client.resolve_keybind(freecam_keybind_string)
 
                 if freecam_keybind_enum and input.KeyCode == freecam_keybind_enum then
                     return Enum.ContextActionResult.Pass
