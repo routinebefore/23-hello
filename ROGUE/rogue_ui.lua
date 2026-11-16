@@ -22275,39 +22275,7 @@ end
                     else
                         library:Notify(string.format("Created wait point %d at current position", #trinket_bot.path_points))
                     end
-                                        -- Show orange range sphere at this spawn point
-                    local range = (Options and Options.TrinketRange and Options.TrinketRange.Value) or 75
-                    local diameter = range * 2
-                    local rangeSphere = Instance.new("Part")
-                    rangeSphere.Shape = Enum.PartType.Ball
-                    rangeSphere.Size = Vector3.new(diameter, diameter, diameter)
-                    rangeSphere.Position = position
-                    rangeSphere.Anchored = true
-                    rangeSphere.CanCollide = false
-                    rangeSphere.CastShadow = false
-                    rangeSphere.Color = Color3.fromRGB(255, 140, 0)
-                    rangeSphere.Material = Enum.Material.Neon
-                    rangeSphere.Transparency = 0.75
-                    rangeSphere.Name = "HXD_TrinketRangeViz"
-                    rangeSphere.Parent = workspace
-
-                    local bb = Instance.new("BillboardGui")
-                    bb.Size = UDim2.new(0, 140, 0, 36)
-                    bb.StudsOffset = Vector3.new(0, range + 4, 0)
-                    bb.AlwaysOnTop = true
-                    bb.Adornee = rangeSphere
-                    bb.Parent = rangeSphere
-
-                    local lbl = Instance.new("TextLabel")
-                    lbl.Size = UDim2.new(1, 0, 1, 0)
-                    lbl.BackgroundTransparency = 1
-                    lbl.Text = "🟠 Trinket Spawn (" .. range .. " studs)"
-                    lbl.TextColor3 = Color3.fromRGB(255, 140, 0)
-                    lbl.TextScaled = true
-                    lbl.Font = Enum.Font.SourceSansBold
-                    lbl.Parent = bb
-	
-	
+                 
 					update_visualizations()
                 end
             })
