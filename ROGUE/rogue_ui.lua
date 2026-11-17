@@ -11442,158 +11442,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     Rounding = 1
                 })
             end
-            group_misc_esp:AddDivider()
 
-            do
-                -- Trinket Spawn Highlighter
-                local highlight_objects = {}
-                local scan_connection = nil
-                local ORANGE = Color3.fromRGB(255, 140, 0)
-
-                local function get_radius()
-                    return (Options.TrinketSpawnRadius and Options.TrinketSpawnRadius.Value) or 2000
-                end
-
-                local function get_player_pos()
-                    local char = plr.Character
-                    if not char then return nil end
-                    local hrp = char:FindFirstChild("HumanoidRootPart")
-                    return hrp and hrp.Position or nil
-                end
-
-                local function add_highlight(trinket, name)
-                    if highlight_objects[trinket] then return end
-
-                    local hl = Instance.new("SelectionBox")
-                    hl.Color3 = ORANGE
-                    hl.LineThickness = 0.08
-                    hl.SurfaceTransparency = 0.5
-                    hl.SurfaceColor3 = ORANGE
-                    hl.Adornee = trinket
-                    hl.Parent = trinket
-
-                    local bb = Instance.new("BillboardGui")
-                    bb.Size = UDim2.new(0, 120, 0, 36)
-                    bb.StudsOffset = Vector3.new(0, 4, 0)
-                    bb.AlwaysOnTop = true
-                    bb.Adornee = trinket
-                    bb.Parent = trinket
-
-                    local bg = Instance.new("Frame")
-                    bg.Size = UDim2.new(1, 0, 1, 0)
-                    bg.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-                    bg.BackgroundTransparency = 0.4
-                    bg.BorderSizePixel = 0
-                    bg.Parent = bb
-
-                    local lbl = Instance.new("TextLabel")
-                    lbl.Size = UDim2.new(1, 0, 1, 0)
-                    lbl.BackgroundTransparency = 1
-                    lbl.Text = "🟠 " .. (name or "Trinket")
-                    lbl.TextColor3 = ORANGE
-                    lbl.TextScaled = true
-                    lbl.Font = Enum.Font.SourceSansBold
-                    lbl.Parent = bg
-
-                    highlight_objects[trinket] = { hl = hl, bb = bb }
-                end
-
-                local function remove_highlight(trinket)
-                    local data = highlight_objects[trinket]
-                    if data then
-                        pcall(function() data.hl:Destroy() end)
-                        pcall(function() data.bb:Destroy() end)
-                        highlight_objects[trinket] = nil
-                    end
-                end
-
-                local function clear_all_highlights()
-                    for trinket in pairs(highlight_objects) do
-                        remove_highlight(trinket)
-                    end
-                end
-
-                local function scan_and_update()
-                    local playerPos = get_player_pos()
-                    local radius = get_radius()
-
-                    for trinket in pairs(highlight_objects) do
-                        if not trinket or not trinket.Parent then
-                            remove_highlight(trinket)
-                        elseif playerPos and (trinket.Position - playerPos).Magnitude > radius then
-                            remove_highlight(trinket)
-                        end
-                    end
-
-                    for _, obj in ipairs(ws:GetChildren()) do
-                        if obj.Name == "Part" and FindFirstChild(obj, "ID") then
-                            if not highlight_objects[obj] then
-                                local inRange = true
-                                if playerPos then
-                                    inRange = (obj.Position - playerPos).Magnitude <= radius
-                                end
-                                if inRange then
-                                    local trinket_name = pcall(function()
-                                        local n = cheat_client:identify_trinket(obj)
-                                        return n
-                                    end) and cheat_client:identify_trinket(obj) or "Trinket"
-                                    add_highlight(obj, trinket_name)
-                                end
-                            end
-                        end
-                    end
-                end
-
-                local function start_scan()
-                    if scan_connection then return end
-                    scan_connection = utility:Connection(Services.RunService.Heartbeat, (function()
-                        local t = 0
-                        return function(dt)
-                            t = t + dt
-                            if t >= 1 then
-                                t = 0
-                                pcall(scan_and_update)
-                            end
-                        end
-                    end)())
-                end
-
-                local function stop_scan()
-                    if scan_connection then
-                        scan_connection:Disconnect()
-                        scan_connection = nil
-                    end
-                    clear_all_highlights()
-                end
-
-                group_misc_esp:AddToggle("TrinketSpawnVisualizer", {
-                    Text = "Trinket Spawn Highlighter",
-                    Default = false,
-                    Callback = function(value)
-                        if value then
-                            start_scan()
-                        else
-                            stop_scan()
-                        end
-                    end
-                })
-
-                group_misc_esp:AddSlider("TrinketSpawnRadius", {
-                    Text = "Highlight Radius",
-                    Default = 2000,
-                    Min = 100,
-                    Max = 2000,
-                    Rounding = 1,
-                    Callback = function(value)
-                    end
-                })
-
-                if cheat_client.register_unload_hook then
-                    cheat_client.register_unload_hook(function()
-                        stop_scan()
-                    end)
-                end
-            end
             group_misc_esp:AddDivider()
 
             do
@@ -12290,15 +12139,8 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                     cheat_client.config.speed_boost_value = value
                 end
             })
-            group_movement:AddLabel("SpeedBoost Keybind"):AddKeyPicker("SpeedBoostKeybind", {
-                Default = "Unknown"
-                Text = "SpeedBoost Toggle",
-            })
-
-            Options.SpeedBoostKeybind:OnChanged(function()
-                cheat_client.config.speed_boost_keybind = Options.SpeedBoostKeybind.Value
-            end)
         end
+
         do
             local group_general = Tabs.Automation:AddLeftGroupbox("General")
             local group_farm = Tabs.Automation:AddRightGroupbox("Farming")
@@ -22275,8 +22117,7 @@ end
                     else
                         library:Notify(string.format("Created wait point %d at current position", #trinket_bot.path_points))
                     end
-                 
-					update_visualizations()
+                    update_visualizations()
                 end
             })
 
@@ -29093,20 +28934,7 @@ end
                 end)
             end
         end
-
-           -- paste starts here
-            if Options.SpeedBoostKeybind then
-                utility:Connection(Services.UserInputService.InputBegan, function(input, gameProcessed)
-                    if gameProcessed then return end
-					if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
-                    local keybind = Options.SpeedBoostKeybind.Value
-                    if keybind and input.KeyCode == Enum.KeyCode[keybind] then
-                        if Toggles.speed_boost then
-                            Toggles.speed_boost:SetValue(not Toggles.speed_boost.Value)
-                        end
-                    end
-                end)
-            end
+    
         do
             do
                 for _,object in next, ws:GetChildren() do
