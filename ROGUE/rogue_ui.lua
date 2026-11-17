@@ -12291,7 +12291,7 @@ if game.PlaceId == 3541987450 or game.PlaceId == 5208655184 or game.PlaceId == 1
                 end
             })
             group_movement:AddLabel("SpeedBoost Keybind"):AddKeyPicker("SpeedBoostKeybind", {
-                Default = cheat_client.config.speed_boost_keybind,
+                Default = "Unknown"
                 Text = "SpeedBoost Toggle",
             })
 
@@ -29098,6 +29098,7 @@ end
             if Options.SpeedBoostKeybind then
                 utility:Connection(Services.UserInputService.InputBegan, function(input, gameProcessed)
                     if gameProcessed then return end
+					if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
                     local keybind = Options.SpeedBoostKeybind.Value
                     if keybind and input.KeyCode == Enum.KeyCode[keybind] then
                         if Toggles.speed_boost then
